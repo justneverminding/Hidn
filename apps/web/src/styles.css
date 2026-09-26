@@ -1,0 +1,234 @@
+@import "@hidn/ui/tokens.css";
+@import "@hidn/ui/typography.css";
+@import "@hidn/ui/layout.css";
+@import "@hidn/ui/motion.css";
+@import "@hidn/ui/effects.css";
+@import "@hidn/ui/components.css";
+
+:root {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--hidn-bg);
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--hidn-bg);
+  color: var(--hidn-text);
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+body,
+button,
+input,
+select,
+textarea,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--hidn-focus);
+  outline-offset: 4px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.skip-link {
+  background: var(--hidn-bone);
+  color: var(--hidn-bg);
+  left: var(--hidn-space-4);
+  padding: var(--hidn-space-3) var(--hidn-space-4);
+  position: fixed;
+  text-decoration: none;
+  top: -5rem;
+  z-index: 20;
+}
+
+.skip-link:focus {
+  top: var(--hidn-space-4);
+}
+
+.foundation-shell {
+  background-color: var(--hidn-bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+.foundation-main {
+  flex: 1;
+  padding-block: clamp(5rem, 14vw, 11rem) clamp(5rem, 12vw, 9rem);
+}
+
+.foundation-hero {
+  display: grid;
+  gap: clamp(var(--hidn-space-6), 8vw, var(--hidn-space-9));
+  grid-template-columns: minmax(0, 1.25fr) minmax(16rem, 0.75fr);
+}
+
+.foundation-hero__title {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-display);
+  font-size: var(--hidn-type-display-lg);
+  font-weight: 400;
+  letter-spacing: -0.07em;
+  line-height: 0.88;
+  margin: 0;
+  max-width: 9ch;
+}
+
+.foundation-hero__title em {
+  color: var(--hidn-signal);
+  font-style: normal;
+}
+
+.foundation-hero__copy {
+  align-self: end;
+  color: var(--hidn-text-muted);
+  font-size: var(--hidn-type-body-lg);
+  line-height: 1.65;
+  margin: 0;
+  max-width: 36ch;
+}
+
+.foundation-status {
+  border-top: 1px solid var(--hidn-border);
+  display: grid;
+  gap: clamp(var(--hidn-space-6), 8vw, var(--hidn-space-9));
+  grid-template-columns: minmax(0, 0.75fr) minmax(18rem, 1.25fr);
+  margin-top: clamp(7rem, 18vw, 13rem);
+  padding-top: var(--hidn-space-4);
+}
+
+.foundation-status__title {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-display);
+  font-size: var(--hidn-type-heading-1);
+  font-weight: 400;
+  letter-spacing: -0.06em;
+  line-height: 0.94;
+  margin: var(--hidn-space-5) 0 0;
+  max-width: 9ch;
+}
+
+.foundation-status__panel {
+  background: var(--hidn-surface);
+  border: 1px solid var(--hidn-border);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: var(--hidn-type-mono-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.foundation-status__panel-header,
+.foundation-status__list li {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: var(--hidn-space-4);
+}
+
+.foundation-status__panel-header {
+  border-bottom: 1px solid var(--hidn-border);
+}
+
+.foundation-status__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.foundation-status__list li {
+  border-bottom: 1px solid rgba(43, 53, 43, 0.72);
+  gap: var(--hidn-space-3);
+}
+
+.foundation-status__list li:last-child {
+  border-bottom: 0;
+}
+
+.foundation-status__list strong {
+  color: var(--hidn-signal-soft);
+  font-size: var(--hidn-type-label);
+  font-weight: 400;
+  text-align: right;
+}
+
+.foundation-cursor {
+  color: var(--hidn-signal);
+  display: inline-block;
+  margin-left: 0.3rem;
+}
+
+@media (max-width: 760px) {
+  .foundation-hero,
+  .foundation-status {
+    grid-template-columns: 1fr;
+  }
+
+  .foundation-hero__copy {
+    max-width: 48ch;
+  }
+
+  .foundation-status__title {
+    max-width: 12ch;
+  }
+}
+
+@media (max-width: 430px) {
+  .foundation-status__list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .foundation-status__list strong {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .ui-status-dot {
+    background: CanvasText;
+  }
+}
+

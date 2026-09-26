@@ -1,0 +1,22 @@
+{
+  "name": "hidn",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HIDN — Anonymous Internet Noir",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @hidn/web run dev",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check": "npm run typecheck && npm run build",
+    "preview": "npm --workspace @hidn/web run preview"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
+  }
+}

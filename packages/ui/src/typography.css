@@ -1,0 +1,82 @@
+body {
+  font-family: var(--hidn-font-body);
+  font-size: var(--hidn-type-body);
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+.type-display-xl,
+.type-display-lg,
+.type-heading-1,
+.type-heading-2,
+.type-heading-3 {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-display);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+}
+
+.type-display-xl {
+  font-size: var(--hidn-type-display-xl);
+  line-height: 0.88;
+}
+
+.type-display-lg {
+  font-size: var(--hidn-type-display-lg);
+  line-height: 0.92;
+}
+
+.type-heading-1 {
+  font-size: var(--hidn-type-heading-1);
+  line-height: 0.98;
+}
+
+.type-heading-2 {
+  font-size: var(--hidn-type-heading-2);
+  line-height: 1;
+}
+
+.type-heading-3 {
+  font-size: var(--hidn-type-heading-3);
+  line-height: 1.1;
+}
+
+.type-body-lg {
+  font-size: var(--hidn-type-body-lg);
+  line-height: 1.65;
+}
+
+.type-body {
+  font-size: var(--hidn-type-body);
+  line-height: 1.65;
+}
+
+.type-body-sm {
+  font-size: var(--hidn-type-body-sm);
+  line-height: 1.55;
+}
+
+.type-mono,
+.type-mono-sm,
+.type-label {
+  font-family: var(--hidn-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.type-mono {
+  font-size: var(--hidn-type-mono);
+  line-height: 1.45;
+}
+
+.type-mono-sm {
+  font-size: var(--hidn-type-mono-sm);
+  line-height: 1.4;
+}
+
+.type-label {
+  font-size: var(--hidn-type-label);
+  line-height: 1.4;
+}
+

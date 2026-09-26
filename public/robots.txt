@@ -1,0 +1,10 @@
+# HIDN crawler policy foundation.
+# Page-level metadata remains the source of truth for dynamic content.
+
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: https://hidn.xyz/sitemap.xml
+

@@ -1,0 +1,213 @@
+# HIDN Brand Source of Truth
+
+> **Canonical status:** This document is the brand source of truth for HIDN.
+> Supplied logo and reference assets take precedence over any approximation.
+
+## Official concept
+
+**HIDN — Anonymous Internet Noir**
+
+Primary design philosophy:
+
+**SHOW THE THOUGHT. HIDE THE PERSON.**
+
+The approved eye logo is canonical. The eye means **presence without
+exposure**: someone is present, watching, speaking, or confessing while their
+identity remains concealed.
+
+The original logo and reference artwork must be preserved unchanged. Do not
+redraw the eye, generate a replacement, or turn the logo into a different
+brand mark. The canonical storage locations are:
+
+- `/public/brand/` for approved brand assets;
+- `/public/brand/references/` for supplied visual reference artwork.
+
+### Canonical supplied references
+
+The supplied approved reference images are stored byte-for-byte unchanged at:
+
+- `/public/brand/references/hidn-brand-reference-01.png` — 1536×1024 RGB PNG;
+- `/public/brand/references/hidn-brand-reference-02.png` — 2056×765 RGB PNG.
+
+These are approved visual references, not extracted logo files. The supplied
+attachments did not include a standalone primary logo or standalone eye-symbol
+file. Therefore `/public/brand/hidn-logo.png` and
+`/public/brand/hidn-symbol.png` have not been fabricated from the references;
+they remain pending the original standalone assets.
+
+## Desired feeling
+
+HIDN should feel secretive, quiet, mysterious, slightly rebellious,
+privacy-native, human, nostalgic, restrained, premium, and intentional.
+
+The visual language combines 90s internet, cypherpunk, underground bulletin
+boards, surveillance imagery, anonymous communication, CRT interfaces, and a
+modern consumer privacy product.
+
+Use near-black backgrounds, distressed off-white, terminal/acid green, muted
+gray, and subtle Zcash gold only where appropriate. Grain, photocopy texture,
+halftone, scanlines, CRT texture, redaction, cropped eyes, partially hidden
+faces, surveillance brackets, framing markers, terminal typography, and sparse
+system indicators are accents—not a wall of effects.
+
+HIDN must not resemble a crypto exchange, DeFi dashboard, NFT platform,
+generic purple Web3 site, corporate SaaS product, neon cyberpunk cliché, or an
+overly technical cryptography tool.
+
+## Typography roles
+
+Typography has three roles:
+
+- **Display:** an editorial serif stack for hero statements, manifesto lines,
+  and major section titles. It is bold, slightly raw, and used sparingly.
+- **Body:** a neutral system sans stack for confession text, explanatory copy,
+  forms, and reading-heavy content.
+- **Mono/system:** metadata, proof states, timestamps, technical labels,
+  status indicators, and navigation accents. It must not be used for every
+  sentence.
+
+No third-party font request is made from the browser. The system remains
+deterministic and avoids adding an unnecessary external data path.
+
+## Semantic color tokens
+
+The canonical implementation lives in `packages/ui/src/tokens.css`:
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--hidn-bg` | `#090b09` | Near-black page canvas |
+| `--hidn-surface` | `#111511` | Quiet panels and cards |
+| `--hidn-surface-raised` | `#171c17` | Raised controls and secondary surfaces |
+| `--hidn-surface-inset` | `#0d100d` | Inputs and recessed system surfaces |
+| `--hidn-text` | `#ebe8de` | Default readable text |
+| `--hidn-text-muted` | `#a1a89d` | Supporting copy |
+| `--hidn-text-dim` | `#70796f` | Metadata and low-priority labels |
+| `--hidn-bone` | `#f3efe3` | High-emphasis distressed off-white |
+| `--hidn-signal` | `#b8dc68` | Primary acid-green signal |
+| `--hidn-signal-soft` | `#789449` | Quiet green borders and secondary states |
+| `--hidn-zcash` | `#c8a252` | Sparse, context-specific Zcash accent |
+| `--hidn-warning` | `#d59b4f` | Warning state |
+| `--hidn-danger` | `#d06b63` | Danger/error state |
+| `--hidn-border` | `#2b352b` | Structural line |
+| `--hidn-border-strong` | `#506049` | Frame and input emphasis |
+| `--hidn-focus` | `#ddf79a` | Keyboard focus indicator |
+
+The palette has no purple primary scale. The primary relationship is
+near-black + bone + signal green.
+
+## Type scale
+
+Responsive type tokens are defined for:
+
+| Role | Token |
+| --- | --- |
+| Display XL | `--hidn-type-display-xl` |
+| Display LG | `--hidn-type-display-lg` |
+| Heading 1 | `--hidn-type-heading-1` |
+| Heading 2 | `--hidn-type-heading-2` |
+| Heading 3 | `--hidn-type-heading-3` |
+| Body LG | `--hidn-type-body-lg` |
+| Body | `--hidn-type-body` |
+| Body SM | `--hidn-type-body-sm` |
+| Mono | `--hidn-type-mono` |
+| Mono SM | `--hidn-type-mono-sm` |
+| Label | `--hidn-type-label` |
+
+Use editorial display type for meaning and mono type for system context. Do
+not turn a consumer surface into terminal-only developer software.
+
+## Spacing and layout
+
+The shared layout foundation uses the `--hidn-space-1` through
+`--hidn-space-9` scale. `--hidn-page-gutter` is responsive, the standard
+content max-width is `1200px`, the wide editorial max-width is `1440px`, and
+reading content is limited to `68ch`.
+
+Available primitives include:
+
+- `.hidn-container` for standard content;
+- `.hidn-container--wide` for editorial and preview surfaces;
+- `.hidn-container--reading` for long-form copy;
+- `.hidn-editorial-grid` for asymmetric two-column composition;
+- `.hidn-stack--tight`, `--standard`, and `--loose` for vertical rhythm; and
+- `.hidn-full-bleed` for intentional visual breaks.
+
+Generous negative space is the default. Dense spacing is reserved for system
+labels, controls, and status panels.
+
+## Motion rules
+
+Motion tokens are:
+
+- `--hidn-motion-fast` (`140ms`) for control feedback;
+- `--hidn-motion-standard` (`220ms`) for ordinary transitions; and
+- `--hidn-motion-deliberate` (`460ms`) for a considered reveal.
+
+Good motion includes a fast terminal reveal, a subtle cursor blink, signal
+pulse, scan sweep, brief static transition, proof-status pulse, and redaction
+reveal. Constant glitching, heavy parallax, flashy neon animation, excessive
+shake, and slow dramatic transitions are forbidden. Every motion class has a
+`prefers-reduced-motion` fallback.
+
+## Texture usage
+
+Reusable optional classes live in `packages/ui/src/effects.css`:
+
+- `.fx-grain`
+- `.fx-vignette`
+- `.fx-scanlines`
+- `.fx-halftone`
+- `.fx-crt`
+- `.fx-paper-distress`
+- `.fx-static-reveal`
+- `.fx-scan-sweep`
+
+Use one or two effects at a time. Texture must never reduce readability or
+carry meaning on its own. It is disabled or reduced where motion preferences
+require it.
+
+## Component design rules
+
+The reusable component layer in `packages/ui/src/components/` includes:
+
+- wordmark fallback, terminal labels, status dots, and system indicators;
+- primary, secondary, ghost, and icon buttons;
+- text input, textarea, select, checkbox, radio, and visibility controls;
+- privacy badges, category tags, identityless confession cards, and a
+  visual-only composer shell;
+- system messages, alerts, redaction blocks, surveillance frames, section
+  headers, manifesto statements, and transmission dividers;
+- public navigation and footer shells;
+- modal and report-dialog shells; and
+- empty, loading, and error states.
+
+Confession components must keep the thought visually primary. They must not
+show avatars, profile photos, usernames, handles, follower counts, blue checks,
+or persistent anonymous identifiers. The wordmark uses a text fallback until
+the original standalone logo asset is supplied; no new logo is invented.
+
+## Forbidden visual patterns
+
+Do not introduce purple Web3 palettes, wallet-first calls to action, glossy
+SaaS cards, pill-heavy layouts, generic rounded rectangles, neon cyberpunk
+overload, Matrix styling, game UI, terminal-only copy, or decoration that
+competes with the confession itself. Admin navigation remains absent from the
+public shell.
+
+## Responsive and accessibility rules
+
+Desktop, tablet, mobile portrait, and mobile landscape are first-class. The
+system collapses editorial grids below `760px`, wraps navigation, keeps
+controls at comfortable touch sizes, and prevents horizontal overflow.
+
+Components use semantic HTML, visible keyboard focus, readable contrast,
+screen-reader labels, non-color status cues, meaningful image alt text, and
+native controls where possible. All surfaces remain usable without texture
+effects.
+
+## Internal preview
+
+The noindex design-system preview is available at `/system`. It demonstrates
+tokens, type, spacing, components, effects, states, shell chrome, and the two
+canonical reference images. It is not a public product page and is not linked
+from the public shell.

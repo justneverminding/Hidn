@@ -1,0 +1,126 @@
+/*
+ * Optional visual treatments. These are atmosphere, never information.
+ * Apply one or two at a time and keep content on a higher stacking layer.
+ */
+.fx-grain {
+  isolation: isolate;
+  position: relative;
+}
+
+.fx-grain::before {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  content: "";
+  inset: 0;
+  mix-blend-mode: screen;
+  opacity: 0.045;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.fx-grain > * {
+  position: relative;
+  z-index: 1;
+}
+
+.fx-vignette {
+  background-image: radial-gradient(
+    ellipse at center,
+    transparent 42%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+}
+
+.fx-scanlines {
+  background-image: linear-gradient(
+    to bottom,
+    rgba(232, 230, 220, 0.04) 0,
+    rgba(232, 230, 220, 0.04) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  background-size: 100% 4px;
+}
+
+.fx-halftone {
+  background-image: radial-gradient(
+    rgba(184, 220, 104, 0.14) 0.75px,
+    transparent 0.9px
+  );
+  background-size: 7px 7px;
+}
+
+.fx-crt {
+  background-image:
+    linear-gradient(
+      to bottom,
+      rgba(232, 230, 220, 0.035) 0,
+      rgba(232, 230, 220, 0.035) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, 0.26) 100%);
+  background-size: 100% 4px, 100% 100%;
+  box-shadow: inset 0 0 0 1px rgba(232, 230, 220, 0.04);
+}
+
+.fx-paper-distress {
+  background-image:
+    radial-gradient(ellipse at 28% 36%, rgba(243, 239, 227, 0.05), transparent 24%),
+    radial-gradient(ellipse at 82% 70%, rgba(243, 239, 227, 0.04), transparent 22%),
+    linear-gradient(115deg, transparent 0 47%, rgba(243, 239, 227, 0.04) 47.2% 47.35%, transparent 47.55%);
+}
+
+.fx-static-reveal {
+  animation: hidn-static-reveal var(--hidn-motion-deliberate) var(--hidn-ease) both;
+}
+
+.fx-scan-sweep {
+  overflow: hidden;
+  position: relative;
+}
+
+.fx-scan-sweep::after {
+  background: linear-gradient(90deg, transparent, rgba(184, 220, 104, 0.2), transparent);
+  content: "";
+  inset: 0 auto 0 -40%;
+  position: absolute;
+  transform: skewX(-18deg);
+  width: 22%;
+  animation: hidn-scan-sweep 5.5s var(--hidn-ease) infinite;
+}
+
+@keyframes hidn-static-reveal {
+  0% {
+    filter: contrast(1.35);
+    opacity: 0.4;
+    transform: translateY(0.3rem);
+  }
+  100% {
+    filter: contrast(1);
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hidn-scan-sweep {
+  0%,
+  55% {
+    transform: translateX(0) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(650%) skewX(-18deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-grain::before {
+    opacity: 0.025;
+  }
+
+  .fx-static-reveal,
+  .fx-scan-sweep::after {
+    animation: none;
+  }
+}
+

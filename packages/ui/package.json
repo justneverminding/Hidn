@@ -1,0 +1,16 @@
+{
+  "name": "@hidn/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./effects.css": "./src/effects.css",
+    "./typography.css": "./src/typography.css",
+    "./layout.css": "./src/layout.css",
+    "./motion.css": "./src/motion.css",
+    "./components.css": "./src/components.css",
+    "./package.json": "./package.json"
+  }
+}

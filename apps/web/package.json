@@ -1,0 +1,16 @@
+{
+  "name": "@hidn/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@hidn/ui": "file:../../packages/ui"
+  }
+}
+
