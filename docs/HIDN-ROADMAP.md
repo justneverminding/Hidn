@@ -1,7 +1,7 @@
 # HIDN Roadmap Source of Truth
 
 > **Canonical status:** This document is the milestone source of truth for
-> HIDN. Phase 2 ends here; later phases require review and do not start
+> HIDN. Phase 2.6 ends here; later phases require review and do not start
 > automatically.
 
 ## Phase 0 — Source of truth + project foundation
@@ -66,10 +66,65 @@ The mock confession list and posting flow are reset with a page reload. No
 backend, database, real proof, moderation, wallet, or persistence work is
 included in this phase.
 
+## Phase 2.5 — Homepage clarity pass
+
+**Status: complete in this checkout.**
+
+Delivered as a homepage-only information hierarchy pass:
+
+- plain-English product definition and one obvious primary confession action;
+- trust signals moved into the first viewport alongside the emotional headline;
+- concise `HOW HIDN WORKS`, confession previews, `WHY HIDN`, privacy, and
+  manifesto sections moved below the hero in a clear sequence;
+- Zcash and zero-knowledge language kept secondary and explicitly framed as
+  design direction, with the current proof interaction still labelled a mock;
+- responsive first-viewport, touch-target, no-overflow, image-load, and route
+  regression checks across desktop, tablet, and mobile sizes.
+
+No design-system, route, backend, privacy-flow, or Phase 3 work was started.
+
+## Phase 2.6 — Messaging experience + live motion pass
+
+**Status: complete in this checkout.**
+
+Delivered as a browser-only public frontend experience:
+
+- homepage reshaped into an immediate composer plus anonymous transmission
+  stream instead of a long landing-page section stack;
+- local mock transmission arrivals, receiving status, restrained reveal,
+  cursor, signal-pulse, scan, and ambient-drift behavior;
+- simulated activity explicitly labelled with no fake live-user, typing, or
+  network metrics;
+- `/explore` converted from a card directory into filterable message rows;
+- `/confess` prove, compose, preview, and success states aligned to the same
+  private-channel conversation language;
+- reduced-motion behavior disables automatic stream movement and decorative
+  motion while preserving full usability.
+
+No backend, database, real-time connection, ZK, Zcash transaction, wallet,
+admin, account, username, profile, or Phase 3 work was started.
+
+## Phase 2.7 — Premium UI refinement
+
+**Status: complete in this checkout.**
+
+Refined the existing public product without expanding its behavior or scope:
+
+- strengthened the composer hierarchy and tactile button/input states;
+- softened stream rhythm with atmospheric rows and fading separators;
+- aligned confession flow, Explore, dialogs, and the internal system preview;
+- added restrained rounded geometry and tonal depth while preserving sharp
+  editorial and surveillance details;
+- reduced decorative noise and maintained the existing typewriter, arrival, and
+  reduced-motion behavior across responsive layouts.
+
+No backend, database, real-time connection, ZK, Zcash transaction, wallet,
+admin, account, username, profile, or Phase 3 work was started.
+
 ## Later milestones
 
 The order below is a planning sequence, not permission to implement it during
-Phase 2.
+Phase 2.6.
 
 ### Phase 3 — Confession surface definition
 

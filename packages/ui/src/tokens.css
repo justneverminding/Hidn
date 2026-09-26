@@ -57,8 +57,9 @@
   --hidn-content-max: 1200px;
   --hidn-wide-max: 1440px;
   --hidn-reading-max: 68ch;
-  --hidn-radius-sm: 0.18rem;
-  --hidn-radius-md: 0.35rem;
+  --hidn-radius-sm: 0.24rem;
+  --hidn-radius-md: 0.45rem;
+  --hidn-radius-lg: 0.72rem;
 
   /* Motion: short, purposeful, and easy to disable. */
   --hidn-motion-fast: 140ms;
@@ -69,6 +70,9 @@
 
   --hidn-shadow-frame: 0 0 0 1px rgba(243, 239, 227, 0.03),
     0 18px 48px rgba(0, 0, 0, 0.22);
+  --hidn-shadow-soft: 0 1rem 2.5rem rgba(0, 0, 0, 0.2);
+  --hidn-shadow-raised: 0 0.5rem 1.25rem rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(243, 239, 227, 0.04);
 }
 
 /* Phase 0 aliases remain available to avoid breaking existing shell code. */
@@ -80,4 +84,3 @@
   --hidn-signal-green-soft: var(--hidn-signal-soft);
   --hidn-zcash-gold: var(--hidn-zcash);
 }
-

@@ -29,11 +29,20 @@ The supplied approved reference images are stored byte-for-byte unchanged at:
 - `/public/brand/references/hidn-brand-reference-01.png` — 1536×1024 RGB PNG;
 - `/public/brand/references/hidn-brand-reference-02.png` — 2056×765 RGB PNG.
 
-These are approved visual references, not extracted logo files. The supplied
-attachments did not include a standalone primary logo or standalone eye-symbol
-file. Therefore `/public/brand/hidn-logo.png` and
-`/public/brand/hidn-symbol.png` have not been fabricated from the references;
-they remain pending the original standalone assets.
+These are approved visual references, not supplied standalone logo files. With
+explicit approval for navigation use, two deterministic crop-only derivatives
+were created from the logo lockup in reference 02:
+
+- `/public/brand/hidn-logo.png` — 390×124 RGB PNG, source crop `x=108,
+  y=156, width=390, height=124`;
+- `/public/brand/hidn-symbol.png` — 124×124 RGB PNG, source crop `x=108,
+  y=156, width=124, height=124`.
+
+These derivatives preserve the source pixels and proportions; they are not
+redrawn, recolored, stylized, or transparentized. The desktop public shell
+uses the full crop, while narrow navigation switches to the square symbol.
+The two supplied reference images remain byte-for-byte unchanged and continue
+to be the visual source of truth.
 
 ## Desired feeling
 
@@ -170,7 +179,7 @@ require it.
 
 The reusable component layer in `packages/ui/src/components/` includes:
 
-- wordmark fallback, terminal labels, status dots, and system indicators;
+- approved crop-only wordmark, terminal labels, status dots, and system indicators;
 - primary, secondary, ghost, and icon buttons;
 - text input, textarea, select, checkbox, radio, and visibility controls;
 - privacy badges, category tags, identityless confession cards, and a
@@ -183,8 +192,8 @@ The reusable component layer in `packages/ui/src/components/` includes:
 
 Confession components must keep the thought visually primary. They must not
 show avatars, profile photos, usernames, handles, follower counts, blue checks,
-or persistent anonymous identifiers. The wordmark uses a text fallback until
-the original standalone logo asset is supplied; no new logo is invented.
+or persistent anonymous identifiers. The public shell uses the approved
+crop-only logo derivatives described above; no new logo is invented.
 
 ## Forbidden visual patterns
 

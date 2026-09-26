@@ -31,7 +31,7 @@ export const HOME_METADATA: HidnMetadata = {
   kind: "public-home",
   title: "HIDN — Say What You Can't Say Publicly",
   description:
-    "HIDN is a quiet public surface for anonymous confessions. No accounts. No usernames. No history.",
+    "Anonymous confessions without accounts or public identity. No accounts. No usernames. No public history.",
   canonicalPath: "/",
   imagePath: "/brand/references/hidn-brand-reference-02.png",
 };
@@ -39,7 +39,7 @@ export const HOME_METADATA: HidnMetadata = {
 export const EXPLORE_METADATA: HidnMetadata = {
   kind: "explore",
   title: "HIDN — Confessions",
-  description: "Raw thoughts. Real people. No identities.",
+  description: "Anonymous transmissions in a local mock stream. No identities.",
   canonicalPath: "/explore",
   imagePath: "/brand/references/hidn-brand-reference-02.png",
 };

@@ -452,3 +452,92 @@
   }
 }
 
+/* Phase 2.7 — keep the internal preview premium and legible without turning
+   the design system into a collection of glossy cards. */
+.system-panel,
+.system-chrome-preview,
+.system-reference,
+.system-dialog-stage .ui-report-dialog {
+  background: linear-gradient(145deg, rgba(17, 21, 17, 0.84), rgba(13, 16, 13, 0.94));
+  border-color: rgba(80, 96, 73, 0.62);
+  border-radius: var(--hidn-radius-md);
+  box-shadow: var(--hidn-shadow-raised);
+}
+
+.system-panel,
+.system-chrome-preview,
+.system-reference {
+  overflow: hidden;
+}
+
+.system-panel__header,
+.system-type-sample,
+.system-reference figcaption {
+  border-bottom: 0;
+  position: relative;
+}
+
+.system-panel__header::after,
+.system-type-sample:not(:last-child)::after,
+.system-reference figcaption::before {
+  background: linear-gradient(90deg, transparent, rgba(80, 96, 73, 0.48) 14%, rgba(43, 53, 43, 0.24) 84%, transparent);
+  bottom: 0;
+  content: "";
+  height: 1px;
+  left: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 88%, transparent);
+  position: absolute;
+  right: 0;
+}
+
+.system-swatch {
+  border-color: rgba(43, 53, 43, 0.72);
+  border-radius: var(--hidn-radius-sm);
+  overflow: hidden;
+}
+
+.system-component-group {
+  border-top: 0;
+  padding-top: var(--hidn-space-4);
+  position: relative;
+}
+
+.system-component-group::before {
+  background: linear-gradient(90deg, transparent, rgba(80, 96, 73, 0.48) 14%, transparent 92%);
+  content: "";
+  height: 1px;
+  left: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 88%, transparent);
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.system-dialog-stage .ui-report-dialog {
+  border-color: rgba(80, 96, 73, 0.68);
+}
+
+.system-hero__aside {
+  border-color: rgba(80, 96, 73, 0.55);
+}
+
+.system-reference figcaption {
+  border-top: 0;
+}
+
+@media (max-width: 960px) {
+  .system-hero__aside {
+    border-top-color: rgba(80, 96, 73, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .system-panel,
+  .system-chrome-preview,
+  .system-reference,
+  .system-dialog-stage .ui-report-dialog {
+    transition: none;
+  }
+}

@@ -21,6 +21,23 @@ export interface MockConfession {
   time: string;
 }
 
+/**
+ * Ambient homepage transmissions are local product atmosphere only. They are
+ * never presented as messages arriving from real people or a live network.
+ */
+export interface MockIncomingTransmission {
+  text: string;
+  time: string;
+}
+
+export const MOCK_INCOMING_TRANSMISSIONS: MockIncomingTransmission[] = [
+  { text: "I wish I had told her before she left.", time: "03:42" },
+  { text: "I've been pretending I enjoy my job for three years.", time: "03:41" },
+  { text: "I finally forgave myself.", time: "03:39" },
+  { text: "I keep saying I'm fine because explaining would take too long.", time: "03:37" },
+  { text: "I miss who I was before I learned how to perform being okay.", time: "03:35" },
+];
+
 export const MOCK_CONFESSIONS: MockConfession[] = [
   {
     id: "00417",

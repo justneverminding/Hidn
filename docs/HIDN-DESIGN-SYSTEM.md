@@ -36,6 +36,12 @@ network, or persistent confession record exists.
 - `packages/ui/src/components.css` — component presentation rules;
 - `apps/web/src/system/` — internal noindex design-system preview.
 
+The shared geometry tokens include `--hidn-radius-sm`, `--hidn-radius-md`,
+and `--hidn-radius-lg`. The shared depth tokens are intentionally restrained:
+`--hidn-shadow-frame` supports framed specimens, while
+`--hidn-shadow-soft` and `--hidn-shadow-raised` provide tonal separation for
+interactive surfaces without introducing a glossy card language.
+
 ## Composition rules
 
 HIDN uses near-black space, bone text, and signal green as the primary
@@ -62,6 +68,12 @@ but no submission event or data persistence.
 Effects remain optional and low contrast. Do not stack every texture treatment
 on a single surface. Motion is short and purposeful; reduced-motion users get
 static equivalents.
+
+Public product surfaces should recede into the page atmosphere. Large
+decorative regions and transmission streams use masked gradients and fading
+separators rather than hard outer edges. Rounded geometry is reserved for
+composers, dialogs, controls, and compact state surfaces; editorial headings,
+surveillance frames, and transmission dividers retain sharper language.
 
 ## Preview
 

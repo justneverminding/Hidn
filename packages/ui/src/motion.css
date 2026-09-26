@@ -10,6 +10,14 @@
   animation: hidn-text-transmission var(--hidn-motion-deliberate) var(--hidn-ease) both;
 }
 
+.motion-transmission-arrival {
+  animation: hidn-transmission-arrival var(--hidn-motion-deliberate) var(--hidn-ease) both;
+}
+
+.motion-ambient-drift {
+  animation: hidn-ambient-drift 18s ease-in-out infinite;
+}
+
 @keyframes hidn-cursor-blink {
   0%,
   44% {
@@ -40,11 +48,33 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .motion-cursor,
-  .motion-signal-pulse,
-  .motion-text-transmission {
-    animation: none;
+@keyframes hidn-transmission-arrival {
+  0% {
+    opacity: 0;
+    transform: translateY(0.45rem);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
+@keyframes hidn-ambient-drift {
+  0%,
+  100% {
+    transform: translate3d(-1%, -0.5%, 0) scale(1.02);
+  }
+  50% {
+    transform: translate3d(1%, 0.5%, 0) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-cursor,
+  .motion-signal-pulse,
+  .motion-text-transmission,
+  .motion-transmission-arrival,
+  .motion-ambient-drift {
+    animation: none;
+  }
+}

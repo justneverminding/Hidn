@@ -68,6 +68,33 @@ nullifier, Merkle tree, wallet request, Zcash transaction, moderation system,
 analytics event, or persistent anonymous identity. Every proof-related state
 must be labelled as a mock/demo state until the reviewed protocol exists.
 
+## Phase 2.6 product-experience boundary
+
+Phase 2.6 reshapes the public frontend around a private conversation surface:
+the homepage composer is immediate, the explore route uses message rows, and
+ambient transmission arrivals are simulated from local mock data only. The
+homepage may show receiving, cursor, pulse, scan, and short reveal motion, but
+must label the stream as simulated and must not claim live users, live typing,
+or real network activity. `prefers-reduced-motion` disables automatic stream
+movement and decorative motion.
+
+This remains a browser-only experience. Phase 2.6 does not create a backend,
+database, real-time connection, real proof, wallet request, Zcash transaction,
+moderation system, analytics event, or persistent anonymous identity.
+
+## Phase 2.7 product refinement boundary
+
+Phase 2.7 is a visual refinement pass over the existing browser-only product.
+It improves composer hierarchy, transmission rhythm, control feedback, dark
+surface depth, dialog consistency, responsive spacing, and motion hierarchy.
+It does not change the homepage conversation model, local mock behavior,
+privacy claims, route structure, or anonymous product boundary. Large
+atmospheric surfaces should fade into the page background, and message rows
+should read as a continuous stream rather than a stack of cards.
+
+No backend, database, real-time connection, ZK, Zcash transaction, wallet,
+moderation, analytics, account, username, profile, or Phase 3 work is included.
+
 ## Deferred product features
 
 The following are explicitly deferred:

@@ -14,7 +14,12 @@ export function HidnWordmark({
   className,
   label = "HIDN home",
 }: HidnWordmarkOptions = {}): string {
-  return `<a class="${classNames("ui-wordmark", className)}" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">HIDN</a>`;
+  return `<a class="${classNames("ui-wordmark", className)}" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">
+    <picture class="ui-wordmark__picture">
+      <source media="(max-width: 430px)" srcset="/brand/hidn-symbol.png" />
+      <img class="ui-wordmark__image" src="/brand/hidn-logo.png" width="390" height="124" alt="" />
+    </picture>
+  </a>`;
 }
 
 export function TerminalLabel(label: string, className?: string): string {

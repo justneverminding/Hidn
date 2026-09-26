@@ -1,7 +1,6 @@
 import {
   AlertMessage,
   CategoryTag,
-  ConfessionCard,
   EmptyState,
   ErrorState,
   FooterShell,
@@ -13,7 +12,6 @@ import {
   SecondaryButton,
   SelectControl,
   StatusIndicator,
-  SurveillanceFrame,
   SystemMessage,
   TextArea,
   TerminalLabel,
@@ -32,11 +30,13 @@ import {
   createMockConfession,
   getMockConfession,
   isMockCategory,
+  MOCK_INCOMING_TRANSMISSIONS,
   MOCK_CONFESSIONS,
   mockFlow,
   type FlowStep,
   type MockCategory,
   type MockConfession,
+  type MockIncomingTransmission,
   type ProofState,
   resetMockFlow,
 } from "./mock-data";
@@ -50,6 +50,28 @@ type FeedTab = "latest" | "random" | "felt";
 
 let activeFeedTab: FeedTab = "latest";
 let proofRunActive = false;
+let homeStreamTimer: number | undefined;
+let homeReceivingTimer: number | undefined;
+let homeHeadlineTimer: number | undefined;
+let homeHeadlineCursorTimer: number | undefined;
+let homeHeadlineHasRun = false;
+
+interface TransmissionView {
+  text: string;
+  time: string;
+  category?: string;
+}
+
+const HOME_STREAM_LIMIT = 4;
+const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
+let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
+  .reverse()
+  .map((confession) => ({
+    text: confession.text,
+    time: confession.time,
+    category: confession.category,
+  }));
+let homeStreamCursor = 0;
 
 const categoryOptions: Array<{ value: MockCategory; label: string }> = [
   { value: "REGRET", label: "Regret" },
@@ -64,6 +86,244 @@ const categoryOptions: Array<{ value: MockCategory; label: string }> = [
   { value: "UNCERTAINTY", label: "Uncertainty" },
   { value: "JOY", label: "Joy" },
 ];
+
+function formatTransmissionTime(value: string): string {
+  if (/^\d{2}:\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+  }).format(date);
+}
+
+function transmissionViewFromConfession(confession: MockConfession): TransmissionView {
+  return {
+    text: confession.text,
+    time: confession.time,
+    category: confession.category,
+  };
+}
+
+function renderTransmissionRow(
+  transmission: TransmissionView,
+  options: { href?: string; incoming?: boolean } = {},
+): string {
+  const className = options.incoming ? " transmission-row--incoming motion-transmission-arrival" : "";
+  const category = transmission.category
+    ? `<span class="transmission-row__category">${escapeHtml(transmission.category)}</span>`
+    : "";
+  const action = options.href
+    ? `<a class="transmission-row__view" href="${escapeHtml(options.href)}">VIEW <span aria-hidden="true">→</span></a>`
+    : "";
+
+  return `<article class="transmission-row${className}">
+    <div class="transmission-row__meta">
+      <span>ANONYMOUS MESSAGE</span>
+      <time>${escapeHtml(formatTransmissionTime(transmission.time))}</time>
+    </div>
+    <p class="transmission-row__thought">“${escapeHtml(transmission.text)}”</p>
+    <footer class="transmission-row__footer">
+      ${category}
+      ${action}
+    </footer>
+  </article>`;
+}
+
+function renderHomeTransmissionRows(): string {
+  return homeStreamItems
+    .map((transmission, index) => renderTransmissionRow(transmission, { incoming: index === homeStreamItems.length - 1 }))
+    .join("");
+}
+
+function renderPreviewTransmission(): string {
+  return renderTransmissionRow({
+    text: mockFlow.thought,
+    time: "NOW",
+    category: mockFlow.category,
+  });
+}
+
+function setHomeReceivingStatus(root: ParentNode, state: "ambient" | "receiving" | "static"): void {
+  const status = root.querySelector<HTMLElement>("[data-home-receiving]");
+  const label = status?.querySelector<HTMLElement>(".ui-status-indicator > span:last-child");
+  if (!status || !label) {
+    return;
+  }
+
+  status.dataset.state = state;
+  label.textContent =
+    state === "receiving"
+      ? "RECEIVING... / SIMULATED"
+      : state === "static"
+        ? "STATIC / REDUCED MOTION"
+        : "LOCAL MOCK / AMBIENT";
+}
+
+function stopHomeStream(): void {
+  if (homeStreamTimer !== undefined) {
+    window.clearInterval(homeStreamTimer);
+    homeStreamTimer = undefined;
+  }
+
+  if (homeReceivingTimer !== undefined) {
+    window.clearTimeout(homeReceivingTimer);
+    homeReceivingTimer = undefined;
+  }
+}
+
+function receiveHomeTransmission(root: ParentNode): void {
+  if (normalizePath(window.location.pathname) !== "/") {
+    stopHomeStream();
+    return;
+  }
+
+  const transmission: MockIncomingTransmission =
+    MOCK_INCOMING_TRANSMISSIONS[homeStreamCursor % MOCK_INCOMING_TRANSMISSIONS.length];
+  homeStreamCursor = (homeStreamCursor + 1) % MOCK_INCOMING_TRANSMISSIONS.length;
+  homeStreamItems = [
+    ...homeStreamItems.slice(-(HOME_STREAM_LIMIT - 1)),
+    { text: transmission.text, time: transmission.time },
+  ];
+
+  const list = root.querySelector<HTMLElement>("#home-transmission-list");
+  if (!list) {
+    return;
+  }
+
+  list.innerHTML = renderHomeTransmissionRows();
+  setHomeReceivingStatus(root, "receiving");
+
+  if (homeReceivingTimer !== undefined) {
+    window.clearTimeout(homeReceivingTimer);
+  }
+
+  homeReceivingTimer = window.setTimeout(() => {
+    setHomeReceivingStatus(root, "ambient");
+    homeReceivingTimer = undefined;
+  }, 1600);
+}
+
+function startHomeStream(root: ParentNode): void {
+  stopHomeStream();
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    setHomeReceivingStatus(root, "static");
+    return;
+  }
+
+  setHomeReceivingStatus(root, "ambient");
+  homeStreamTimer = window.setInterval(() => receiveHomeTransmission(root), 6500);
+}
+
+function clearHomeHeadlineTimers(): void {
+  if (homeHeadlineTimer !== undefined) {
+    window.clearInterval(homeHeadlineTimer);
+    homeHeadlineTimer = undefined;
+  }
+
+  if (homeHeadlineCursorTimer !== undefined) {
+    window.clearTimeout(homeHeadlineCursorTimer);
+    homeHeadlineCursorTimer = undefined;
+  }
+}
+
+function renderFullHomeHeadline(root: ParentNode): void {
+  const lines = root.querySelectorAll<HTMLElement>("[data-home-headline-line]");
+  const cursor = root.querySelector<HTMLElement>("[data-home-headline-cursor]");
+  if (lines.length !== HOME_HEADLINE_LINES.length || !cursor) {
+    return;
+  }
+
+  lines.forEach((line, index) => {
+    line.textContent = HOME_HEADLINE_LINES[index];
+  });
+  lines[lines.length - 1].append(cursor);
+  cursor.dataset.state = "hidden";
+}
+
+function renderHomeHeadlineProgress(root: ParentNode, characterCount: number): void {
+  const lines = [...root.querySelectorAll<HTMLElement>("[data-home-headline-line]")];
+  const cursor = root.querySelector<HTMLElement>("[data-home-headline-cursor]");
+  if (lines.length !== HOME_HEADLINE_LINES.length || !cursor) {
+    return;
+  }
+
+  let remaining = characterCount;
+  let activeLine = lines[0];
+
+  lines.forEach((line, index) => {
+    const lineText = HOME_HEADLINE_LINES[index];
+    const visibleCharacters = Math.max(0, Math.min(lineText.length, remaining));
+    line.textContent = lineText.slice(0, visibleCharacters);
+    remaining -= lineText.length;
+    if (visibleCharacters < lineText.length || index === lines.length - 1) {
+      activeLine = line;
+    }
+  });
+
+  activeLine.append(cursor);
+  cursor.dataset.state = "typing";
+}
+
+function startHomeHeadline(root: ParentNode): void {
+  if (homeHeadlineHasRun) {
+    renderFullHomeHeadline(root);
+    return;
+  }
+
+  homeHeadlineHasRun = true;
+  clearHomeHeadlineTimers();
+
+  const cursor = root.querySelector<HTMLElement>("[data-home-headline-cursor]");
+  const composer = root.querySelector<HTMLElement>(".home-composer");
+  if (!cursor) {
+    renderFullHomeHeadline(root);
+    return;
+  }
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    renderFullHomeHeadline(root);
+    return;
+  }
+
+  const totalCharacters = HOME_HEADLINE_LINES.reduce((total, line) => total + line.length, 0);
+  const characterDelay = 42;
+  let characterCount = 0;
+  renderHomeHeadlineProgress(root, characterCount);
+  if (composer) {
+    composer.dataset.headlineState = "typing";
+  }
+
+  homeHeadlineTimer = window.setInterval(() => {
+    characterCount += 1;
+    renderHomeHeadlineProgress(root, characterCount);
+
+    if (characterCount >= totalCharacters) {
+      clearHomeHeadlineTimers();
+      cursor.dataset.state = "settling";
+      homeHeadlineCursorTimer = window.setTimeout(() => {
+        cursor.dataset.state = "hidden";
+        if (composer) {
+          composer.dataset.headlineState = "ready";
+        }
+        homeHeadlineCursorTimer = undefined;
+      }, 460);
+    }
+  }, characterDelay);
+}
+
+function stopHomeHeadline(): void {
+  clearHomeHeadlineTimers();
+  homeHeadlineHasRun = false;
+}
 
 function normalizePath(path: string): string {
   const cleanPath = path.replace(/\/+$/, "");
@@ -81,7 +341,6 @@ function actionLink(
 
 function publicNavigation(path: string): string {
   const links = [
-    { label: "CONFESS", href: "/confess" },
     { label: "EXPLORE", href: "/explore" },
     { label: "HOW IT WORKS", href: "/how-it-works" },
     { label: "MANIFESTO", href: "/manifesto" },
@@ -89,7 +348,7 @@ function publicNavigation(path: string): string {
 
   return NavigationShell({
     descriptor: "ANONYMOUS INTERNET NOIR",
-    status: "BUILT ON ZCASH",
+    status: normalizePath(path) === "/" ? "PRIVATE SURFACE" : "BUILT ON ZCASH",
     links,
   });
 }
@@ -140,13 +399,13 @@ function flowStepper(currentStep: FlowStep): string {
 function proofStateCopy(state: ProofState): { label: string; copy: string } {
   switch (state) {
     case "preparing":
-      return { label: "PREPARING PRIVATE PROOF...", copy: "Setting up the local demo sequence." };
+      return { label: "PREPARING PRIVATE CHECK...", copy: "Setting up the local demo sequence." };
     case "generating":
-      return { label: "GENERATING...", copy: "Simulating a short proof handoff." };
+      return { label: "GENERATING PROOF...", copy: "Simulating a short proof handoff." };
     case "verifying":
       return { label: "VERIFYING...", copy: "Checking the mock result locally." };
     case "verified":
-      return { label: "PROOF VERIFIED / MOCK DEMO", copy: "The visual sequence is complete. No cryptographic proof was created." };
+      return { label: "✓ VERIFIED / MOCK", copy: "The visual sequence is complete. No cryptographic proof was created." };
     default:
       return { label: "READY TO BEGIN", copy: "A short local demonstration of the future flow." };
   }
@@ -154,19 +413,17 @@ function proofStateCopy(state: ProofState): { label: string; copy: string } {
 
 function renderProofStep(): string {
   const stateCopy = proofStateCopy(mockFlow.proofState);
-  const isRunning = mockFlow.proofState !== "idle" && mockFlow.proofState !== "verified";
 
   return `<section class="flow-panel flow-proof" aria-labelledby="flow-title">
     <div class="flow-panel__eyebrow">
-      ${TerminalLabel("01 / PROVE")}
-      ${StatusIndicator("MOCK DEMO / LOCAL ONLY", "warning")}
+      ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
+      ${StatusIndicator("MOCK / LOCAL ONLY", "warning")}
     </div>
-    <h1 id="flow-title" class="type-display-lg">PROVE PRIVATELY</h1>
-    <p class="flow-panel__lead">Prove you're real without revealing who you are. Nothing about your identity is published.</p>
-    <div class="flow-trust-grid" aria-label="Privacy commitments">
-      <div class="flow-trust-block"><strong>NO ACCOUNT</strong><span>WILL BE CREATED</span></div>
-      <div class="flow-trust-block"><strong>YOUR IDENTITY</strong><span>REMAINS HIDN</span></div>
-      <div class="flow-trust-block"><strong>FAST &amp; PRIVATE</strong><span>VERIFICATION</span></div>
+    <h1 id="flow-title" class="type-display-lg">PRIVATE CHECK</h1>
+    <p class="flow-panel__lead">Proving you can participate without revealing who you are.</p>
+    <div class="flow-status" role="status" aria-live="polite">
+      <span class="flow-status__line">${escapeHtml(stateCopy.label)}</span>
+      <span class="flow-status__copy">${escapeHtml(stateCopy.copy)}</span>
     </div>
     <div class="flow-proof__action">
       ${
@@ -174,14 +431,10 @@ function renderProofStep(): string {
           ? PrimaryButton({ label: "PROVE PRIVATELY →", dataAction: "proof-start" })
           : mockFlow.proofState === "verified"
             ? PrimaryButton({ label: "CONTINUE TO CONFESSION →", dataAction: "proof-continue" })
-            : PrimaryButton({ label: "WORKING...", disabled: true })
+          : PrimaryButton({ label: "WORKING...", disabled: true })
       }
     </div>
-    <div class="flow-status" role="status" aria-live="polite">
-      <span class="flow-status__line">${escapeHtml(stateCopy.label)}</span>
-      <span class="flow-status__copy">${escapeHtml(stateCopy.copy)}</span>
-    </div>
-    ${SystemMessage("MOCK DEMO / NO CRYPTOGRAPHIC PROOF", "This interaction only simulates the product sequence. It creates no credential, nullifier, proof, wallet request, or network request.", "DEMO")}
+    <p class="flow-mock-note">SIMULATED / NO CRYPTOGRAPHIC PROOF CREATED.</p>
   </section>`;
 }
 
@@ -189,19 +442,19 @@ function renderConfessStep(): string {
   const characterCount = mockFlow.thought.length;
   return `<section class="flow-panel flow-confess" aria-labelledby="flow-title">
     <div class="flow-panel__eyebrow">
-      ${TerminalLabel("02 / CONFESS")}
+      ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
       ${PrivacyBadge("NO ACCOUNT")}
     </div>
-    <h1 id="flow-title" class="type-display-lg">WHAT CAN'T YOU<br />SAY PUBLICLY?</h1>
-    <p class="flow-panel__lead">Write the thought as it is. The public surface keeps only the message and minimal context.</p>
+    <h1 id="flow-title" class="type-display-lg">WRITE THE THOUGHT</h1>
+    <p class="flow-panel__lead">No name. No profile. Just the message.</p>
     ${mockFlow.error ? AlertMessage("MESSAGE NEEDED", mockFlow.error, "danger") : ""}
     <form class="flow-form" id="confession-form" novalidate>
       ${TextArea({
         id: "confession-thought",
-        label: "Your confession",
+        label: "Message",
         value: mockFlow.thought,
-        placeholder: "Write without attaching your name...",
-        hint: "500 characters maximum. This demo keeps the draft in memory only.",
+        placeholder: "What's on your mind?",
+        hint: "500 characters maximum. This local demo keeps the draft in memory only.",
         rows: 8,
         maxLength: 500,
         required: true,
@@ -222,7 +475,7 @@ function renderConfessStep(): string {
         </div>
       </div>
       <div class="flow-form__footer">
-        <p class="flow-form__reassurance">No account. No username. No history.</p>
+        <p class="flow-form__reassurance">NO ACCOUNT · NO USERNAME · NO HISTORY</p>
         ${PrimaryButton({ label: "CONTINUE →", dataAction: "confess-continue" })}
       </div>
     </form>
@@ -232,13 +485,13 @@ function renderConfessStep(): string {
 function renderPreviewStep(): string {
   return `<section class="flow-panel flow-preview" aria-labelledby="flow-title">
     <div class="flow-panel__eyebrow">
-      ${TerminalLabel("03 / PREVIEW")}
+      ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
       ${PrivacyBadge("IDENTITYLESS")}
     </div>
-    <h1 id="flow-title" class="type-display-lg">PREVIEW YOUR<br />CONFESSION</h1>
+    <h1 id="flow-title" class="type-display-lg">PREVIEW THE MESSAGE</h1>
     <p class="flow-panel__lead">This is exactly how it will appear. No identity. No history.</p>
-    <div class="flow-preview__card">
-      ${ConfessionCard({ thought: mockFlow.thought, category: mockFlow.category, reference: "// PREVIEW", relativeTime: "NOW", reactions: 0 })}
+    <div class="flow-preview__message">
+      ${renderPreviewTransmission()}
     </div>
     <dl class="flow-summary" aria-label="Privacy summary">
       <div><dt>IDENTITY</dt><dd>HIDN</dd></div>
@@ -257,17 +510,15 @@ function renderPreviewStep(): string {
 function renderSuccessStep(): string {
   const confessionId = mockFlow.createdId ?? "";
   return `<section class="flow-success" aria-labelledby="flow-title">
-    <div class="flow-success__visual">
-      ${SurveillanceFrame(`<img src="/brand/references/hidn-brand-reference-01.png" alt="Approved HIDN eye artwork reference" width="1536" height="1024" loading="eager" />`, "TRANSMISSION RECEIVED")}
-    </div>
     <div class="flow-success__copy">
-      ${TerminalLabel("TRANSMISSION RECEIVED")}
+      ${TerminalLabel("TRANSMISSION COMPLETE")}
+      ${StatusIndicator("LOCAL MOCK / RECEIVED", "warning")}
       <h1 id="flow-title" class="type-display-lg">CONFESSION POSTED</h1>
       <p class="flow-panel__lead">The message stays. You don't.</p>
       <p class="flow-success__note">This demo keeps the new confession in memory for this browser session only. No identity, account, or history was created.</p>
       <div class="flow-actions">
-        ${actionLink("VIEW CONFESSION →", confessionId ? `/c/${confessionId}` : "/explore", "primary")}
-        ${GhostButton({ label: "LEAVE HIDN", dataAction: "leave-hidn" })}
+        ${actionLink("VIEW →", confessionId ? `/c/${confessionId}` : "/explore", "primary")}
+        ${GhostButton({ label: "LEAVE →", dataAction: "leave-hidn" })}
       </div>
     </div>
   </section>`;
@@ -289,7 +540,7 @@ function renderConfess(): string {
       <div class="hidn-container flow-page">
         <header class="flow-header">
           ${TerminalLabel("HIDN / PRIVATE TRANSMISSION")}
-          <p>VISIT → CONFESS → PROVE PRIVATELY → POST ANONYMOUSLY</p>
+          <p>PRIVATE CHANNEL / LOCAL MOCK</p>
         </header>
         ${flowStepper(mockFlow.step)}
         ${content}
@@ -311,24 +562,14 @@ function feedForTab(tab: FeedTab): MockConfession[] {
   return MOCK_CONFESSIONS;
 }
 
-function renderFeedCards(tab: FeedTab): string {
+function renderTransmissionRows(tab: FeedTab): string {
   const confessions = feedForTab(tab);
   if (!confessions.length) {
     return EmptyState("NO TRANSMISSIONS", "Nothing is visible here yet.");
   }
 
   return confessions
-    .map((confession) =>
-      ConfessionCard({
-        id: confession.id,
-        reference: confession.reference,
-        thought: confession.text,
-        category: confession.category,
-        relativeTime: confession.relativeTime,
-        time: confession.time,
-        reactions: confession.reactions,
-      }),
-    )
+    .map((confession) => renderTransmissionRow(transmissionViewFromConfession(confession), { href: `/c/${confession.id}` }))
     .join("");
 }
 
@@ -349,45 +590,27 @@ function renderExploreTabs(): string {
 }
 
 function renderExplore(): string {
-  const popular = [...MOCK_CONFESSIONS].sort((left, right) => right.reactions - left.reactions).slice(0, 4);
   return publicFrame(
     "/explore",
     `<main id="main-content" class="public-main explore-main">
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
-          ${TerminalLabel("PUBLIC TRANSMISSIONS / INDEX")}
-          <h1 class="type-display-lg">CONFESSIONS</h1>
-          <p>Raw thoughts. Real people. No identities.</p>
+          ${TerminalLabel("PRIVATE MESSAGE SPACE / MOCK")}
+          <h1 class="type-display-lg">ANONYMOUS TRANSMISSIONS</h1>
+          <p>The message is public. The person stays out of frame.</p>
         </header>
         <div class="explore-layout">
-          <aside class="explore-editorial" aria-label="Explore introduction">
-            ${ManifestoStatement("The thought is public. The person stays out of frame.")}
-            ${TransmissionDivider("NO AUTHOR TRAIL")}
-            <p class="type-body-sm">Read without following. React without collecting a profile. Every card is a transmission, not a timeline.</p>
-          </aside>
           <section class="explore-feed" aria-labelledby="explore-feed-title">
             <div class="explore-feed__heading">
               <div>
-                ${TerminalLabel("LIVE / MOCK INDEX")}
+                ${TerminalLabel("ANONYMOUS TRANSMISSIONS")}
                 <h2 id="explore-feed-title" class="type-heading-2">A room without names.</h2>
               </div>
-              ${StatusIndicator("LOCAL CONTENT", "warning")}
+              ${StatusIndicator("SIMULATED / LOCAL ONLY", "warning")}
             </div>
             ${renderExploreTabs()}
-            <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderFeedCards(activeFeedTab)}</div>
+            <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
           </section>
-          <aside class="explore-sidebar" aria-label="Explore activity">
-            <section class="explore-side-block">
-              ${TerminalLabel("POPULAR THIS WEEK")}
-              <ol class="explore-side-list">
-                ${popular.map((confession) => `<li><a href="/c/${escapeHtml(confession.id)}"><span>${escapeHtml(confession.category)}</span><strong>${escapeHtml(String(confession.reactions))} FELT</strong></a></li>`).join("")}
-              </ol>
-            </section>
-            <section class="explore-side-block">
-              ${TerminalLabel("ACTIVITY")}
-              ${SystemMessage("NO ACCOUNTS DETECTED", "This index has no usernames, follows, or public profiles.", "OK")}
-            </section>
-          </aside>
         </div>
       </div>
     </main>`,
@@ -560,46 +783,56 @@ function renderHome(): RenderedProductRoute {
     html: publicFrame(
       "/",
       `<main id="main-content" class="public-main home-main">
-        <div class="hidn-container--wide home-page">
-          <section class="home-hero" aria-labelledby="home-title">
-            <div class="home-hero__copy">
-              ${TerminalLabel("HIDN / ANONYMOUS INTERNET NOIR")}
-              <h1 id="home-title" class="home-hero__title">SAY WHAT YOU<br />CAN'T SAY<br /><em>PUBLICLY.</em></h1>
-              <p class="home-hero__supporting">No accounts. No usernames. No history.</p>
-              <div class="home-hero__actions">
-                ${actionLink("CONFESS →", "/confess", "primary")}
-                ${actionLink("EXPLORE CONFESSIONS", "/explore", "secondary")}
-              </div>
-              <p class="home-hero__boundary">A quiet place for the thought to exist without making the person public.</p>
+        <div class="hidn-container--wide home-page home-page--conversation">
+          <section class="home-conversation-stage fx-scan-sweep" aria-labelledby="home-title">
+            <div class="home-atmosphere motion-ambient-drift" aria-hidden="true"></div>
+            <div class="home-conversation-layout">
+              <section class="home-composer" aria-labelledby="home-title">
+                <header class="home-composer__header">
+                  <span class="home-composer__channel">${TerminalLabel("HIDN / PRIVATE CHANNEL")}<span class="home-composer__cursor motion-cursor" aria-hidden="true">█</span></span>
+                  ${StatusIndicator("PRIVATE SURFACE", "online", true)}
+                </header>
+                <h1 id="home-title" class="home-conversation__title" aria-label="SAY WHAT YOU CAN'T SAY PUBLICLY.">
+                  <span class="home-conversation__title-sizer" aria-hidden="true">SAY WHAT YOU<br />CAN'T SAY<br /><em>PUBLICLY.</em></span>
+                  <span class="home-conversation__title-visual" aria-hidden="true" data-home-headline-visual>
+                    <span data-home-headline-line></span><br />
+                    <span data-home-headline-line></span><br />
+                    <em data-home-headline-line></em><span class="home-conversation__cursor motion-cursor" data-home-headline-cursor data-state="typing" aria-hidden="true">█</span>
+                  </span>
+                </h1>
+                <form class="home-composer__form" id="home-confession-form" novalidate>
+                  ${TextArea({
+                    id: "home-confession-thought",
+                    label: "Message",
+                    placeholder: "What's on your mind?",
+                    hint: "500 characters maximum. This local demo keeps the draft in memory only.",
+                    rows: 4,
+                    maxLength: 500,
+                  })}
+                  <div class="home-composer__counter" aria-live="polite"><span data-home-character-count>0</span> / 500</div>
+                  <div class="home-composer__footer">
+                    <p class="home-composer__privacy">NO ACCOUNT · NO USERNAME · NO HISTORY</p>
+                    ${PrimaryButton({ label: "CONFESS →", type: "submit" })}
+                  </div>
+                  <p class="home-composer__error" data-home-error role="alert" hidden></p>
+                </form>
+              </section>
+              <section class="home-stream" aria-labelledby="home-stream-title">
+                <header class="home-stream__heading">
+                  <div>
+                    ${TerminalLabel("PRIVATE TRANSMISSIONS")}
+                    <h2 id="home-stream-title" class="type-heading-2">ANONYMOUS TRANSMISSIONS</h2>
+                  </div>
+                  <span class="home-stream__status" data-home-receiving data-state="ambient" aria-live="polite">${StatusIndicator("LOCAL MOCK / AMBIENT", "idle")}</span>
+                </header>
+                <p class="home-stream__note">SIMULATED LOCAL ACTIVITY / NO LIVE USERS</p>
+                <div class="home-transmission-list" id="home-transmission-list" aria-label="Simulated anonymous transmissions" aria-live="polite">${renderHomeTransmissionRows()}</div>
+              </section>
             </div>
-            <figure class="home-hero__visual">
-              ${SurveillanceFrame(`<img src="/brand/references/hidn-brand-reference-01.png" alt="Approved HIDN eye artwork reference" width="1536" height="1024" loading="eager" decoding="async" />`, "APPROVED HIDN REFERENCE 01")}
-              <figcaption><span>${TerminalLabel("APPROVED REFERENCE / 01")}</span><span>FULL IMAGE / UNCHANGED</span></figcaption>
-            </figure>
-          </section>
-          <section class="home-signal" aria-label="HIDN privacy boundary">
-            <div>${StatusIndicator("IDENTITY OUT OF FRAME", "online", true)}</div>
-            <p>HIDN keeps the confession visible and the sender out of the interface.</p>
-          </section>
-          <section class="home-editorial" aria-labelledby="home-editorial-title">
-            <div class="home-editorial__statement">
-              ${ManifestoStatement("SHOW THE THOUGHT. HIDE THE PERSON.")}
-              ${TransmissionDivider("PRESENCE WITHOUT EXPOSURE")}
+            <div class="home-conversation__principle">
+              ${TransmissionDivider("SHOW THE THOUGHT. HIDE THE PERSON.")}
+              <span>VISIBLE, BUT NOT IDENTIFIABLE.</span>
             </div>
-            <div class="home-editorial__sample">
-              ${TerminalLabel("A TRANSMISSION / SAMPLE")}
-              ${ConfessionCard({ thought: "I have been waiting for permission from people who are not thinking about me.", category: "AMBITION", relativeTime: "6 MIN AGO", reactions: 28, reference: "// 00418" })}
-            </div>
-          </section>
-          <section class="home-reference" aria-labelledby="reference-title">
-            <div class="home-reference__heading">
-              ${TerminalLabel("APPROVED DIRECTION / 02")}
-              <h2 id="reference-title" class="type-heading-2">Some thoughts are better HIDN.</h2>
-            </div>
-            <figure>
-              <img src="/brand/references/hidn-brand-reference-02.png" alt="Approved HIDN visual brand reference with wordmark and anonymous imagery" width="2056" height="765" loading="lazy" decoding="async" />
-              <figcaption><span>CANONICAL REFERENCE / 02</span><span>FULL IMAGE / UNCHANGED</span></figcaption>
-            </figure>
           </section>
         </div>
       </main>`,
@@ -682,13 +915,35 @@ async function runMockProof(): Promise<void> {
   proofRunActive = false;
 }
 
+function startHomeConfession(root: ParentNode): void {
+  const textarea = root.querySelector<HTMLTextAreaElement>("#home-confession-thought");
+  const error = root.querySelector<HTMLElement>("[data-home-error]");
+  const thought = textarea?.value.trim() ?? "";
+
+  if (!thought) {
+    if (error) {
+      error.hidden = false;
+      error.textContent = "Write a thought before transmitting.";
+    }
+    textarea?.focus();
+    return;
+  }
+
+  mockFlow.thought = thought;
+  mockFlow.error = "";
+  mockFlow.step = "prove";
+  mockFlow.proofState = "idle";
+  mockFlow.createdId = undefined;
+  navigateProductRoute("/confess");
+}
+
 function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
   const list = root.querySelector<HTMLElement>("#explore-feed-list");
   if (!list) {
     return;
   }
 
-  list.innerHTML = renderFeedCards(tab);
+  list.innerHTML = renderTransmissionRows(tab);
   root.querySelectorAll<HTMLButtonElement>("[data-feed-tab]").forEach((button) => {
     button.setAttribute("aria-selected", String(button.dataset.feedTab === tab));
   });
@@ -697,6 +952,29 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
 
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
+
+  if (normalizePath(window.location.pathname) === "/") {
+    startHomeHeadline(root);
+    startHomeStream(root);
+    root.querySelector<HTMLFormElement>("#home-confession-form")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      startHomeConfession(root);
+    });
+    root.querySelector<HTMLTextAreaElement>("#home-confession-thought")?.addEventListener("input", (event) => {
+      const textarea = event.currentTarget as HTMLTextAreaElement;
+      const counter = root.querySelector<HTMLElement>("[data-home-character-count]");
+      const error = root.querySelector<HTMLElement>("[data-home-error]");
+      if (counter) {
+        counter.textContent = String(textarea.value.length);
+      }
+      if (error) {
+        error.hidden = true;
+      }
+    });
+  } else {
+    stopHomeStream();
+    stopHomeHeadline();
+  }
 
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
