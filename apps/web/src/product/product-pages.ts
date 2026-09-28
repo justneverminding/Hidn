@@ -143,6 +143,44 @@ function renderHomeTransmissionRows(): string {
     .join("");
 }
 
+function renderHomeRoomCards(): string {
+  const cards: TransmissionView[] = [
+    ...MOCK_CONFESSIONS.slice(0, 7).map(transmissionViewFromConfession),
+    ...MOCK_INCOMING_TRANSMISSIONS.slice(0, 5).map((transmission) => ({
+      text: transmission.text,
+      time: transmission.time,
+      category: "INCOMING",
+    })),
+  ];
+  const positions = [
+    ["5%", "19%", "-8deg", "0.8", "-1s", "17s"],
+    ["80%", "14%", "7deg", "0.76", "-7s", "21s"],
+    ["11%", "48%", "5deg", "0.7", "-11s", "19s"],
+    ["82%", "45%", "-6deg", "0.72", "-4s", "23s"],
+    ["2%", "73%", "-4deg", "0.67", "-15s", "20s"],
+    ["78%", "73%", "8deg", "0.7", "-8s", "18s"],
+    ["29%", "13%", "-3deg", "0.62", "-2s", "24s"],
+    ["63%", "8%", "4deg", "0.58", "-17s", "22s"],
+    ["30%", "76%", "6deg", "0.58", "-10s", "26s"],
+    ["61%", "77%", "-5deg", "0.62", "-20s", "19s"],
+    ["15%", "4%", "-7deg", "0.5", "-13s", "27s"],
+    ["87%", "27%", "5deg", "0.5", "-18s", "25s"],
+  ] as const;
+
+  return cards
+    .map((transmission, index) => {
+      const [left, top, rotation, scale, delay, duration] = positions[index % positions.length];
+      const category = transmission.category ?? "ROOM";
+
+      return `<article class="home-room-card" style="--card-left:${left};--card-top:${top};--card-rotation:${rotation};--card-scale:${scale};--card-delay:${delay};--card-duration:${duration};">
+        <span class="home-room-card__meta">ANONYMOUS / ${escapeHtml(category)}</span>
+        <p>“${escapeHtml(transmission.text)}”</p>
+        <footer><span>PRIVATE ROOM</span><time>${escapeHtml(formatTransmissionTime(transmission.time))}</time></footer>
+      </article>`;
+    })
+    .join("");
+}
+
 function renderPreviewTransmission(): string {
   return renderTransmissionRow({
     text: mockFlow.thought,
@@ -348,14 +386,44 @@ function publicNavigation(path: string): string {
 
   return NavigationShell({
     descriptor: "ANONYMOUS INTERNET NOIR",
-    status: normalizePath(path) === "/" ? "PRIVATE SURFACE" : "BUILT ON ZCASH",
+    status: normalizePath(path) === "/" ? "PRIVATE ROOM" : "BUILT ON ZCASH",
     links,
   });
 }
 
+function publicWindowTitle(path: string): string {
+  const normalizedPath = normalizePath(path);
+  if (normalizedPath.startsWith("/c/")) {
+    return "THREAD_ROOM";
+  }
+
+  if (normalizedPath === "/") {
+    return "PRIVATE_ROOM";
+  }
+
+  return normalizedPath.slice(1).replace(/[^a-z0-9]+/gi, "_").toUpperCase();
+}
+
+function publicWindowChrome(path: string): string {
+  return `<div class="public-page__window-chrome" aria-hidden="true">
+    <div class="public-page__window-bar">
+      <div class="public-page__window-controls">
+        <span class="public-page__window-control public-page__window-control--close"></span>
+        <span class="public-page__window-control public-page__window-control--minimize"></span>
+        <span class="public-page__window-control public-page__window-control--maximize"></span>
+      </div>
+      <span class="public-page__window-title">HIDN://${publicWindowTitle(path)}</span>
+      <span class="public-page__window-meta">TTY 01 // LOCAL</span>
+    </div>
+  </div>`;
+}
+
 function publicFrame(path: string, main: string, pageClass = ""): string {
+  const isHome = normalizePath(path) === "/";
+
   return `<div class="public-page ${pageClass} fx-grain fx-vignette">
     <a class="skip-link" href="#main-content">Skip to content</a>
+    ${isHome ? "" : publicWindowChrome(path)}
     ${publicNavigation(path)}
     ${main}
     ${FooterShell({
@@ -780,56 +848,35 @@ function renderHome(): RenderedProductRoute {
     html: publicFrame(
       "/",
       `<main id="main-content" class="public-main home-main">
-        <div class="hidn-container--wide home-page home-page--conversation">
-          <section class="home-conversation-stage fx-scan-sweep" aria-labelledby="home-title">
-            <div class="home-atmosphere motion-ambient-drift" aria-hidden="true"></div>
-            <div class="home-conversation-layout">
-              <section class="home-composer" aria-labelledby="home-title">
-                <header class="home-composer__header">
-                  <span class="home-composer__channel">${TerminalLabel("HIDN / PRIVATE CHANNEL")}<span class="home-composer__cursor motion-cursor" aria-hidden="true">█</span></span>
-                  ${StatusIndicator("PRIVATE SURFACE", "online", true)}
-                </header>
-                <h1 id="home-title" class="home-conversation__title" aria-label="SAY WHAT YOU CAN'T SAY PUBLICLY.">
-                  <span class="home-conversation__title-sizer" aria-hidden="true">SAY WHAT YOU<br />CAN'T SAY<br /><em>PUBLICLY.</em></span>
-                  <span class="home-conversation__title-visual" aria-hidden="true" data-home-headline-visual>
-                    <span data-home-headline-line></span><br />
-                    <span data-home-headline-line></span><br />
-                    <em data-home-headline-line></em><span class="home-conversation__cursor motion-cursor" data-home-headline-cursor data-state="typing" aria-hidden="true">█</span>
-                  </span>
-                </h1>
-                <form class="home-composer__form" id="home-confession-form" novalidate>
-                  ${TextArea({
-                    id: "home-confession-thought",
-                    label: "Message",
-                    placeholder: "What's on your mind?",
-                    hint: "This local demo keeps the draft in memory only.",
-                    rows: 4,
-                  })}
-                  <div class="home-composer__footer">
-                    <p class="home-composer__privacy">NO ACCOUNT · NO USERNAME · NO HISTORY</p>
-                    ${PrimaryButton({ label: "CONFESS →", type: "submit" })}
-                  </div>
-                  <p class="home-composer__error" data-home-error role="alert" hidden></p>
-                </form>
-              </section>
-              <section class="home-stream" aria-labelledby="home-stream-title">
-                <header class="home-stream__heading">
-                  <div>
-                    ${TerminalLabel("PRIVATE TRANSMISSIONS")}
-                    <h2 id="home-stream-title" class="type-heading-2">ANONYMOUS TRANSMISSIONS</h2>
-                  </div>
-                  <span class="home-stream__status" data-home-receiving data-state="ambient" aria-live="polite">${StatusIndicator("LOCAL MOCK / AMBIENT", "idle")}</span>
-                </header>
-                <p class="home-stream__note">SIMULATED LOCAL ACTIVITY / NO LIVE USERS</p>
-                <div class="home-transmission-list" id="home-transmission-list" aria-label="Simulated anonymous transmissions" aria-live="polite">${renderHomeTransmissionRows()}</div>
-              </section>
+        <section class="home-room-stage" aria-labelledby="home-room-title">
+          <div class="home-room-stars" aria-hidden="true"></div>
+          <div class="home-room-noise" aria-hidden="true"></div>
+          <div class="home-room-window" aria-hidden="true">
+            <div class="home-room-window__bar">
+              <div class="home-room-window__controls">
+                <span class="home-room-window__control home-room-window__control--close"></span>
+                <span class="home-room-window__control home-room-window__control--minimize"></span>
+                <span class="home-room-window__control home-room-window__control--maximize"></span>
+              </div>
+              <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
+              <span class="home-room-window__meta">TTY 01 // LOCAL</span>
             </div>
-            <div class="home-conversation__principle">
-              ${TransmissionDivider("SHOW THE THOUGHT. HIDE THE PERSON.")}
-              <span>VISIBLE, BUT NOT IDENTIFIABLE.</span>
-            </div>
-          </section>
-        </div>
+          </div>
+          <div class="home-room-card-field" aria-hidden="true">
+            ${renderHomeRoomCards()}
+          </div>
+          <div class="home-room-core">
+            <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
+            <h1 id="home-room-title">A ROOM<br />WITHOUT <em>NAMES.</em></h1>
+            <p class="home-room-core__copy">A room for anonymous thoughts and unnamed conversations.</p>
+            <a class="ui-button ui-button--primary home-room-enter" href="/explore" data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
+              <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
+            </a>
+            <p class="home-room-core__status">LOCAL MOCK ROOM / NO LIVE USERS</p>
+          </div>
+          <p class="home-room-corner home-room-corner--left" aria-hidden="true">OPEN CHANNEL / 01</p>
+          <p class="home-room-corner home-room-corner--right" aria-hidden="true">NO NAMES / NO TRACE</p>
+        </section>
       </main>`,
       "public-page--home",
     ),
@@ -949,18 +996,6 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
 
   if (normalizePath(window.location.pathname) === "/") {
-    startHomeHeadline(root);
-    startHomeStream(root);
-    root.querySelector<HTMLFormElement>("#home-confession-form")?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      startHomeConfession(root);
-    });
-    root.querySelector<HTMLTextAreaElement>("#home-confession-thought")?.addEventListener("input", (event) => {
-      const error = root.querySelector<HTMLElement>("[data-home-error]");
-      if (error) {
-        error.hidden = true;
-      }
-    });
   } else {
     stopHomeStream();
     stopHomeHeadline();
