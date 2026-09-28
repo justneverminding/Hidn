@@ -1,7 +1,7 @@
 # HIDN
 
-HIDN is **Anonymous Internet Noir**: a privacy-first anonymous confession
-platform built around the principle **SHOW THE THOUGHT. HIDE THE PERSON.**
+HIDN is a privacy-first anonymous expression platform: a place to share
+thoughts you cannot or do not want to say publicly.
 
 This repository contains completed Phase 0 foundation work, the Phase 1 visual
 design system, and the Phase 2 public frontend experience: source-of-truth
