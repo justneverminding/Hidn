@@ -439,7 +439,6 @@ function renderProofStep(): string {
 }
 
 function renderConfessStep(): string {
-  const characterCount = mockFlow.thought.length;
   return `<section class="flow-panel flow-confess" aria-labelledby="flow-title">
     <div class="flow-panel__eyebrow">
       ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
@@ -454,12 +453,10 @@ function renderConfessStep(): string {
         label: "Message",
         value: mockFlow.thought,
         placeholder: "What's on your mind?",
-        hint: "500 characters maximum. This local demo keeps the draft in memory only.",
+        hint: "This local demo keeps the draft in memory only.",
         rows: 8,
-        maxLength: 500,
         required: true,
       })}
-      <div class="flow-form__counter" aria-live="polite"><span data-character-count>${characterCount}</span> / 500</div>
       <div class="flow-form__controls">
         ${SelectControl({
           id: "confession-category",
@@ -805,11 +802,9 @@ function renderHome(): RenderedProductRoute {
                     id: "home-confession-thought",
                     label: "Message",
                     placeholder: "What's on your mind?",
-                    hint: "500 characters maximum. This local demo keeps the draft in memory only.",
+                    hint: "This local demo keeps the draft in memory only.",
                     rows: 4,
-                    maxLength: 500,
                   })}
-                  <div class="home-composer__counter" aria-live="polite"><span data-home-character-count>0</span> / 500</div>
                   <div class="home-composer__footer">
                     <p class="home-composer__privacy">NO ACCOUNT · NO USERNAME · NO HISTORY</p>
                     ${PrimaryButton({ label: "CONFESS →", type: "submit" })}
@@ -961,12 +956,7 @@ export function bindProductRoute(root: ParentNode = document): void {
       startHomeConfession(root);
     });
     root.querySelector<HTMLTextAreaElement>("#home-confession-thought")?.addEventListener("input", (event) => {
-      const textarea = event.currentTarget as HTMLTextAreaElement;
-      const counter = root.querySelector<HTMLElement>("[data-home-character-count]");
       const error = root.querySelector<HTMLElement>("[data-home-error]");
-      if (counter) {
-        counter.textContent = String(textarea.value.length);
-      }
       if (error) {
         error.hidden = true;
       }
@@ -1027,10 +1017,6 @@ export function bindProductRoute(root: ParentNode = document): void {
     const textarea = event.currentTarget as HTMLTextAreaElement;
     mockFlow.thought = textarea.value;
     mockFlow.error = "";
-    const counter = root.querySelector<HTMLElement>("[data-character-count]");
-    if (counter) {
-      counter.textContent = String(textarea.value.length);
-    }
   });
 
   root.querySelector<HTMLSelectElement>("#confession-category")?.addEventListener("change", (event) => {
