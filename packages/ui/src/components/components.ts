@@ -375,23 +375,30 @@ export interface NavigationLink {
 }
 
 export interface NavigationShellOptions {
+  centerContent?: string;
   links?: NavigationLink[];
   descriptor?: string;
+  showIdentity?: boolean;
+  showStatus?: boolean;
   status?: string;
   href?: string;
 }
 
 export function NavigationShell({
+  centerContent = "",
   links = [],
   descriptor = "ANONYMOUS INTERNET NOIR",
+  showIdentity = true,
+  showStatus = true,
   status = "BUILT ON ZCASH",
   href = "/",
 }: NavigationShellOptions = {}): string {
   return `<header class="ui-nav-shell" data-shell-region="navigation">
-    <div class="ui-nav-shell__identity">
+    ${showIdentity ? `<div class="ui-nav-shell__identity">
       ${HidnWordmark({ href })}
       ${descriptor ? `<span class="ui-nav-shell__descriptor">${escapeHtml(descriptor)}</span>` : ""}
-    </div>
+    </div>` : ""}
+    ${centerContent}
     <nav aria-label="Primary navigation">
       <ul class="ui-nav-shell__links">
         ${links
@@ -399,10 +406,10 @@ export function NavigationShell({
             (link) =>
               `<li><a href="${escapeHtml(link.href)}"${link.current ? ' aria-current="page"' : ""}>${escapeHtml(link.label)}</a></li>`,
           )
-          .join("")}
+        .join("")}
       </ul>
     </nav>
-    <span class="ui-nav-shell__status">${escapeHtml(status)}</span>
+    ${showStatus ? `<span class="ui-nav-shell__status">${escapeHtml(status)}</span>` : ""}
   </header>`;
 }
 

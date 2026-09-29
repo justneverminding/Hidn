@@ -57,6 +57,7 @@ export interface RenderedProductRoute {
 type FeedTab = "latest" | "random" | "felt";
 type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
+type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 
 let activeFeedTab: FeedTab = "latest";
@@ -80,6 +81,7 @@ let homeHeadlineHasRun = false;
 let visitorClockTimer: number | undefined;
 let roomEntryTimer: number | undefined;
 let roomEntryTransitionActive = false;
+let roomEntryTransitionKind: RoomEntryTransitionKind = "first";
 let activeTextSelection: SelectedTextItem | undefined;
 let selectedTextBatch: SelectedTextItem[] = [];
 let textSelectionInteractionsBound = false;
@@ -149,6 +151,19 @@ let homeAudioSession: HomeAudioSession | undefined;
 let cachedCipherScanHeight: number | undefined;
 let cachedCipherScanAt = 0;
 let cipherScanRequest: Promise<number> | undefined;
+let roomActivityTimer: number | undefined;
+let roomActivityIndex = 0;
+
+const ROOM_ACCESS_ACTIVITY = [
+  { actor: "ANONYMOUS / SIGNAL 0417", action: "JUST POSTED", subject: "A THOUGHT" },
+  { actor: "ANONYMOUS / SIGNAL 0418", action: "JUST COMMENTED", subject: "ON A THREAD" },
+  { actor: "ANONYMOUS / SIGNAL 0419", action: "JUST CREATED", subject: "A ROOM" },
+  { actor: "ANONYMOUS / SIGNAL 0420", action: "JUST LIKED", subject: "A POST" },
+  { actor: "ANONYMOUS / SIGNAL 0421", action: "JUST CREATED", subject: "A THREAD" },
+  { actor: "ANONYMOUS / SIGNAL 0422", action: "JUST CROSSED", subject: "THE THRESHOLD" },
+  { actor: "ANONYMOUS / SIGNAL 0423", action: "JUST RETURNED", subject: "TO THE ROOM" },
+  { actor: "ANONYMOUS / SIGNAL 0424", action: "JUST OPENED", subject: "A ROOM KEY" },
+] as const;
 const roomThreadReplies = new Map<string, AnonymousReply[]>([
   [
     "00417",
@@ -353,31 +368,39 @@ function getCipherScanMainnetTip(): Promise<number> {
 }
 
 async function refreshZcashNetworkStatus(root: ParentNode): Promise<void> {
-  const status = root.querySelector<HTMLElement>(".ui-nav-shell__status");
-  if (!status || status.textContent?.trim() !== "BUILT ON ZCASH") {
+  const statuses = Array.from(root.querySelectorAll<HTMLElement>(".ui-nav-shell__status, [data-zcash-status]")).filter(
+    (status) => status.textContent?.trim() === "BUILT ON ZCASH",
+  );
+  if (!statuses.length) {
     return;
   }
 
-  status.setAttribute("aria-live", "polite");
-  status.title = "Checking the current Zcash mainnet block with CipherScan.";
+  statuses.forEach((status) => {
+    status.setAttribute("aria-live", "polite");
+    status.title = "Checking the current Zcash mainnet block with CipherScan.";
+  });
 
   try {
     const height = await getCipherScanMainnetTip();
-    if (!status.isConnected) {
-      return;
-    }
-
     const formattedHeight = new Intl.NumberFormat("en-US").format(height);
-    status.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
-    status.dataset.zcashState = "live";
-    status.title = `Zcash mainnet block #${formattedHeight} from CipherScan.`;
-  } catch {
-    if (!status.isConnected) {
-      return;
-    }
+    statuses.forEach((status) => {
+      if (!status.isConnected) {
+        return;
+      }
 
-    status.dataset.zcashState = "unavailable";
-    status.title = "CipherScan could not provide the current Zcash mainnet block.";
+      status.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
+      status.dataset.zcashState = "live";
+      status.title = `Zcash mainnet block #${formattedHeight} from CipherScan.`;
+    });
+  } catch {
+    statuses.forEach((status) => {
+      if (!status.isConnected) {
+        return;
+      }
+
+      status.dataset.zcashState = "unavailable";
+      status.title = "CipherScan could not provide the current Zcash mainnet block.";
+    });
   }
 }
 
@@ -1599,6 +1622,50 @@ function startVisitorClock(root: ParentNode): void {
   visitorClockTimer = window.setInterval(update, 1000);
 }
 
+function renderRoomAccessActivityItem(activity: (typeof ROOM_ACCESS_ACTIVITY)[number]): string {
+  return `<span class="room-access-activity__actor">${escapeHtml(activity.actor)}</span> <span class="room-access-activity__action">${escapeHtml(activity.action)}</span> <span class="room-access-activity__subject">${escapeHtml(activity.subject)}</span>`;
+}
+
+function renderRoomAccessActivity(): string {
+  const activity = ROOM_ACCESS_ACTIVITY[roomActivityIndex % ROOM_ACCESS_ACTIVITY.length];
+
+  return `<section class="room-access-activity" aria-label="Local anonymous activity">
+    <div class="room-access-activity__header">
+      <span><i aria-hidden="true"></i> LOCAL SIGNALS</span>
+      <span>ROTATING DEMO / NO LIVE USERS</span>
+    </div>
+    <p data-room-activity-message role="status" aria-live="polite">${renderRoomAccessActivityItem(activity)}</p>
+  </section>`;
+}
+
+function stopRoomAccessActivity(): void {
+  if (roomActivityTimer !== undefined) {
+    window.clearInterval(roomActivityTimer);
+    roomActivityTimer = undefined;
+  }
+}
+
+function startRoomAccessActivity(root: ParentNode): void {
+  stopRoomAccessActivity();
+
+  const message = root.querySelector<HTMLElement>("[data-room-activity-message]");
+  if (!message) {
+    return;
+  }
+
+  const update = (): void => {
+    roomActivityIndex = (roomActivityIndex + 1) % ROOM_ACCESS_ACTIVITY.length;
+    message.dataset.state = "receiving";
+    message.innerHTML = renderRoomAccessActivityItem(ROOM_ACCESS_ACTIVITY[roomActivityIndex]);
+  };
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+
+  roomActivityTimer = window.setInterval(update, 4200);
+}
+
 function publicNavigation(path: string): string {
   const normalizedPath = normalizePath(path);
   const links = (normalizedPath === "/" || normalizedPath === "/room" || normalizedPath === "/room/access" || normalizedPath === "/how-it-works"
@@ -1611,7 +1678,10 @@ function publicNavigation(path: string): string {
   ).map((link) => ({ ...link, current: normalizedPath === link.href }));
 
   return NavigationShell({
+    centerContent: normalizedPath === "/room/access" ? renderRoomAccessActivity() : "",
     descriptor: normalizedPath === "/" ? "ANONYMOUS INTERNET NOIR" : "",
+    showIdentity: normalizedPath !== "/room/access",
+    showStatus: normalizedPath !== "/room/access",
     status: normalizedPath === "/" ? "PRIVATE ROOM" : "BUILT ON ZCASH",
     links,
   });
@@ -1654,7 +1724,7 @@ function publicWindowTitle(path: string): string {
   return normalizedPath.slice(1).replace(/[^a-z0-9]+/gi, "_").toUpperCase();
 }
 
-function publicWindowChrome(path: string, showRoomMenu = false): string {
+function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus = false): string {
   return `<div class="public-page__window-chrome">
     <div class="public-page__window-bar">
       <div class="public-page__window-controls" aria-hidden="true">
@@ -1664,6 +1734,7 @@ function publicWindowChrome(path: string, showRoomMenu = false): string {
       </div>
       <span class="public-page__window-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN://${publicWindowTitle(path)}</span>
       <div class="public-page__window-actions">
+        ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
         ${renderVisitorTimeSignal("public-page__window-meta")}
         ${showRoomMenu ? renderRoomMenu() : ""}
       </div>
@@ -1718,7 +1789,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   return `<div class="public-page ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
-    ${isHome ? "" : publicWindowChrome(path, isRoomSurface)}
+    ${isHome ? "" : publicWindowChrome(path, isRoomSurface, normalizedPath === "/room" || normalizedPath === "/explore")}
     ${isRoomSurface ? "" : publicNavigation(path)}
     ${main}
     ${isRoomSurface ? renderSelectionTools() : ""}
@@ -2018,10 +2089,7 @@ function renderExplore(path = "/room"): string {
   return publicFrame(
     path,
     `<main id="main-content" class="public-main explore-main">
-      ${roomEntryTransitionActive ? `<div class="room-entry-transition" role="status" aria-live="polite">
-        <div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-        <p class="room-entry-transition__label">ENTERING / PRIVATE ROOM<span aria-hidden="true">_</span></p>
-      </div>` : ""}
+      ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
           ${TerminalLabel("PRIVATE ROOM / OPEN THREADS")}
@@ -2197,44 +2265,56 @@ function hasVerifiedRoomSession(): boolean {
     && Boolean(sessionStorage.getItem("hidn:room:secret"));
 }
 
-function startRoomEntryTransition(): void {
+function renderRoomEntryTransition(): string {
+  const isReturning = roomEntryTransitionKind === "return";
+  return `<div class="room-entry-transition room-entry-transition--${isReturning ? "return" : "first"}" role="status" aria-live="polite">
+    ${isReturning
+      ? `<div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>`
+      : `<div class="room-entry-transition__loader" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>`}
+    <p class="room-entry-transition__label">${isReturning ? "RECONNECTING / PRIVATE ROOM" : "SEARCHING / PRIVATE ROOM"}<span aria-hidden="true">_</span></p>
+    <span class="room-entry-transition__subline">${isReturning ? "ACCESS KEY ACCEPTED / RETURNING" : "ESTABLISHING ANONYMOUS CHANNEL"}</span>
+  </div>`;
+}
+
+function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind = "return"): void {
   if (roomEntryTimer !== undefined) {
     window.clearTimeout(roomEntryTimer);
   }
 
   roomEntryTransitionActive = true;
+  roomEntryTransitionKind = kind;
   sessionStorage.setItem("hidn:room:entered", "true");
-  navigateProductRoute("/room");
+  navigateProductRoute(path);
   roomEntryTimer = window.setTimeout(() => {
     roomEntryTransitionActive = false;
     roomEntryTimer = undefined;
     rerenderProductRoute();
-  }, 2300);
+  }, 2500);
 }
 
 function renderRoomAccessChooser(): string {
   return `<div class="room-access-page">
     <header class="room-access-header">
       ${TerminalLabel("HIDN / ROOM ACCESS")}
-      <h1 class="type-display-lg room-access-header__title">ENTER THE<br /><em>PRIVATE ROOM.</em></h1>
-      <p class="room-access-header__copy">No names. No profile. Choose how you want to cross the threshold.</p>
+      <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
+      <p class="room-access-header__copy">No names. No profile. Choose how you want to enter the room.</p>
     </header>
     <div class="room-access-options">
       <article class="room-access-option">
         <span class="room-access-option__number">01</span>
         <div>
-          <h2>CREATE AN ID</h2>
-          <p>Set up a nameless room identity. The Worker generates a unique access code and stores its verification record in D1.</p>
+          <h2>OPEN A ROOM KEY</h2>
+          <p>Start a nameless room identity. The Worker generates a private key and stores only its verification record in D1.</p>
         </div>
-        ${PrimaryButton({ label: "CREATE ID →", dataAction: "room-create" })}
+        ${PrimaryButton({ label: "GENERATE KEY →", dataAction: "room-create" })}
       </article>
       <article class="room-access-option">
         <span class="room-access-option__number">02</span>
         <div>
-          <h2>LOG IN WITH ID</h2>
-          <p>Use the private room ID or access key you already hold. No email, username, or recovery account.</p>
+          <h2>RETURN WITH A KEY</h2>
+          <p>Use the private key you already hold. No email, username, or recovery account.</p>
         </div>
-        ${SecondaryButton({ label: "USE MY ID →", dataAction: "room-login" })}
+        ${SecondaryButton({ label: "USE MY KEY →", dataAction: "room-login" })}
       </article>
     </div>
     ${SystemMessage("D1 WORKER / LIVE CREDENTIALS", "Create an ID to receive a unique access code. You will need that code to log in from this or another browser.", "LIVE")}
@@ -2348,6 +2428,7 @@ function renderRoomAccess(): RenderedProductRoute {
     html: publicFrame(
       "/room/access",
       `<main id="main-content" class="public-main room-main room-access-main hidn-pointer-surface" data-pointer-surface>
+        ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
         <div class="room-access-atmosphere" aria-hidden="true">
           ${renderPointerSpotlight()}
           <div class="room-access-atmosphere__cards">${renderHomeRoomCards(6)}</div>
@@ -2724,7 +2805,13 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindPointerSpotlightInteractions(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
-  if (normalizePath(window.location.pathname) === "/room/access" && roomAccessMode === "create") {
+  const isRoomAccessPath = normalizePath(window.location.pathname) === "/room/access";
+  if (isRoomAccessPath) {
+    startRoomAccessActivity(root);
+  } else {
+    stopRoomAccessActivity();
+  }
+  if (isRoomAccessPath && roomAccessMode === "create") {
     void refreshRoomConfig(root);
   }
   root.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
@@ -2735,12 +2822,9 @@ export function bindProductRoute(root: ParentNode = document): void {
 
   root.querySelectorAll<HTMLAnchorElement>("[data-room-enter]").forEach((link) => {
     link.addEventListener("click", (event) => {
-      if (!hasVerifiedRoomSession()) {
-        return;
-      }
-
       event.preventDefault();
-      startRoomEntryTransition();
+      const returning = hasVerifiedRoomSession();
+      startRoomEntryTransition(returning ? "/room" : "/room/access", returning ? "return" : "first");
     });
   });
 
@@ -2872,7 +2956,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         }
         case "room-enter":
-          startRoomEntryTransition();
+          startRoomEntryTransition("/room", "return");
           break;
         case "room-create-channel":
           roomChannelNotice = "ROOM CREATION REQUEST QUEUED / LOCAL PROTOTYPE";
