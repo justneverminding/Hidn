@@ -131,6 +131,7 @@ interface HomeFileAudioSession {
 
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
+const HOME_AUDIO_DEFAULT_VOLUME = 0.147;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
 let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
@@ -577,6 +578,12 @@ function renderAmbientAudioToggle(): string {
   </button>`;
 }
 
+function renderAmbientAudioControl(): string {
+  return `<div class="hidn-audio-control">
+    ${renderAmbientAudioToggle()}
+  </div>`;
+}
+
 function setHomeAudioUnavailable(root: ParentNode): void {
   const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
   const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
@@ -607,7 +614,7 @@ function startHomeAudio(root: ParentNode): void {
   const audio = new window.Audio(HOME_AUDIO_SRC);
   audio.loop = true;
   audio.preload = "auto";
-  audio.volume = 0.72;
+  audio.volume = HOME_AUDIO_DEFAULT_VOLUME;
 
   const resumeAudio = (): void => {
     if (document.visibilityState !== "visible" || !audio.paused) {
@@ -1533,7 +1540,7 @@ function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus 
       <span class="public-page__window-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN://${publicWindowTitle(path)}</span>
       <div class="public-page__window-actions">
         ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
-        ${normalizedPath === "/room/access" ? renderAmbientAudioToggle() : ""}
+        ${renderAmbientAudioControl()}
         ${renderVisitorTimeSignal("public-page__window-meta")}
         ${showRoomMenu ? renderRoomMenu() : ""}
       </div>
@@ -2353,7 +2360,7 @@ function renderHome(): RenderedProductRoute {
               </div>
               <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
               <div class="home-room-window__right">
-                ${renderAmbientAudioToggle()}
+                ${renderAmbientAudioControl()}
                 ${renderVisitorTimeSignal("home-room-window__meta")}
               </div>
             </div>
@@ -2625,14 +2632,16 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
-  const isAudioSurface = normalizedPath === "/" || normalizedPath === "/room/access";
+  const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
+  const isAudioSurface = Boolean(audioToggle);
   if (isAudioSurface) {
     if (normalizedPath === "/") {
       startHomeInvite(root);
     } else {
       stopHomeInvite();
+      stopHomeStream();
+      stopHomeHeadline();
     }
-    const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
     if (audioToggle && typeof window.Audio === "undefined") {
       setHomeAudioUnavailable(root);
     } else {

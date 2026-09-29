@@ -3245,6 +3245,15 @@
   gap: 0.8rem;
 }
 
+.hidn-audio-control {
+  align-items: center;
+  display: inline-flex;
+}
+
+.hidn-audio-control {
+  gap: 0.35rem;
+}
+
 .home-room-audio-toggle {
   align-items: center;
   background: rgba(3, 13, 7, 0.5);
