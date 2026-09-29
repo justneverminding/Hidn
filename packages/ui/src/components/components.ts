@@ -390,7 +390,7 @@ export function NavigationShell({
   return `<header class="ui-nav-shell" data-shell-region="navigation">
     <div class="ui-nav-shell__identity">
       ${HidnWordmark({ href })}
-      <span class="ui-nav-shell__descriptor">${escapeHtml(descriptor)}</span>
+      ${descriptor ? `<span class="ui-nav-shell__descriptor">${escapeHtml(descriptor)}</span>` : ""}
     </div>
     <nav aria-label="Primary navigation">
       <ul class="ui-nav-shell__links">

@@ -55,11 +55,22 @@ let homeReceivingTimer: number | undefined;
 let homeHeadlineTimer: number | undefined;
 let homeHeadlineCursorTimer: number | undefined;
 let homeHeadlineHasRun = false;
+let visitorClockTimer: number | undefined;
 
 interface TransmissionView {
   text: string;
   time: string;
   category?: string;
+}
+
+interface HomeAudioSession {
+  context: AudioContext;
+  master: GainNode;
+  noise: AudioBufferSourceNode;
+  motifTimer: number;
+  oscillators: OscillatorNode[];
+  pulseTimer: number;
+  radarTimer: number;
 }
 
 const HOME_STREAM_LIMIT = 4;
@@ -72,6 +83,7 @@ let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_
     category: confession.category,
   }));
 let homeStreamCursor = 0;
+let homeAudioSession: HomeAudioSession | undefined;
 
 const categoryOptions: Array<{ value: MockCategory; label: string }> = [
   { value: "REGRET", label: "Regret" },
@@ -153,26 +165,26 @@ function renderHomeRoomCards(): string {
     })),
   ];
   const positions = [
-    ["5%", "19%", "-8deg", "0.8", "-1s", "17s"],
-    ["80%", "14%", "7deg", "0.76", "-7s", "21s"],
-    ["11%", "48%", "5deg", "0.7", "-11s", "19s"],
-    ["82%", "45%", "-6deg", "0.72", "-4s", "23s"],
-    ["2%", "73%", "-4deg", "0.67", "-15s", "20s"],
-    ["78%", "73%", "8deg", "0.7", "-8s", "18s"],
-    ["29%", "13%", "-3deg", "0.62", "-2s", "24s"],
-    ["63%", "8%", "4deg", "0.58", "-17s", "22s"],
-    ["30%", "76%", "6deg", "0.58", "-10s", "26s"],
-    ["61%", "77%", "-5deg", "0.62", "-20s", "19s"],
-    ["15%", "4%", "-7deg", "0.5", "-13s", "27s"],
-    ["87%", "27%", "5deg", "0.5", "-18s", "25s"],
+    ["5%", "19%", "-8deg", "0.8", "-1s", "17s", "-0.85rem"],
+    ["80%", "14%", "7deg", "0.76", "-7s", "21s", "0.85rem"],
+    ["11%", "48%", "5deg", "0.7", "-11s", "19s", "-0.65rem"],
+    ["82%", "45%", "-6deg", "0.72", "-4s", "23s", "0.7rem"],
+    ["2%", "73%", "-4deg", "0.67", "-15s", "20s", "-0.5rem"],
+    ["78%", "73%", "8deg", "0.7", "-8s", "18s", "0.65rem"],
+    ["29%", "13%", "-3deg", "0.62", "-2s", "24s", "-0.35rem"],
+    ["63%", "8%", "4deg", "0.58", "-17s", "22s", "0.4rem"],
+    ["30%", "76%", "6deg", "0.58", "-10s", "26s", "-0.5rem"],
+    ["61%", "77%", "-5deg", "0.62", "-20s", "19s", "0.6rem"],
+    ["15%", "4%", "-7deg", "0.5", "-13s", "27s", "-0.25rem"],
+    ["87%", "27%", "5deg", "0.5", "-18s", "25s", "0.35rem"],
   ] as const;
 
   return cards
     .map((transmission, index) => {
-      const [left, top, rotation, scale, delay, duration] = positions[index % positions.length];
+      const [left, top, rotation, scale, delay, duration, driftX] = positions[index % positions.length];
       const category = transmission.category ?? "ROOM";
 
-      return `<article class="home-room-card" style="--card-left:${left};--card-top:${top};--card-rotation:${rotation};--card-scale:${scale};--card-delay:${delay};--card-duration:${duration};">
+      return `<article class="home-room-card" style="--card-left:${left};--card-top:${top};--card-rotation:${rotation};--card-scale:${scale};--card-delay:${delay};--card-duration:${duration};--card-drift-x:${driftX};">
         <span class="home-room-card__meta">ANONYMOUS / ${escapeHtml(category)}</span>
         <p>“${escapeHtml(transmission.text)}”</p>
         <footer><span>PRIVATE ROOM</span><time>${escapeHtml(formatTransmissionTime(transmission.time))}</time></footer>
@@ -215,6 +227,257 @@ function stopHomeStream(): void {
     window.clearTimeout(homeReceivingTimer);
     homeReceivingTimer = undefined;
   }
+}
+
+function setHomeAudioState(root: ParentNode, enabled: boolean): void {
+  const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
+  const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
+  if (!button) {
+    return;
+  }
+
+  button.setAttribute("aria-pressed", String(enabled));
+  button.dataset.state = enabled ? "on" : "off";
+  if (label) {
+    label.textContent = enabled ? "ON" : "OFF";
+  }
+}
+
+function setHomeAudioUnavailable(root: ParentNode): void {
+  const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
+  const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
+  if (!button) {
+    return;
+  }
+
+  button.disabled = true;
+  button.dataset.state = "unavailable";
+  button.setAttribute("aria-label", "Ambient room sound unavailable in this browser");
+  if (label) {
+    label.textContent = "N/A";
+  }
+}
+
+function startHomeAudio(root: ParentNode): void {
+  if (typeof window.AudioContext === "undefined") {
+    setHomeAudioUnavailable(root);
+    return;
+  }
+
+  if (homeAudioSession) {
+    void homeAudioSession.context.resume();
+    setHomeAudioState(root, true);
+    return;
+  }
+
+  const context = new window.AudioContext();
+  const master = context.createGain();
+  const compressor = context.createDynamicsCompressor();
+  const filter = context.createBiquadFilter();
+  const subFilter = context.createBiquadFilter();
+  const oscillators: OscillatorNode[] = [];
+
+  master.gain.setValueAtTime(0.0001, context.currentTime);
+  compressor.threshold.value = -32;
+  compressor.knee.value = 16;
+  compressor.ratio.value = 5;
+  compressor.attack.value = 0.012;
+  compressor.release.value = 0.42;
+  master.connect(compressor).connect(context.destination);
+
+  filter.type = "lowpass";
+  filter.frequency.value = 620;
+  filter.Q.value = 1;
+  filter.connect(master);
+
+  subFilter.type = "lowpass";
+  subFilter.frequency.value = 340;
+  subFilter.Q.value = 0.55;
+  subFilter.connect(master);
+
+  const addTone = (
+    frequency: number,
+    type: OscillatorType,
+    volume: number,
+    detune = 0,
+    destination: AudioNode = filter,
+  ): void => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.value = frequency;
+    oscillator.detune.value = detune;
+    gain.gain.value = volume;
+    oscillator.connect(gain).connect(destination);
+    oscillator.start();
+    oscillators.push(oscillator);
+  };
+
+  addTone(41.2, "sine", 0.48, 0, subFilter);
+  addTone(55, "triangle", 0.12, -4, subFilter);
+  addTone(82.41, "sawtooth", 0.022, 3, subFilter);
+  addTone(110, "sine", 0.035, 3);
+
+  const filterLfo = context.createOscillator();
+  const filterLfoDepth = context.createGain();
+  filterLfo.frequency.value = 0.08;
+  filterLfoDepth.gain.value = 90;
+  filterLfo.connect(filterLfoDepth).connect(filter.frequency);
+  filterLfo.start();
+  oscillators.push(filterLfo);
+
+  const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let index = 0; index < noiseData.length; index += 1) {
+    noiseData[index] = (Math.random() * 2 - 1) * 0.2;
+  }
+
+  const noise = context.createBufferSource();
+  const noiseFilter = context.createBiquadFilter();
+  const noiseGain = context.createGain();
+  noise.buffer = noiseBuffer;
+  noise.loop = true;
+  noiseFilter.type = "bandpass";
+  noiseFilter.frequency.value = 900;
+  noiseFilter.Q.value = 1.1;
+  noiseGain.gain.value = 0.018;
+  noise.connect(noiseFilter).connect(noiseGain).connect(master);
+  noise.start();
+
+  const noteDelay = context.createDelay(1);
+  const delayFeedback = context.createGain();
+  noteDelay.delayTime.value = 0.42;
+  delayFeedback.gain.value = 0.3;
+  noteDelay.connect(delayFeedback).connect(noteDelay);
+  noteDelay.connect(master);
+
+  const motif = [146.83, 155.56, 196, 174.61, 146.83, 130.81, 155.56, 138.59];
+  let motifIndex = 0;
+  const playMotifNote = (): void => {
+    const now = context.currentTime + 0.02;
+    const frequency = motif[motifIndex % motif.length];
+    motifIndex += 1;
+
+    const oscillator = context.createOscillator();
+    const harmonic = context.createOscillator();
+    const harmonicGain = context.createGain();
+    const envelope = context.createGain();
+    const noteFilter = context.createBiquadFilter();
+
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(frequency, now);
+    harmonic.type = "sine";
+    harmonic.frequency.setValueAtTime(frequency * 2, now);
+    harmonic.detune.value = -7;
+    harmonicGain.gain.value = 0.12;
+    noteFilter.type = "lowpass";
+    noteFilter.frequency.value = Math.min(1600, frequency * 6);
+    noteFilter.Q.value = 1;
+    envelope.gain.setValueAtTime(0.0001, now);
+    envelope.gain.exponentialRampToValueAtTime(0.075, now + 0.022);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+
+    oscillator.connect(envelope);
+    harmonic.connect(harmonicGain).connect(envelope);
+    envelope.connect(noteFilter);
+    noteFilter.connect(master);
+    noteFilter.connect(noteDelay);
+    oscillator.start(now);
+    harmonic.start(now);
+    oscillator.stop(now + 0.74);
+    harmonic.stop(now + 0.74);
+  };
+
+  const pulse = (): void => {
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(58, now);
+    oscillator.frequency.exponentialRampToValueAtTime(34, now + 0.38);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.64);
+    oscillator.connect(gain).connect(master);
+    oscillator.start(now);
+    oscillator.stop(now + 0.68);
+  };
+
+  const radarPing = (): void => {
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(1180, now);
+    oscillator.frequency.exponentialRampToValueAtTime(690, now + 0.2);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.045, now + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    oscillator.connect(gain).connect(master);
+    oscillator.start(now);
+    oscillator.stop(now + 0.32);
+  };
+
+  const motifTimer = window.setInterval(playMotifNote, 520);
+  const pulseTimer = window.setInterval(pulse, 2080);
+  const radarTimer = window.setInterval(radarPing, 3200);
+  homeAudioSession = { context, master, noise, motifTimer, oscillators, pulseTimer, radarTimer };
+  master.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 1.6);
+  playMotifNote();
+  pulse();
+  radarPing();
+  setHomeAudioState(root, true);
+
+  void context.resume().catch(() => {
+    stopHomeAudio(root);
+  });
+}
+
+function stopHomeAudio(root?: ParentNode): void {
+  const session = homeAudioSession;
+  homeAudioSession = undefined;
+  if (!session) {
+    if (root) {
+      setHomeAudioState(root, false);
+    }
+    return;
+  }
+
+  window.clearInterval(session.pulseTimer);
+  window.clearInterval(session.motifTimer);
+  window.clearInterval(session.radarTimer);
+  const now = session.context.currentTime;
+  session.master.gain.cancelScheduledValues(now);
+  session.master.gain.setTargetAtTime(0.0001, now, 0.12);
+
+  window.setTimeout(() => {
+    session.oscillators.forEach((oscillator) => {
+      try {
+        oscillator.stop();
+      } catch {
+        // The oscillator may have already stopped during teardown.
+      }
+    });
+    try {
+      session.noise.stop();
+    } catch {
+      // The noise source may have already stopped during teardown.
+    }
+    void session.context.close();
+  }, 500);
+
+  if (root) {
+    setHomeAudioState(root, false);
+  }
+}
+
+function toggleHomeAudio(root: ParentNode): void {
+  if (homeAudioSession) {
+    stopHomeAudio(root);
+    return;
+  }
+
+  startHomeAudio(root);
 }
 
 function receiveHomeTransmission(root: ParentNode): void {
@@ -377,16 +640,51 @@ function actionLink(
   return `<a class="ui-button ui-button--${variant}${className ? ` ${className}` : ""}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 }
 
+function formatVisitorLocalTime(): string {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function renderVisitorTimeSignal(className: string): string {
+  return `<span class="${escapeHtml(className)} hidn-local-time-signal" title="Visitor local time, 24-hour format">
+    <span class="hidn-local-time-signal__dot" aria-hidden="true"></span>
+    <span data-visitor-local-time>${formatVisitorLocalTime()}</span>
+  </span>`;
+}
+
+function startVisitorClock(root: ParentNode): void {
+  if (visitorClockTimer !== undefined) {
+    window.clearInterval(visitorClockTimer);
+  }
+
+  const update = (): void => {
+    const time = formatVisitorLocalTime();
+    root.querySelectorAll<HTMLElement>("[data-visitor-local-time]").forEach((element) => {
+      element.textContent = time;
+    });
+  };
+
+  update();
+  visitorClockTimer = window.setInterval(update, 1000);
+}
+
 function publicNavigation(path: string): string {
-  const links = [
-    { label: "EXPLORE", href: "/explore" },
-    { label: "HOW IT WORKS", href: "/how-it-works" },
-    { label: "MANIFESTO", href: "/manifesto" },
-  ].map((link) => ({ ...link, current: normalizePath(path) === link.href }));
+  const normalizedPath = normalizePath(path);
+  const links = (normalizedPath === "/"
+    ? []
+    : [
+        { label: "EXPLORE", href: "/explore" },
+        { label: "HOW IT WORKS", href: "/how-it-works" },
+        { label: "MANIFESTO", href: "/manifesto" },
+      ]
+  ).map((link) => ({ ...link, current: normalizedPath === link.href }));
 
   return NavigationShell({
-    descriptor: "ANONYMOUS INTERNET NOIR",
-    status: normalizePath(path) === "/" ? "PRIVATE ROOM" : "BUILT ON ZCASH",
+    descriptor: normalizedPath === "/" ? "ANONYMOUS INTERNET NOIR" : "",
+    status: normalizedPath === "/" ? "PRIVATE ROOM" : "BUILT ON ZCASH",
     links,
   });
 }
@@ -413,13 +711,21 @@ function publicWindowChrome(path: string): string {
         <span class="public-page__window-control public-page__window-control--maximize"></span>
       </div>
       <span class="public-page__window-title">HIDN://${publicWindowTitle(path)}</span>
-      <span class="public-page__window-meta">TTY 01 // LOCAL</span>
+      ${renderVisitorTimeSignal("public-page__window-meta")}
     </div>
   </div>`;
 }
 
 function publicFrame(path: string, main: string, pageClass = ""): string {
   const isHome = normalizePath(path) === "/";
+  const footerLinks = isHome
+    ? [{ label: "HOW IT WORKS", href: "/how-it-works" }]
+    : [
+        { label: "EXPLORE", href: "/explore" },
+        { label: "HOW IT WORKS", href: "/how-it-works" },
+        { label: "MANIFESTO", href: "/manifesto" },
+        { label: "PRIVACY", href: "/privacy" },
+      ];
 
   return `<div class="public-page ${pageClass} fx-grain fx-vignette">
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -427,12 +733,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${publicNavigation(path)}
     ${main}
     ${FooterShell({
-      links: [
-        { label: "EXPLORE", href: "/explore" },
-        { label: "HOW IT WORKS", href: "/how-it-works" },
-        { label: "MANIFESTO", href: "/manifesto" },
-        { label: "PRIVACY", href: "/privacy" },
-      ],
+      links: footerLinks,
       identity: "ANONYMOUS BY DESIGN.",
     })}
   </div>`;
@@ -851,7 +1152,7 @@ function renderHome(): RenderedProductRoute {
         <section class="home-room-stage" aria-labelledby="home-room-title">
           <div class="home-room-stars" aria-hidden="true"></div>
           <div class="home-room-noise" aria-hidden="true"></div>
-          <div class="home-room-window" aria-hidden="true">
+          <div class="home-room-window">
             <div class="home-room-window__bar">
               <div class="home-room-window__controls">
                 <span class="home-room-window__control home-room-window__control--close"></span>
@@ -859,7 +1160,13 @@ function renderHome(): RenderedProductRoute {
                 <span class="home-room-window__control home-room-window__control--maximize"></span>
               </div>
               <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
-              <span class="home-room-window__meta">TTY 01 // LOCAL</span>
+              <div class="home-room-window__right">
+                <button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="false" aria-label="Toggle ambient room sound">
+                  <span class="home-room-audio-toggle__label">SCORE</span>
+                  <span data-home-audio-label>OFF</span>
+                </button>
+                ${renderVisitorTimeSignal("home-room-window__meta")}
+              </div>
             </div>
           </div>
           <div class="home-room-card-field" aria-hidden="true">
@@ -874,7 +1181,6 @@ function renderHome(): RenderedProductRoute {
             </a>
             <p class="home-room-core__status">LOCAL MOCK ROOM / NO LIVE USERS</p>
           </div>
-          <p class="home-room-corner home-room-corner--left" aria-hidden="true">OPEN CHANNEL / 01</p>
           <p class="home-room-corner home-room-corner--right" aria-hidden="true">NO NAMES / NO TRACE</p>
         </section>
       </main>`,
@@ -994,11 +1300,21 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
 
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
+  startVisitorClock(root);
 
   if (normalizePath(window.location.pathname) === "/") {
+    const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
+    if (audioToggle && typeof window.AudioContext === "undefined") {
+      setHomeAudioUnavailable(root);
+    } else {
+      audioToggle?.addEventListener("click", () => {
+        toggleHomeAudio(root);
+      });
+    }
   } else {
     stopHomeStream();
     stopHomeHeadline();
+    stopHomeAudio();
   }
 
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
