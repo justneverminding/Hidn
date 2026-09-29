@@ -4156,6 +4156,11 @@
   background-size: 100% 4px, 7rem 100%;
 }
 
+/* Keep room surfaces clear of the terminal chrome on every viewport. */
+.public-page__window-chrome + .public-main {
+  padding-top: clamp(1.25rem, 3.5vw, 2rem);
+}
+
 @media (max-width: 760px) {
   .public-page:not(.public-page--home) .ui-nav-shell {
     margin-top: 3.1rem;
