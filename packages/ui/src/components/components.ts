@@ -418,7 +418,7 @@ export function FooterShell({
   return `<footer class="ui-footer-shell" data-shell-region="footer">
     <div class="ui-footer-shell__identity">
       ${HidnWordmark({ href: "/", label: "HIDN home" })}
-      <p>${escapeHtml(identity)}</p>
+      ${identity ? `<p>${escapeHtml(identity)}</p>` : ""}
     </div>
     <ul class="ui-footer-shell__links">
       ${links

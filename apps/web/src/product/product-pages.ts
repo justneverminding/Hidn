@@ -24,6 +24,7 @@ import {
   CONFESS_METADATA,
   EXPLORE_METADATA,
   HOME_METADATA,
+  ROOM_METADATA,
   type HidnMetadata,
 } from "../metadata";
 import {
@@ -41,6 +42,13 @@ import {
   resetMockFlow,
 } from "./mock-data";
 import { fetchCipherScanMainnetTip } from "./cipherscan";
+import {
+  createRoomSession,
+  fetchRoomConfig,
+  hashRoomSecret,
+  loginRoomSession,
+  verifyRoomDemoPayment,
+} from "./room-api";
 
 export interface RenderedProductRoute {
   html: string;
@@ -48,15 +56,29 @@ export interface RenderedProductRoute {
 }
 
 type FeedTab = "latest" | "random" | "felt";
+type RoomAccessMode = "choose" | "create" | "login" | "ready";
 
 let activeFeedTab: FeedTab = "latest";
 let proofRunActive = false;
+let roomAccessMode: RoomAccessMode = "choose";
+let roomDemoId = "";
+let roomDemoMemo = "";
+let roomLoginError = "";
+let roomZecAmount = "CALCULATING...";
+let roomZecRateStatus = "";
+let roomBackendStatus: "local" | "connecting" | "connected" | "offline" = "local";
+let roomBackendId = "";
 let homeStreamTimer: number | undefined;
 let homeReceivingTimer: number | undefined;
 let homeHeadlineTimer: number | undefined;
 let homeHeadlineCursorTimer: number | undefined;
 let homeHeadlineHasRun = false;
 let visitorClockTimer: number | undefined;
+
+interface AnonymousReply {
+  text: string;
+  time: string;
+}
 
 interface TransmissionView {
   text: string;
@@ -89,6 +111,19 @@ let homeAudioSession: HomeAudioSession | undefined;
 let cachedCipherScanHeight: number | undefined;
 let cachedCipherScanAt = 0;
 let cipherScanRequest: Promise<number> | undefined;
+const roomThreadReplies = new Map<string, AnonymousReply[]>([
+  [
+    "00417",
+    [
+      { text: "You can miss an old version of yourself without wanting to go back.", time: "8 MIN AGO" },
+      { text: "The room understands this one.", time: "4 MIN AGO" },
+    ],
+  ],
+  [
+    "00416",
+    [{ text: "Choosing slowly is still choosing. You do not owe the room a performance.", time: "11 MIN AGO" }],
+  ],
+]);
 
 const categoryOptions: Array<{ value: MockCategory; label: string }> = [
   { value: "REGRET", label: "Regret" },
@@ -268,6 +303,94 @@ async function refreshZcashNetworkStatus(root: ParentNode): Promise<void> {
 
     status.dataset.zcashState = "unavailable";
     status.title = "CipherScan could not provide the current Zcash mainnet block.";
+  }
+}
+
+async function refreshRoomConfig(root: ParentNode): Promise<void> {
+  const amount = root.querySelector<HTMLElement>("[data-room-zec-amount]");
+  const status = root.querySelector<HTMLElement>("[data-room-rate-status]");
+  if (!amount) {
+    return;
+  }
+
+  amount.textContent = roomZecAmount;
+  if (status) {
+    status.textContent = roomZecRateStatus;
+  }
+
+  try {
+    const config = await fetchRoomConfig();
+    roomZecAmount = `${config.zecAmount} ZEC`;
+    roomZecRateStatus = `LIVE USD/ZEC RATE / ${config.source.toUpperCase()}`;
+  } catch {
+    roomZecAmount = "BACKEND OFFLINE";
+    roomZecRateStatus = "CONNECT CLOUDFLARE WORKER TO CALCULATE";
+  }
+
+  if (!amount.isConnected) {
+    return;
+  }
+
+  amount.textContent = roomZecAmount;
+  if (status) {
+    status.textContent = roomZecRateStatus;
+  }
+}
+
+function roomBackendStatusLabel(): string {
+  switch (roomBackendStatus) {
+    case "connecting":
+      return "SYNCING WORKER";
+    case "connected":
+      return "BACKEND READY";
+    case "offline":
+      return "LOCAL DEMO / BACKEND OFFLINE";
+    default:
+      return "LOCAL DEMO";
+  }
+}
+
+async function registerRoomBackend(): Promise<void> {
+  try {
+    const credentialHash = await hashRoomSecret(roomDemoId);
+    const response = await createRoomSession({
+      credentialHash,
+      memoReference: roomDemoMemo,
+      returnAddress: "",
+    });
+    roomBackendId = response.roomId;
+    roomBackendStatus = "connected";
+    sessionStorage.setItem("hidn:room:backend-id", roomBackendId);
+  } catch {
+    roomBackendStatus = "offline";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room" && roomAccessMode === "create") {
+    rerenderProductRoute();
+  }
+}
+
+async function verifyRoomBackend(): Promise<void> {
+  if (!roomBackendId) {
+    return;
+  }
+
+  try {
+    await verifyRoomDemoPayment(roomBackendId);
+    roomBackendStatus = "connected";
+  } catch {
+    roomBackendStatus = "offline";
+  }
+}
+
+async function syncRoomLogin(secret: string): Promise<void> {
+  try {
+    const response = await loginRoomSession(await hashRoomSecret(secret));
+    roomBackendId = response.roomId;
+    roomBackendStatus = "connected";
+    sessionStorage.setItem("hidn:room:backend-id", roomBackendId);
+  } catch {
+    roomBackendStatus = "offline";
   }
 }
 
@@ -727,7 +850,7 @@ function startVisitorClock(root: ParentNode): void {
 
 function publicNavigation(path: string): string {
   const normalizedPath = normalizePath(path);
-  const links = (normalizedPath === "/"
+  const links = (normalizedPath === "/" || normalizedPath === "/room" || normalizedPath === "/how-it-works"
     ? []
     : [
         { label: "EXPLORE", href: "/explore" },
@@ -743,10 +866,35 @@ function publicNavigation(path: string): string {
   });
 }
 
+function renderRoomMenu(): string {
+  return `<div class="room-menu" data-room-menu>
+    <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
+      <span class="room-menu__icon" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="room-menu__label">CHANNELS</span>
+    </button>
+    <div class="room-menu__panel" id="room-channel-menu" hidden>
+      <div class="room-menu__panel-head">
+        <span>PRIVATE ROOM / INDEX</span>
+        <span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>
+      </div>
+      <nav aria-label="Private room channels">
+        <a href="/how-it-works"><span>01</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
+        <a href="/manifesto"><span>02</span> MANIFESTO <b aria-hidden="true">↗</b></a>
+        <a href="/privacy"><span>03</span> PRIVACY <b aria-hidden="true">↗</b></a>
+      </nav>
+      <a class="room-menu__leave" href="/" data-room-logout>LEAVE ROOM <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>`;
+}
+
 function publicWindowTitle(path: string): string {
   const normalizedPath = normalizePath(path);
   if (normalizedPath.startsWith("/c/")) {
     return "THREAD_ROOM";
+  }
+
+  if (normalizedPath === "/explore") {
+    return "THE_ROOM";
   }
 
   if (normalizedPath === "/") {
@@ -756,24 +904,38 @@ function publicWindowTitle(path: string): string {
   return normalizedPath.slice(1).replace(/[^a-z0-9]+/gi, "_").toUpperCase();
 }
 
-function publicWindowChrome(path: string): string {
-  return `<div class="public-page__window-chrome" aria-hidden="true">
+function publicWindowChrome(path: string, showRoomMenu = false): string {
+  return `<div class="public-page__window-chrome">
     <div class="public-page__window-bar">
-      <div class="public-page__window-controls">
+      <div class="public-page__window-controls" aria-hidden="true">
         <span class="public-page__window-control public-page__window-control--close"></span>
         <span class="public-page__window-control public-page__window-control--minimize"></span>
         <span class="public-page__window-control public-page__window-control--maximize"></span>
       </div>
-      <span class="public-page__window-title">HIDN://${publicWindowTitle(path)}</span>
-      ${renderVisitorTimeSignal("public-page__window-meta")}
+      <span class="public-page__window-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN://${publicWindowTitle(path)}</span>
+      <div class="public-page__window-actions">
+        ${renderVisitorTimeSignal("public-page__window-meta")}
+        ${showRoomMenu ? renderRoomMenu() : ""}
+      </div>
     </div>
   </div>`;
 }
 
 function publicFrame(path: string, main: string, pageClass = ""): string {
-  const isHome = normalizePath(path) === "/";
-  const footerLinks = isHome
+  const normalizedPath = normalizePath(path);
+  const isHome = normalizedPath === "/";
+  const isRoomCreation = normalizedPath === "/room";
+  const isHowItWorks = normalizedPath === "/how-it-works";
+  const isRoomSurface = normalizedPath === "/explore" || normalizedPath === "/confess" || normalizedPath.startsWith("/c/");
+  const footerLinks = isHome || isRoomCreation
     ? [{ label: "HOW IT WORKS", href: "/how-it-works" }]
+    : isHowItWorks
+      ? [{ label: "HOME", href: "/" }]
+    : isRoomSurface
+      ? [
+          { label: "HOW IT WORKS", href: "/how-it-works" },
+          { label: "LOG OUT", href: "/" },
+        ]
     : [
         { label: "EXPLORE", href: "/explore" },
         { label: "HOW IT WORKS", href: "/how-it-works" },
@@ -783,12 +945,12 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
 
   return `<div class="public-page ${pageClass} fx-grain fx-vignette">
     <a class="skip-link" href="#main-content">Skip to content</a>
-    ${isHome ? "" : publicWindowChrome(path)}
-    ${publicNavigation(path)}
+    ${isHome ? "" : publicWindowChrome(path, isRoomSurface)}
+    ${isRoomSurface ? "" : publicNavigation(path)}
     ${main}
     ${FooterShell({
       links: footerLinks,
-      identity: "ANONYMOUS BY DESIGN.",
+      identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
     })}
   </div>`;
 }
@@ -1015,18 +1177,18 @@ function renderExplore(): string {
     `<main id="main-content" class="public-main explore-main">
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
-          ${TerminalLabel("PRIVATE MESSAGE SPACE / MOCK")}
-          <h1 class="type-display-lg">ANONYMOUS TRANSMISSIONS</h1>
-          <p>The message is public. The person stays out of frame.</p>
+          ${TerminalLabel("PRIVATE ROOM / OPEN THREADS")}
+          <h1 class="type-display-lg">THE ROOM</h1>
+          <p>Thoughts move through the room without names. Follow one thread or leave one behind.</p>
         </header>
         <div class="explore-layout">
           <section class="explore-feed" aria-labelledby="explore-feed-title">
             <div class="explore-feed__heading">
               <div>
-                ${TerminalLabel("ANONYMOUS TRANSMISSIONS")}
-                <h2 id="explore-feed-title" class="type-heading-2">A room without names.</h2>
+                ${TerminalLabel("RECEIVING / ANONYMOUS SIGNAL")}
+                <h2 id="explore-feed-title" class="type-heading-2">Thoughts in motion.</h2>
               </div>
-              ${StatusIndicator("SIMULATED / LOCAL ONLY", "warning")}
+              ${StatusIndicator("LOCAL THREAD / LIVE FEEL", "warning", true)}
             </div>
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
@@ -1036,6 +1198,54 @@ function renderExplore(): string {
     </main>`,
     "public-page--explore",
   );
+}
+
+function repliesForThread(id: string): AnonymousReply[] {
+  const replies = roomThreadReplies.get(id);
+  if (replies) {
+    return replies;
+  }
+
+  const emptyReplies: AnonymousReply[] = [];
+  roomThreadReplies.set(id, emptyReplies);
+  return emptyReplies;
+}
+
+function renderThreadRoom(id: string): string {
+  const replies = repliesForThread(id);
+  const replyCount = replies.length;
+  const messages = replyCount
+    ? replies
+        .map(
+          (reply, index) => `<article class="thread-room__message">
+            <header><span>ANONYMOUS / ${String(index + 1).padStart(2, "0")}</span><time>${escapeHtml(reply.time)}</time></header>
+            <p>${escapeHtml(reply.text)}</p>
+          </article>`,
+        )
+        .join("")
+    : `<p class="thread-room__empty">No replies yet. Leave the first signal in the room.</p>`;
+
+  return `<section class="thread-room" data-thread-root="${escapeHtml(id)}" aria-labelledby="thread-room-title">
+    <header class="thread-room__header">
+      <div>
+        ${TerminalLabel("THREAD / WITHOUT NAMES")}
+        <h2 id="thread-room-title">KEEP THE THOUGHT MOVING.</h2>
+      </div>
+      <span class="thread-room__signal"><i aria-hidden="true"></i> ${replyCount ? `RECEIVING / ${replyCount}` : "OPEN CHANNEL"}</span>
+    </header>
+    <div class="thread-room__messages" aria-live="polite">${messages}</div>
+    <form class="thread-room__composer" novalidate>
+      <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
+        <span class="ui-field__label">REPLY WITHOUT A NAME</span>
+        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="Add your thought to the thread..."></textarea>
+      </label>
+      <div class="thread-room__composer-footer">
+        <span>NO HANDLE / NO PROFILE / NO TRAIL</span>
+        ${PrimaryButton({ label: "TRANSMIT REPLY →", dataAction: "thread-reply" })}
+      </div>
+    </form>
+    <p class="thread-room__note">LOCAL DEMO THREAD. A production room would stream anonymous replies from the backend without attaching a public identity.</p>
+  </section>`;
 }
 
 function renderDetail(id: string): RenderedProductRoute {
@@ -1093,11 +1303,173 @@ function renderDetail(id: string): RenderedProductRoute {
             <button class="ui-confession-card__action" type="button" data-demo="true">SHARE</button>
             <button class="ui-confession-card__action" type="button" data-demo="true">REPORT</button>
           </div>
+          ${renderThreadRoom(confession.id)}
           <p class="detail-boundary">NO PROFILE / NO AUTHOR PAGE / NO MORE FROM THIS PERSON</p>
           ${actionLink("BACK TO CONFESSIONS", "/explore", "ghost", "detail-back")}
         </div>
       </main>`,
       "public-page--detail",
+    ),
+  };
+}
+
+function createRoomDemoId(): string {
+  const bytes = new Uint8Array(4);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    bytes.forEach((_, index) => {
+      bytes[index] = Math.floor(Math.random() * 256);
+    });
+  }
+
+  return `HIDN-DEMO-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
+function clearRoomSession(): void {
+  sessionStorage.removeItem("hidn:room:secret");
+  sessionStorage.removeItem("hidn:room:backend-id");
+  sessionStorage.removeItem("hidn:room:entered");
+  roomAccessMode = "choose";
+  roomDemoId = "";
+  roomDemoMemo = "";
+  roomLoginError = "";
+}
+
+function renderRoomAccessChooser(): string {
+  return `<div class="room-access-page">
+    <header class="room-access-header">
+      ${TerminalLabel("HIDN / ROOM ACCESS")}
+      <h1 class="type-display-lg room-access-header__title">ENTER THE<br /><em>PRIVATE ROOM.</em></h1>
+      <p class="room-access-header__copy">No names. No profile. Choose how you want to cross the threshold.</p>
+    </header>
+    <div class="room-access-options">
+      <article class="room-access-option">
+        <span class="room-access-option__number">01</span>
+        <div>
+          <h2>CREATE AN ID</h2>
+          <p>Set up a nameless room identity. The planned production flow will verify a shielded payment without turning it into a public profile.</p>
+        </div>
+        ${PrimaryButton({ label: "CREATE ID →", dataAction: "room-create" })}
+      </article>
+      <article class="room-access-option">
+        <span class="room-access-option__number">02</span>
+        <div>
+          <h2>LOG IN WITH ID</h2>
+          <p>Use the private room ID or access key you already hold. No email, username, or recovery account.</p>
+        </div>
+        ${SecondaryButton({ label: "USE MY ID →", dataAction: "room-login" })}
+      </article>
+    </div>
+    ${SystemMessage("LOCAL PROTOTYPE / NO FUNDS", "This demo does not connect a wallet, accept ZEC, create a real zero-knowledge proof, or issue a real recovery secret.", "DEMO")}
+  </div>`;
+}
+
+function renderRoomCreate(): string {
+  const demoId = roomDemoId || "HIDN-DEMO-LOCAL";
+  const memo = roomDemoMemo || `HIDN-ROOM-${demoId.slice(-6)}`;
+
+  return `<div class="room-access-page">
+    <header class="room-access-header room-access-header--compact">
+      ${TerminalLabel("HIDN / CREATE ID")}
+      <h1 class="type-display-lg room-access-header__title">FUND THE<br /><em>THRESHOLD.</em></h1>
+      <p class="room-access-header__copy">A production version could use a shielded contribution as an anti-spam signal. This screen only demonstrates the handoff.</p>
+    </header>
+    <div class="room-access-stepbar" aria-label="Create ID steps">
+      <span class="room-access-stepbar__step room-access-stepbar__step--current">01 / SEND</span>
+      <span class="room-access-stepbar__step">02 / MEMO</span>
+      <span class="room-access-stepbar__step">03 / ID</span>
+    </div>
+    <section class="room-payment-card" aria-labelledby="room-payment-title">
+      <div class="room-payment-card__header">
+        <span class="room-payment-card__eyebrow">DEMO DESTINATION / NOT LIVE</span>
+        <span class="room-payment-card__status"><span aria-hidden="true"></span>${escapeHtml(roomBackendStatusLabel())}</span>
+      </div>
+      <h2 id="room-payment-title">SHIELDED PAYMENT</h2>
+      <p class="room-payment-card__explainer">A Zcash payment designed to keep its transaction details away from the public chain. HIDN would use it as a one-time anti-spam gate—not as your password or identity.</p>
+      <code class="room-payment-card__address">zs1demo-room-vault-not-live</code>
+      <div class="room-payment-card__details">
+        <div><span>USD TARGET</span><strong>$1.00</strong></div>
+        <div><span>ZEC AMOUNT / LIVE RATE</span><strong data-room-zec-amount>${escapeHtml(roomZecAmount)}</strong></div>
+      </div>
+      <p class="room-payment-card__rate" data-room-rate-status>${escapeHtml(roomZecRateStatus)}</p>
+      <p class="room-payment-card__memo"><strong>MEMO REFERENCE</strong> <code>${escapeHtml(memo)}</code><br />A one-time receipt code lets the backend match a payment to this room request. It is not a secret, room ID, or recovery phrase.</p>
+      <label class="room-access-field" for="room-return-address">
+        <span>SHIELDED RETURN ADDRESS / DEMO</span>
+        <input id="room-return-address" type="text" placeholder="zs1... / not connected" autocomplete="off" spellcheck="false" />
+      </label>
+      <p class="room-payment-card__note">In production, a wallet would send the amount and memo to the room vault, then receive a privacy-preserving credential at the return address. Never place a secret or recovery phrase in a memo.</p>
+    </section>
+    ${SystemMessage("NO FUNDS / LOCAL DEMO", "The destination above is fictional. Clicking verify only advances the visual prototype; no payment is created or checked.", "DEMO")}
+    <div class="room-access-actions">
+      ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
+      ${PrimaryButton({ label: "VERIFY DEMO PAYMENT →", dataAction: "room-verify-demo" })}
+    </div>
+  </div>`;
+}
+
+function renderRoomLogin(): string {
+  return `<div class="room-access-page">
+    <header class="room-access-header room-access-header--compact">
+      ${TerminalLabel("HIDN / ID LOGIN")}
+      <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
+      <p class="room-access-header__copy">Enter the room ID or access key you keep on your side. HIDN does not ask for a name.</p>
+    </header>
+    ${roomLoginError ? AlertMessage("ID NEEDED", roomLoginError, "danger") : ""}
+    <form class="room-login-card" novalidate>
+      <label class="room-access-field" for="room-login-id">
+        <span>ROOM ID / ACCESS KEY</span>
+        <input id="room-login-id" type="text" placeholder="HIDN-ID-..." autocomplete="off" spellcheck="false" />
+      </label>
+      <p class="room-payment-card__note">This local demo accepts any non-empty value. A real implementation should prove control of a secret without storing the secret itself.</p>
+      <div class="room-access-actions">
+        ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
+        ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-submit-login" })}
+      </div>
+    </form>
+  </div>`;
+}
+
+function renderRoomReady(): string {
+  const demoId = roomDemoId || "HIDN-DEMO-LOCAL";
+
+  return `<div class="room-access-page room-access-page--ready">
+    <header class="room-access-header room-access-header--compact">
+      ${TerminalLabel("HIDN / ACCESS READY")}
+      <h1 class="type-display-lg room-access-header__title">THE KEY STAYS<br /><em>WITH YOU.</em></h1>
+      <p class="room-access-header__copy">This is a local demo credential. In production, HIDN should never receive or store the secret behind your ID.</p>
+    </header>
+    <div class="room-access-key">
+      <span class="room-access-key__label">DEMO ROOM ID / SHOW ONCE</span>
+      <code>${escapeHtml(demoId)}</code>
+      <span class="room-access-key__warning">BACK IT UP YOURSELF. LOST ACCESS CANNOT BE RECOVERED IN THIS DEMO.</span>
+    </div>
+    ${SystemMessage("PRODUCTION BOUNDARY", "A real Zcash-backed flow would need wallet integration, shielded payment verification, replay protection, abuse controls, and a carefully designed credential recovery policy before accepting funds.", "INFO")}
+    <div class="room-access-actions">
+      ${GhostButton({ label: "START OVER", dataAction: "room-back" })}
+      ${PrimaryButton({ label: "ENTER MOCK ROOM →", dataAction: "room-enter" })}
+    </div>
+  </div>`;
+}
+
+function renderRoomAccess(): RenderedProductRoute {
+  const content =
+    roomAccessMode === "create"
+      ? renderRoomCreate()
+      : roomAccessMode === "login"
+        ? renderRoomLogin()
+        : roomAccessMode === "ready"
+          ? renderRoomReady()
+          : renderRoomAccessChooser();
+
+  return {
+    metadata: ROOM_METADATA,
+    html: publicFrame(
+      "/room",
+      `<main id="main-content" class="public-main room-main">
+        ${content}
+      </main>`,
+      "public-page--room",
     ),
   };
 }
@@ -1230,12 +1602,11 @@ function renderHome(): RenderedProductRoute {
             <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
             <h1 id="home-room-title">A ROOM<br />WITHOUT <em>NAMES.</em></h1>
             <p class="home-room-core__copy">A room for anonymous thoughts and unnamed conversations.</p>
-            <a class="ui-button ui-button--primary home-room-enter" href="/explore" data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
+            <a class="ui-button ui-button--primary home-room-enter" href="/room" data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
             </a>
             <p class="home-room-core__status">LOCAL MOCK ROOM / NO LIVE USERS</p>
           </div>
-          <p class="home-room-corner home-room-corner--right" aria-hidden="true">NO NAMES / NO TRACE</p>
         </section>
       </main>`,
       "public-page--home",
@@ -1248,6 +1619,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/") {
     return renderHome();
+  }
+
+  if (normalizedPath === "/room") {
+    return renderRoomAccess();
   }
 
   if (normalizedPath === "/confess") {
@@ -1356,6 +1731,14 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
+  if (normalizePath(window.location.pathname) === "/room" && roomAccessMode === "create") {
+    void refreshRoomConfig(root);
+  }
+  root.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
+    if (link.matches("[data-room-logout]") || link.textContent?.trim() === "LOG OUT") {
+      link.addEventListener("click", clearRoomSession);
+    }
+  });
 
   if (normalizePath(window.location.pathname) === "/") {
     const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
@@ -1375,6 +1758,94 @@ export function bindProductRoute(root: ParentNode = document): void {
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
       switch (button.dataset.action) {
+        case "room-menu-toggle": {
+          const menu = button.closest<HTMLElement>("[data-room-menu]");
+          const panel = menu?.querySelector<HTMLElement>(".room-menu__panel");
+          if (!panel) {
+            break;
+          }
+
+          const isOpen = !panel.hidden;
+          panel.hidden = isOpen;
+          button.setAttribute("aria-expanded", String(!isOpen));
+          button.setAttribute("aria-label", isOpen ? "Open private room menu" : "Close private room menu");
+          menu?.classList.toggle("room-menu--open", !isOpen);
+          break;
+        }
+        case "room-create":
+          roomAccessMode = "create";
+          roomDemoId = createRoomDemoId();
+          roomDemoMemo = `HIDN-ROOM-${roomDemoId.slice(-6)}`;
+          roomLoginError = "";
+          roomBackendId = "";
+          roomBackendStatus = "connecting";
+          sessionStorage.setItem("hidn:room:secret", roomDemoId);
+          sessionStorage.removeItem("hidn:room:verified");
+          rerenderProductRoute();
+          void registerRoomBackend();
+          break;
+        case "room-login":
+          roomAccessMode = "login";
+          roomLoginError = "";
+          rerenderProductRoute();
+          break;
+        case "room-back":
+          roomAccessMode = "choose";
+          roomDemoId = "";
+          roomDemoMemo = "";
+          roomLoginError = "";
+          rerenderProductRoute();
+          break;
+        case "room-verify-demo":
+          roomAccessMode = "ready";
+          sessionStorage.setItem("hidn:room:verified", "true");
+          rerenderProductRoute();
+          void verifyRoomBackend();
+          break;
+        case "room-submit-login": {
+          const input = root.querySelector<HTMLInputElement>("#room-login-id");
+          const value = input?.value.trim() ?? "";
+          if (!value) {
+            roomLoginError = "Enter the ID you keep on your side before continuing.";
+            rerenderProductRoute();
+            break;
+          }
+
+          const storedSecret = sessionStorage.getItem("hidn:room:secret");
+          const verified = sessionStorage.getItem("hidn:room:verified") === "true";
+          if (!storedSecret || value !== storedSecret || !verified) {
+            roomLoginError = "That demo ID is not verified in this browser. Create an ID and complete the demo payment first.";
+            rerenderProductRoute();
+            break;
+          }
+
+          roomDemoId = value;
+          roomLoginError = "";
+          roomAccessMode = "ready";
+          rerenderProductRoute();
+          void syncRoomLogin(value);
+          break;
+        }
+        case "room-enter":
+          sessionStorage.setItem("hidn:room:entered", "true");
+          navigateProductRoute("/explore");
+          break;
+        case "thread-reply": {
+          const threadRoot = button.closest<HTMLElement>("[data-thread-root]");
+          const input = threadRoot?.querySelector<HTMLTextAreaElement>("[data-thread-input]");
+          const value = input?.value.trim() ?? "";
+          if (!threadRoot || !value) {
+            input?.focus();
+            break;
+          }
+
+          const threadId = threadRoot.dataset.threadRoot;
+          if (threadId) {
+            repliesForThread(threadId).push({ text: value, time: "JUST NOW" });
+            rerenderProductRoute();
+          }
+          break;
+        }
         case "proof-start":
           void runMockProof();
           break;
