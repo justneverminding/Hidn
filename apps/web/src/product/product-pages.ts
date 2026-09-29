@@ -77,6 +77,8 @@ let homeHeadlineTimer: number | undefined;
 let homeHeadlineCursorTimer: number | undefined;
 let homeHeadlineHasRun = false;
 let visitorClockTimer: number | undefined;
+let roomEntryTimer: number | undefined;
+let roomEntryTransitionActive = false;
 let activeTextSelection: SelectedTextItem | undefined;
 let selectedTextBatch: SelectedTextItem[] = [];
 let textSelectionInteractionsBound = false;
@@ -1586,8 +1588,7 @@ function renderRoomMenu(): string {
       </div>
       <nav aria-label="Private room channels">
         <a href="/how-it-works"><span>01</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
-        <a href="/manifesto"><span>02</span> MANIFESTO <b aria-hidden="true">↗</b></a>
-        <a href="/privacy"><span>03</span> PRIVACY <b aria-hidden="true">↗</b></a>
+        <a href="/"><span>02</span> HOME <b aria-hidden="true">↗</b></a>
       </nav>
       <a class="room-menu__leave" href="/" data-room-logout>LEAVE ROOM <span aria-hidden="true">↗</span></a>
     </div>
@@ -1663,7 +1664,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     : isRoomSurface
       ? [
           { label: "HOW IT WORKS", href: "/how-it-works" },
-          { label: "LOG OUT", href: "/" },
+          { label: "LEAVE ROOM", href: "/" },
         ]
     : [
         { label: "THE ROOM", href: "/room" },
@@ -1975,6 +1976,10 @@ function renderExplore(path = "/room"): string {
   return publicFrame(
     path,
     `<main id="main-content" class="public-main explore-main">
+      ${roomEntryTransitionActive ? `<div class="room-entry-transition" role="status" aria-live="polite">
+        <div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <p class="room-entry-transition__label">ENTERING / PRIVATE ROOM<span aria-hidden="true">_</span></p>
+      </div>` : ""}
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
           ${TerminalLabel("PRIVATE ROOM / OPEN THREADS")}
@@ -2128,6 +2133,12 @@ function createRoomDemoId(): string {
 }
 
 function clearRoomSession(): void {
+  if (roomEntryTimer !== undefined) {
+    window.clearTimeout(roomEntryTimer);
+    roomEntryTimer = undefined;
+  }
+
+  roomEntryTransitionActive = false;
   sessionStorage.removeItem("hidn:room:secret");
   sessionStorage.removeItem("hidn:room:backend-id");
   sessionStorage.removeItem("hidn:room:entered");
@@ -2137,6 +2148,26 @@ function clearRoomSession(): void {
   roomDemoMemo = "";
   roomLoginError = "";
   roomBackendStatus = "local";
+}
+
+function hasVerifiedRoomSession(): boolean {
+  return sessionStorage.getItem("hidn:room:verified") === "true"
+    && Boolean(sessionStorage.getItem("hidn:room:secret"));
+}
+
+function startRoomEntryTransition(): void {
+  if (roomEntryTimer !== undefined) {
+    window.clearTimeout(roomEntryTimer);
+  }
+
+  roomEntryTransitionActive = true;
+  sessionStorage.setItem("hidn:room:entered", "true");
+  navigateProductRoute("/room");
+  roomEntryTimer = window.setTimeout(() => {
+    roomEntryTransitionActive = false;
+    roomEntryTimer = undefined;
+    rerenderProductRoute();
+  }, 1200);
 }
 
 function renderRoomAccessChooser(): string {
@@ -2415,7 +2446,7 @@ function renderHome(): RenderedProductRoute {
             <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
             <h1 id="home-room-title">A ROOM<br />WITHOUT <em>NAMES.</em></h1>
             <p class="home-room-core__copy">A room for anonymous thoughts and unnamed conversations.</p>
-            <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
+            <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
             </a>
             <p class="home-room-core__status">LOCAL MOCK ROOM / NO LIVE USERS</p>
@@ -2648,9 +2679,18 @@ export function bindProductRoute(root: ParentNode = document): void {
     void refreshRoomConfig(root);
   }
   root.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
-    if (link.matches("[data-room-logout]") || link.textContent?.trim() === "LOG OUT") {
+    if (link.matches("[data-room-logout]") || link.textContent?.trim() === "LOG OUT" || link.textContent?.trim() === "LEAVE ROOM") {
       link.addEventListener("click", clearRoomSession);
     }
+  });
+
+  root.querySelector<HTMLAnchorElement>("[data-room-enter]")?.addEventListener("click", (event) => {
+    if (!hasVerifiedRoomSession()) {
+      return;
+    }
+
+    event.preventDefault();
+    startRoomEntryTransition();
   });
 
   if (normalizePath(window.location.pathname) === "/") {
@@ -2769,8 +2809,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         }
         case "room-enter":
-          sessionStorage.setItem("hidn:room:entered", "true");
-          navigateProductRoute("/room");
+          startRoomEntryTransition();
           break;
         case "room-create-channel":
           roomChannelNotice = "ROOM CREATION REQUEST QUEUED / LOCAL PROTOTYPE";

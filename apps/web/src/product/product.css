@@ -2980,9 +2980,9 @@
   background:
     repeating-linear-gradient(90deg, rgba(93, 255, 143, 0.018) 0 1px, transparent 1px 7rem),
     repeating-linear-gradient(0deg, rgba(93, 255, 143, 0.018) 0 1px, transparent 1px 3rem),
-    radial-gradient(circle at 50% 48%, rgba(18, 68, 42, 0.15), transparent 28rem),
-    radial-gradient(circle at 14% 12%, rgba(93, 255, 143, 0.05), transparent 23rem),
-    #010302;
+    radial-gradient(circle at 50% 48%, rgba(18, 68, 42, 0.09), transparent 28rem),
+    radial-gradient(circle at 14% 12%, rgba(93, 255, 143, 0.025), transparent 23rem),
+    #000201;
   color: var(--hidn-text);
   display: grid;
   isolation: isolate;
@@ -3000,19 +3000,19 @@
 
 .hidn-pointer-spotlight {
   background:
-    radial-gradient(circle 9rem at var(--pointer-x) var(--pointer-y), rgba(93, 255, 143, 0.13), transparent 72%),
-    radial-gradient(circle 28rem at var(--pointer-x) var(--pointer-y), rgba(18, 68, 42, 0.14), transparent 76%);
+    radial-gradient(circle 8rem at var(--pointer-x) var(--pointer-y), rgba(93, 255, 143, 0.26), transparent 68%),
+    radial-gradient(circle 24rem at var(--pointer-x) var(--pointer-y), rgba(18, 68, 42, 0.2), transparent 74%);
   inset: 0;
   mix-blend-mode: screen;
-  opacity: 0.22;
+  opacity: 0.14;
   pointer-events: none;
   position: absolute;
   transition: opacity 220ms ease;
-  z-index: 2;
+  z-index: 5;
 }
 
 .hidn-pointer-surface[data-pointer-active="true"] .hidn-pointer-spotlight {
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .hidn-pointer-surface[data-pointer-active="true"] .home-room-card {
@@ -3718,10 +3718,152 @@
   justify-content: center;
 }
 
+.room-entry-transition {
+  align-items: center;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(18, 68, 42, 0.2), transparent 22rem),
+    repeating-linear-gradient(90deg, rgba(93, 255, 143, 0.035) 0 1px, transparent 1px 4rem),
+    repeating-linear-gradient(0deg, rgba(93, 255, 143, 0.03) 0 1px, transparent 1px 4px),
+    #000201;
+  display: grid;
+  inset: 0;
+  isolation: isolate;
+  overflow: hidden;
+  place-items: center;
+  position: fixed;
+  z-index: 50;
+  animation: hidn-room-entry-fade 1.2s ease both;
+}
+
+.room-entry-transition::before,
+.room-entry-transition::after {
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.room-entry-transition::before {
+  background: repeating-linear-gradient(180deg, transparent 0 3px, rgba(93, 255, 143, 0.06) 3px 4px);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  animation: hidn-room-entry-scan 0.8s linear infinite;
+}
+
+.room-entry-transition::after {
+  background: radial-gradient(ellipse at center, transparent 24%, rgba(0, 0, 0, 0.82) 100%);
+  box-shadow: inset 0 0 12rem rgba(0, 0, 0, 0.7);
+}
+
+.room-entry-transition__rings {
+  height: min(48vh, 24rem);
+  perspective: 35rem;
+  position: absolute;
+  width: min(70vw, 44rem);
+}
+
+.room-entry-transition__rings span {
+  border: 1px solid rgba(93, 255, 143, 0.68);
+  box-shadow: 0 0 1.5rem rgba(93, 255, 143, 0.18), inset 0 0 1.5rem rgba(93, 255, 143, 0.06);
+  inset: 50%;
+  position: absolute;
+  transform: translate(-50%, -50%) scale(0.08) rotateX(18deg);
+  width: 100%;
+  height: 100%;
+  animation: hidn-room-entry-ring 1.05s var(--hidn-ease-sharp) both;
+}
+
+.room-entry-transition__rings span:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.room-entry-transition__rings span:nth-child(3) {
+  animation-delay: 0.16s;
+}
+
+.room-entry-transition__rings span:nth-child(4) {
+  animation-delay: 0.24s;
+}
+
+.room-entry-transition__label {
+  color: var(--hidn-signal);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  margin: 0;
+  position: relative;
+  text-transform: uppercase;
+  z-index: 2;
+  animation: hidn-room-entry-label 1.2s steps(2, end) both;
+}
+
+.room-entry-transition__label span {
+  animation: hidn-terminal-cursor 620ms steps(1, end) infinite;
+}
+
+@keyframes hidn-room-entry-fade {
+  0% {
+    opacity: 0;
+  }
+
+  12%,
+  78% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hidn-room-entry-ring {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.08) rotateX(18deg);
+  }
+
+  16% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.6) rotateX(18deg);
+  }
+}
+
+@keyframes hidn-room-entry-scan {
+  from {
+    transform: translateY(-10%);
+  }
+
+  to {
+    transform: translateY(10%);
+  }
+}
+
+@keyframes hidn-room-entry-label {
+  0%,
+  30% {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+
+  45%,
+  80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
 .room-access-main {
   background:
-    radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(18, 68, 42, 0.08), transparent 25rem),
-    #010302;
+    radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(18, 68, 42, 0.04), transparent 25rem),
+    #000201;
   isolation: isolate;
   overflow-x: clip;
   position: relative;
@@ -4156,6 +4298,11 @@
     radial-gradient(circle at 50% 18%, rgba(18, 68, 42, 0.13), transparent 34rem),
     var(--hidn-bg);
   position: relative;
+}
+
+.public-page--home,
+.public-page--room {
+  --hidn-bg: #000201;
 }
 
 .public-page:not(.public-page--home) .ui-nav-shell {
@@ -5079,4 +5226,21 @@
 
 .room-directory__folder-children .room-directory__room:first-child {
   border-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-entry-transition,
+  .room-entry-transition__label {
+    animation-duration: 320ms;
+  }
+
+  .room-entry-transition::before,
+  .room-entry-transition__label span {
+    animation: none;
+  }
+
+  .room-entry-transition__rings span {
+    animation: none;
+    opacity: 0;
+  }
 }
