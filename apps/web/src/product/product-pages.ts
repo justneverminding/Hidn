@@ -127,6 +127,7 @@ const roomChannelOptions: Array<{
 interface HomeFileAudioSession {
   audio: HTMLAudioElement;
   resumeAudio: () => void;
+  gestureHandler: (event: PointerEvent) => void;
 }
 
 const HOME_STREAM_LIMIT = 4;
@@ -599,6 +600,29 @@ function setHomeAudioUnavailable(root: ParentNode): void {
   }
 }
 
+function setHomeAudioAwaitingGesture(root: ParentNode): void {
+  const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
+  const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
+  if (!button) {
+    return;
+  }
+
+  button.setAttribute("aria-pressed", "false");
+  button.setAttribute("aria-label", "Enable ambient room sound");
+  button.dataset.state = "blocked";
+  if (label) {
+    label.textContent = "TAP";
+  }
+}
+
+function attemptHomeAudioPlayback(root: ParentNode, audio: HTMLAudioElement): void {
+  void audio.play().then(() => {
+    setHomeAudioState(root, true);
+  }).catch(() => {
+    setHomeAudioAwaitingGesture(root);
+  });
+}
+
 function startHomeAudio(root: ParentNode): void {
   if (typeof window.Audio === "undefined") {
     setHomeAudioUnavailable(root);
@@ -606,8 +630,7 @@ function startHomeAudio(root: ParentNode): void {
   }
 
   if (homeFileAudioSession) {
-    void homeFileAudioSession.audio.play();
-    setHomeAudioState(root, true);
+    attemptHomeAudioPlayback(root, homeFileAudioSession.audio);
     return;
   }
 
@@ -621,16 +644,24 @@ function startHomeAudio(root: ParentNode): void {
       return;
     }
 
-    void audio.play().catch(() => {
-      // Playback may be deferred until the visitor interacts with the page again.
-    });
+    attemptHomeAudioPlayback(root, audio);
+  };
+  const gestureHandler = (event: PointerEvent): void => {
+    if (event.target instanceof Element && event.target.closest("#home-audio-toggle")) {
+      return;
+    }
+
+    if (!audio.paused) {
+      document.removeEventListener("pointerdown", gestureHandler);
+      return;
+    }
+
+    attemptHomeAudioPlayback(root, audio);
   };
   document.addEventListener("visibilitychange", resumeAudio);
-  homeFileAudioSession = { audio, resumeAudio };
-  setHomeAudioState(root, true);
-  void audio.play().catch(() => {
-    stopHomeAudio(root);
-  });
+  document.addEventListener("pointerdown", gestureHandler, { passive: true });
+  homeFileAudioSession = { audio, resumeAudio, gestureHandler };
+  attemptHomeAudioPlayback(root, audio);
   return;
 }
 
@@ -639,6 +670,7 @@ function stopHomeAudio(root?: ParentNode): void {
     const session = homeFileAudioSession;
     homeFileAudioSession = undefined;
     document.removeEventListener("visibilitychange", session.resumeAudio);
+    document.removeEventListener("pointerdown", session.gestureHandler);
     session.audio.pause();
     session.audio.currentTime = 0;
     session.audio.removeAttribute("src");
@@ -656,7 +688,11 @@ function stopHomeAudio(root?: ParentNode): void {
 
 function toggleHomeAudio(root: ParentNode): void {
   if (homeFileAudioSession) {
-    stopHomeAudio(root);
+    if (homeFileAudioSession.audio.paused) {
+      attemptHomeAudioPlayback(root, homeFileAudioSession.audio);
+    } else {
+      stopHomeAudio(root);
+    }
     return;
   }
 
@@ -2645,7 +2681,9 @@ export function bindProductRoute(root: ParentNode = document): void {
     if (audioToggle && typeof window.Audio === "undefined") {
       setHomeAudioUnavailable(root);
     } else {
-      if (homeFileAudioSession) {
+      if (normalizedPath === "/") {
+        startHomeAudio(root);
+      } else if (homeFileAudioSession) {
         setHomeAudioState(root, true);
       }
       audioToggle?.addEventListener("click", () => {

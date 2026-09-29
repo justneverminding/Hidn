@@ -3290,6 +3290,16 @@
   content: "◖";
 }
 
+.home-room-audio-toggle[data-state="blocked"] {
+  border-color: rgba(255, 190, 72, 0.45);
+  color: var(--hidn-broadcast-amber);
+}
+
+.home-room-audio-toggle[data-state="blocked"]::before {
+  color: var(--hidn-broadcast-amber);
+  content: "!";
+}
+
 .home-room-audio-toggle [data-home-audio-label] {
   color: var(--hidn-broadcast-amber);
 }
