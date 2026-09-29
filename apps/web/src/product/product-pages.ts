@@ -262,7 +262,7 @@ function renderHomeTransmissionRows(): string {
     .join("");
 }
 
-function renderHomeRoomCards(): string {
+function renderHomeRoomCards(limit?: number): string {
   const cards: TransmissionView[] = [
     ...MOCK_CONFESSIONS.slice(0, 7).map(transmissionViewFromConfession),
     ...MOCK_INCOMING_TRANSMISSIONS.slice(0, 5).map((transmission) => ({
@@ -286,7 +286,7 @@ function renderHomeRoomCards(): string {
     ["87%", "27%", "5deg", "0.5", "-18s", "25s", "0.35rem"],
   ] as const;
 
-  return cards
+  return cards.slice(0, limit ?? cards.length)
     .map((transmission, index) => {
       const [left, top, rotation, scale, delay, duration, driftX] = positions[index % positions.length];
       const category = transmission.category ?? "ROOM";
@@ -1655,6 +1655,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/confess" || normalizedPath.startsWith("/c/");
+  const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface;
   const footerLinks = isHome || isRoomCreation
     ? [{ label: "HOW IT WORKS", href: "/how-it-works" }]
     : isHowItWorks
@@ -1671,8 +1672,9 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
         { label: "PRIVACY", href: "/privacy" },
       ];
 
-  return `<div class="public-page ${pageClass} fx-grain fx-vignette">
+  return `<div class="public-page ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
+    ${isPointerSurface ? renderPointerSpotlight() : ""}
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface)}
     ${isRoomSurface ? "" : publicNavigation(path)}
     ${main}
@@ -2275,7 +2277,7 @@ function renderRoomAccess(): RenderedProductRoute {
       `<main id="main-content" class="public-main room-main room-access-main hidn-pointer-surface" data-pointer-surface>
         <div class="room-access-atmosphere" aria-hidden="true">
           ${renderPointerSpotlight()}
-          <div class="room-access-atmosphere__cards">${renderHomeRoomCards()}</div>
+          <div class="room-access-atmosphere__cards">${renderHomeRoomCards(6)}</div>
         </div>
         ${content}
       </main>`,

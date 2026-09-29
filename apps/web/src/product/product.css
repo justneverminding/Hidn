@@ -2980,8 +2980,8 @@
   background:
     repeating-linear-gradient(90deg, rgba(93, 255, 143, 0.018) 0 1px, transparent 1px 7rem),
     repeating-linear-gradient(0deg, rgba(93, 255, 143, 0.018) 0 1px, transparent 1px 3rem),
-    radial-gradient(circle at 50% 48%, rgba(18, 68, 42, 0.22), transparent 28rem),
-    radial-gradient(circle at 14% 12%, rgba(93, 255, 143, 0.08), transparent 23rem),
+    radial-gradient(circle at 50% 48%, rgba(18, 68, 42, 0.15), transparent 28rem),
+    radial-gradient(circle at 14% 12%, rgba(93, 255, 143, 0.05), transparent 23rem),
     #010302;
   color: var(--hidn-text);
   display: grid;
@@ -3000,11 +3000,11 @@
 
 .hidn-pointer-spotlight {
   background:
-    radial-gradient(circle 9rem at var(--pointer-x) var(--pointer-y), rgba(93, 255, 143, 0.19), transparent 72%),
-    radial-gradient(circle 28rem at var(--pointer-x) var(--pointer-y), rgba(18, 68, 42, 0.2), transparent 76%);
+    radial-gradient(circle 9rem at var(--pointer-x) var(--pointer-y), rgba(93, 255, 143, 0.13), transparent 72%),
+    radial-gradient(circle 28rem at var(--pointer-x) var(--pointer-y), rgba(18, 68, 42, 0.14), transparent 76%);
   inset: 0;
   mix-blend-mode: screen;
-  opacity: 0.32;
+  opacity: 0.22;
   pointer-events: none;
   position: absolute;
   transition: opacity 220ms ease;
@@ -3012,7 +3012,7 @@
 }
 
 .hidn-pointer-surface[data-pointer-active="true"] .hidn-pointer-spotlight {
-  opacity: 0.9;
+  opacity: 0.72;
 }
 
 .hidn-pointer-surface[data-pointer-active="true"] .home-room-card {
@@ -3040,8 +3040,8 @@
 }
 
 .home-room-stage::after {
-  background: radial-gradient(ellipse at center, transparent 37%, rgba(0, 0, 0, 0.62) 100%);
-  box-shadow: inset 0 0 12rem rgba(0, 0, 0, 0.46);
+  background: radial-gradient(ellipse at center, transparent 34%, rgba(0, 0, 0, 0.7) 100%);
+  box-shadow: inset 0 0 12rem rgba(0, 0, 0, 0.56);
   z-index: 3;
 }
 
@@ -3706,9 +3706,21 @@
   padding: clamp(5rem, 9vw, 8rem) clamp(1rem, 4vw, 3.5rem);
 }
 
+.public-page--room .ui-footer-shell {
+  justify-content: center;
+}
+
+.public-page--room .ui-footer-shell__identity {
+  display: none;
+}
+
+.public-page--room .ui-footer-shell__links {
+  justify-content: center;
+}
+
 .room-access-main {
   background:
-    radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(18, 68, 42, 0.12), transparent 25rem),
+    radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(18, 68, 42, 0.08), transparent 25rem),
     #010302;
   isolation: isolate;
   overflow-x: clip;
@@ -3771,11 +3783,11 @@
 .room-access-header__title {
   color: var(--hidn-bone);
   font-family: var(--hidn-font-display);
-  font-size: clamp(2.7rem, 7vw, 5.8rem);
+  font-size: clamp(2.25rem, 5.2vw, 4.5rem);
   font-weight: 400;
-  letter-spacing: -0.06em;
-  line-height: 0.86;
-  margin: 1.25rem 0 1rem;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+  margin: 1.1rem 0 1.25rem;
 }
 
 .room-access-header__title em {
