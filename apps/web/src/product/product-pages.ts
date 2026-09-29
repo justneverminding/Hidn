@@ -217,7 +217,10 @@ function renderTransmissionRow(
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}">♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
         <a class="room-message__action" href="${escapeHtml(options.href)}">COMMENTS ${repliesForThread(threadId).length}</a>
+        <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
+        <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
         <a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>
+        <span class="thread-share-status" data-share-status="${escapeHtml(threadId)}" role="status" aria-live="polite"></span>
       </div>`
     : options.href
       ? `<a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>`
@@ -872,6 +875,367 @@ function formatVisitorLocalTime(): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (current && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(current);
+      current = word;
+      if (lines.length === maxLines - 1) {
+        break;
+      }
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+  }
+
+  if (lines.length === maxLines && words.length > 0) {
+    const lastIndex = lines.length - 1;
+    let last = lines[lastIndex];
+    while (ctx.measureText(`${last}…`).width > maxWidth && last.length > 1) {
+      last = last.slice(0, -1).trim();
+    }
+    lines[lastIndex] = `${last}…`;
+  }
+
+  return lines;
+}
+
+function drawCanvasRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
+  const corner = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + corner, y);
+  ctx.lineTo(x + width - corner, y);
+  ctx.arcTo(x + width, y, x + width, y + corner, corner);
+  ctx.lineTo(x + width, y + height - corner);
+  ctx.arcTo(x + width, y + height, x + width - corner, y + height, corner);
+  ctx.lineTo(x + corner, y + height);
+  ctx.arcTo(x, y + height, x, y + height - corner, corner);
+  ctx.lineTo(x, y + corner);
+  ctx.arcTo(x, y, x + corner, y, corner);
+  ctx.closePath();
+}
+
+interface ThreadImageReply {
+  index: number;
+  reply: AnonymousReply;
+}
+
+async function createThreadImage(confession: MockConfession, focusReply?: ThreadImageReply): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 1500;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+
+  const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  background.addColorStop(0, "#030806");
+  background.addColorStop(0.45, "#07140d");
+  background.addColorStop(1, "#010302");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const glow = ctx.createRadialGradient(900, 220, 20, 900, 220, 720);
+  glow.addColorStop(0, "rgba(93, 255, 143, 0.17)");
+  glow.addColorStop(1, "rgba(93, 255, 143, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.08)";
+  ctx.lineWidth = 1;
+  for (let x = 48; x < canvas.width; x += 48) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 48; y < canvas.height; y += 48) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
+  for (let y = 0; y < canvas.height; y += 6) {
+    ctx.fillRect(0, y, canvas.width, 1);
+  }
+
+  drawCanvasRoundedRect(ctx, 34, 34, canvas.width - 68, canvas.height - 68, 34);
+  ctx.fillStyle = "rgba(3, 10, 6, 0.88)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.7)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(93, 255, 143, 0.08)";
+  drawCanvasRoundedRect(ctx, 35, 35, canvas.width - 70, 176, 32);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.45)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(72, 210);
+  ctx.lineTo(canvas.width - 72, 210);
+  ctx.stroke();
+
+  const logo = await new Promise<HTMLImageElement | undefined>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(undefined);
+    image.src = "/brand/hidn-symbol.png";
+  });
+  ctx.fillStyle = "#020504";
+  drawCanvasRoundedRect(ctx, 74, 74, 92, 92, 22);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.7)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (logo) {
+    ctx.drawImage(logo, 84, 84, 72, 72);
+  } else {
+    ctx.fillStyle = "#5dff8f";
+    ctx.font = "700 30px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillText("H", 105, 124);
+  }
+
+  ctx.font = "700 31px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillStyle = "#5dff8f";
+  ctx.fillText("HIDN", 194, 111);
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("THE ROOM / PRIVATE SIGNALS", 194, 143);
+
+  ctx.fillStyle = "rgba(217, 245, 222, 0.75)";
+  ctx.textAlign = "right";
+  ctx.font = "600 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("NO NAME / NO PROFILE", canvas.width - 74, 91);
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "700 19px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`${formatTransmissionTime(confession.time)} / ${focusReply ? "REPLY" : "THREAD"}`, canvas.width - 74, 126);
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("LOCAL IMAGE / HIDN", canvas.width - 74, 158);
+  ctx.textAlign = "left";
+
+  const replyCount = repliesForThread(confession.id).length;
+  const replies = repliesForThread(confession.id).slice(0, 2);
+  const contentX = 82;
+  const contentWidth = canvas.width - 164;
+  let cursorY = 258;
+
+  const drawChatBubble = (label: string, text: string, accent: boolean, fontSize: number, maxLines: number): number => {
+    ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    const lineHeight = Math.round(fontSize * 1.35);
+    const lines = wrapCanvasText(ctx, `“${text}”`, contentWidth - 64, maxLines);
+    const height = 66 + lines.length * lineHeight + 28;
+    drawCanvasRoundedRect(ctx, contentX, cursorY, contentWidth, height, 24);
+    ctx.fillStyle = accent ? "rgba(93, 255, 143, 0.13)" : "rgba(161, 188, 167, 0.07)";
+    ctx.fill();
+    ctx.strokeStyle = accent ? "rgba(93, 255, 143, 0.7)" : "rgba(161, 188, 167, 0.28)";
+    ctx.lineWidth = accent ? 3 : 2;
+    ctx.stroke();
+    ctx.fillStyle = accent ? "#5dff8f" : "#a1bca7";
+    ctx.font = "600 15px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillText(label, contentX + 32, cursorY + 34);
+    ctx.fillStyle = "#f0f4e9";
+    ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    lines.forEach((line, index) => ctx.fillText(line, contentX + 32, cursorY + 78 + index * lineHeight));
+    cursorY += height + 22;
+    return height;
+  };
+
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(focusReply ? `REPLY / ${String(focusReply.index + 1).padStart(2, "0")}` : `THREAD / ${confession.reference.replace("// ", "")}`, contentX, cursorY);
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(`${confession.category} / ${replyCount} COMMENTS`, canvas.width - contentX, cursorY);
+  ctx.textAlign = "left";
+  cursorY += 30;
+
+  if (focusReply) {
+    drawChatBubble("ORIGINAL SIGNAL / CONTEXT", confession.text, false, 23, 3);
+    drawChatBubble(`ANONYMOUS / REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, focusReply.reply.text, true, 42, 6);
+  } else {
+    drawChatBubble("ANONYMOUS / ORIGINAL SIGNAL", confession.text, true, 42, 6);
+  }
+
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`REPLIES / ${String(replyCount).padStart(2, "0")}`, contentX, cursorY);
+  cursorY += 28;
+  replies.forEach((reply, index) => {
+    if (focusReply) {
+      return;
+    }
+    drawChatBubble(`ANONYMOUS / ${String(index + 1).padStart(2, "0")}`, reply.text, false, 23, 3);
+  });
+
+  ctx.fillStyle = "rgba(93, 255, 143, 0.09)";
+  drawCanvasRoundedRect(ctx, contentX, 1110, contentWidth, 104, 18);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("THREAD SIGNAL", contentX + 26, 1144);
+  ctx.fillStyle = "#f0f4e9";
+  ctx.font = "700 24px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`♡ ${reactionCountForThread(confession.id, confession.reactions)}`, contentX + 26, 1182);
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(`${replyCount} COMMENTS`, canvas.width - contentX - 26, 1173);
+  ctx.textAlign = "left";
+
+  const code = `${confession.id}${focusReply ? `R${focusReply.index}` : "T"}`;
+  ctx.fillStyle = "#5dff8f";
+  let barX = canvas.width - contentX - 190;
+  for (let index = 0; index < 24; index += 1) {
+    const height = 17 + (code.charCodeAt(index % code.length) % 22);
+    ctx.fillRect(barX, 1237 - height, 3 + (index % 2), height);
+    barX += 7;
+  }
+
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(contentX, 1276);
+  ctx.lineTo(canvas.width - contentX, 1276);
+  ctx.stroke();
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "700 26px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("PRIVATE ROOMS WITHOUT NAMES.", contentX, 1330);
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("NO HANDLE / NO PROFILE / NO TRAIL", contentX, 1372);
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#5dff8f";
+  ctx.fillText(focusReply ? "HIDN / REPLY CARD" : "HIDN / THREAD CARD", canvas.width - contentX, 1372);
+  ctx.textAlign = "left";
+
+  ctx.fillStyle = "rgba(93, 255, 143, 0.5)";
+  ctx.fillRect(contentX, 1410, 8, 8);
+  ctx.fillRect(contentX + 16, 1410, 8, 8);
+  ctx.fillRect(contentX + 32, 1410, 8, 8);
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "600 14px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("HIDN://THE_ROOM", contentX + 58, 1420);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("The thread image could not be created."));
+      }
+    }, "image/png");
+  });
+}
+
+function downloadThreadImage(blob: Blob, confession: MockConfession, filename = `hidn-thread-${confession.id}.png`): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+function setThreadShareStatus(root: ParentNode, id: string, message: string): void {
+  root.querySelectorAll<HTMLElement>('[data-share-status]').forEach((status) => {
+    if (status.dataset.shareStatus === id) {
+      status.textContent = message;
+    }
+  });
+}
+
+function replyIndexFromButton(button: HTMLButtonElement): number | undefined {
+  const rawIndex = button.dataset.replyIndex;
+  if (rawIndex === undefined) {
+    return undefined;
+  }
+
+  const index = Number(rawIndex);
+  return Number.isInteger(index) && index >= 0 ? index : undefined;
+}
+
+async function shareThreadImage(root: ParentNode, id: string, mode: "save" | "share" | "x", replyIndex?: number): Promise<void> {
+  const confession = getMockConfession(id);
+  if (!confession) {
+    return;
+  }
+
+  const reply = replyIndex === undefined ? undefined : repliesForThread(id)[replyIndex];
+  const focusReply = reply && replyIndex !== undefined ? { index: replyIndex, reply } : undefined;
+  const shareKey = focusReply ? `${id}:reply:${focusReply.index}` : id;
+  setThreadShareStatus(root, shareKey, "RENDERING IMAGE...");
+
+  try {
+    const blob = await createThreadImage(confession, focusReply);
+    const filename = focusReply
+      ? `hidn-reply-${confession.id}-${focusReply.index + 1}.png`
+      : `hidn-thread-${confession.id}.png`;
+    const file = new File([blob], filename, { type: "image/png" });
+
+    if (mode === "save") {
+      downloadThreadImage(blob, confession, filename);
+      setThreadShareStatus(root, shareKey, "IMAGE SAVED TO DEVICE");
+      return;
+    }
+
+    const canShareImage =
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [file] });
+
+    if (mode === "share" && canShareImage) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: focusReply ? "HIDN / anonymous reply" : "HIDN / anonymous thread",
+          text: focusReply ? "An anonymous reply from HIDN / THE ROOM." : "An anonymous thread from HIDN / THE ROOM.",
+        });
+        setThreadShareStatus(root, shareKey, "SHARE SHEET READY");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setThreadShareStatus(root, shareKey, "SHARE CANCELLED");
+          return;
+        }
+      }
+    }
+
+    downloadThreadImage(blob, confession, filename);
+    const xText = `“${focusReply?.reply.text ?? confession.text}” — HIDN / THE ROOM`;
+    const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(xText)}`;
+    const composer = window.open(xUrl, "_blank", "noopener,noreferrer");
+    setThreadShareStatus(
+      root,
+      shareKey,
+      composer ? "IMAGE SAVED / X COMPOSER OPEN" : "IMAGE SAVED / OPEN X TO ATTACH",
+    );
+  } catch {
+    setThreadShareStatus(root, shareKey, "IMAGE SHARE UNAVAILABLE");
+  }
+}
+
 function renderVisitorTimeSignal(className: string): string {
   return `<span class="${escapeHtml(className)} hidn-local-time-signal" title="Visitor local time, 24-hour format">
     <span class="hidn-local-time-signal__dot" aria-hidden="true"></span>
@@ -1326,6 +1690,11 @@ function renderThreadRoom(id: string, quotedText = ""): string {
           (reply, index) => `<article class="thread-room__message">
             <header><span>ANONYMOUS / ${String(index + 1).padStart(2, "0")}</span><time>${escapeHtml(reply.time)}</time></header>
             <p>${escapeHtml(reply.text)}</p>
+            <footer class="thread-room__message-actions">
+              <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SAVE IMAGE</button>
+              <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SHARE IMAGE</button>
+              <span class="thread-share-status" data-share-status="${escapeHtml(`${id}:reply:${index}`)}" role="status" aria-live="polite"></span>
+            </footer>
           </article>`,
         )
         .join("")
@@ -1409,9 +1778,12 @@ function renderDetail(id: string): RenderedProductRoute {
             <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}">♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).length))}</a>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
-            <button class="room-message__action" type="button" data-demo="true">SHARE</button>
+            <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
+            <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">SHARE IMAGE</button>
+            <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">X / POST</button>
             <button class="room-message__action" type="button" data-demo="true">REPORT</button>
           </div>
+          <p class="thread-share-status thread-share-status--detail" data-share-status="${escapeHtml(confession.id)}" role="status" aria-live="polite"></p>
           ${renderThreadRoom(confession.id, confession.text)}
           <p class="detail-boundary">NO PROFILE / NO AUTHOR PAGE / NO MORE FROM THIS PERSON</p>
           ${actionLink("BACK TO THE ROOM", "/room", "ghost", "detail-back")}
@@ -2032,6 +2404,15 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
           break;
         }
+        case "thread-save-image":
+          void shareThreadImage(root, button.dataset.threadId ?? "", "save", replyIndexFromButton(button));
+          break;
+        case "thread-share-image":
+          void shareThreadImage(root, button.dataset.threadId ?? "", "share", replyIndexFromButton(button));
+          break;
+        case "thread-x-share":
+          void shareThreadImage(root, button.dataset.threadId ?? "", "x", replyIndexFromButton(button));
+          break;
         case "proof-start":
           void runMockProof();
           break;

@@ -4392,6 +4392,18 @@
   max-width: 54ch;
 }
 
+.thread-room__message-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+
+.thread-room__message-actions .thread-share-status {
+  flex-basis: 100%;
+}
+
 .thread-room__empty {
   color: var(--hidn-text-dim);
   padding: clamp(1rem, 2.6vw, 1.5rem);
@@ -4719,6 +4731,24 @@
 
 .detail-actions {
   gap: 0.35rem;
+}
+
+.thread-share-status {
+  color: var(--hidn-broadcast-amber);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  min-height: 0.85rem;
+  text-transform: uppercase;
+}
+
+.thread-share-status--detail {
+  margin: -0.35rem 0 0;
+}
+
+.transmission-row__actions .thread-share-status {
+  flex-basis: 100%;
 }
 
 @media (max-width: 760px) {
