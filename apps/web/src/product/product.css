@@ -3295,7 +3295,7 @@
 }
 
 .home-room-card {
-  animation: hidn-room-card-float var(--card-duration) ease-in-out var(--card-delay) infinite alternate;
+  animation: hidn-room-card-arrival var(--card-duration) linear var(--card-delay) infinite;
   background: linear-gradient(135deg, rgba(7, 25, 15, 0.84), rgba(2, 7, 4, 0.68));
   border: 1px solid rgba(93, 255, 143, 0.26);
   box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.28), inset 0 0 2rem rgba(93, 255, 143, 0.025);
@@ -3311,8 +3311,24 @@
   top: var(--card-top);
   transform: rotate(var(--card-rotation)) scale(var(--card-scale));
   transform-origin: center;
+  transform-style: preserve-3d;
   will-change: filter, opacity, transform;
   width: clamp(10.5rem, 16vw, 15.5rem);
+}
+
+.public-page--home .home-room-card {
+  pointer-events: auto;
+}
+
+@media (hover: hover) {
+  .public-page--home .home-room-card:hover {
+    animation-play-state: paused;
+    filter: brightness(1.5) saturate(1.2) !important;
+    opacity: 1 !important;
+    outline: 1px solid rgba(93, 255, 143, 0.72);
+    outline-offset: 0.25rem;
+    z-index: 8;
+  }
 }
 
 .home-room-card::after {
@@ -3495,23 +3511,136 @@
   text-transform: uppercase;
 }
 
-@keyframes hidn-room-card-float {
-  0% {
-    filter: brightness(0.74);
-    opacity: 0.74;
-    transform: translate3d(0, -0.55rem, -14px) rotate(var(--card-rotation)) scale(var(--card-scale));
+.home-room-invite {
+  background: linear-gradient(145deg, rgba(7, 25, 15, 0.96), rgba(1, 5, 3, 0.98));
+  border: 1px solid rgba(93, 255, 143, 0.52);
+  bottom: clamp(4.3rem, 8vh, 6.5rem);
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.48), 0 0 2rem rgba(93, 255, 143, 0.08), inset 0 0 1.5rem rgba(93, 255, 143, 0.04);
+  display: grid;
+  gap: 0.45rem;
+  max-width: calc(100vw - 2rem);
+  padding: 1rem 1.1rem 1.05rem;
+  position: absolute;
+  right: clamp(1rem, 3vw, 2.5rem);
+  width: min(18rem, calc(100vw - 2rem));
+  z-index: 9;
+}
+
+.home-room-invite[hidden] {
+  display: none;
+}
+
+.home-room-invite:not([hidden]) {
+  animation: hidn-room-invite-arrival 520ms var(--hidn-ease) both;
+}
+
+.home-room-invite::before {
+  background: repeating-linear-gradient(180deg, transparent 0 3px, rgba(93, 255, 143, 0.07) 3px 4px);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.home-room-invite__close {
+  background: transparent;
+  border: 0;
+  color: var(--hidn-text-dim);
+  cursor: pointer;
+  font-family: var(--hidn-font-mono);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem;
+  position: absolute;
+  right: 0.55rem;
+  top: 0.45rem;
+  z-index: 1;
+}
+
+.home-room-invite__close:hover {
+  color: var(--hidn-signal);
+}
+
+.home-room-invite__eyebrow,
+.home-room-invite__copy,
+.home-room-invite__enter {
+  font-family: var(--hidn-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.home-room-invite__eyebrow {
+  color: var(--hidn-signal);
+  font-size: 0.5rem;
+  padding-right: 1.2rem;
+}
+
+.home-room-invite p {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-display);
+  font-size: 1.35rem;
+  line-height: 1;
+  margin: 0.25rem 0 0;
+}
+
+.home-room-invite__copy {
+  color: var(--hidn-text-muted);
+  font-size: 0.52rem;
+}
+
+.home-room-invite__enter {
+  color: var(--hidn-signal);
+  font-size: 0.56rem;
+  justify-self: start;
+  margin-top: 0.35rem;
+  text-decoration: none;
+}
+
+.home-room-invite__enter:hover {
+  color: var(--hidn-bone);
+}
+
+@keyframes hidn-room-invite-arrival {
+  from {
+    opacity: 0;
+    transform: translate3d(1.2rem, 0.5rem, 0) scale(0.96);
   }
 
-  48% {
-    filter: brightness(1.02);
-    opacity: 0.94;
-    transform: translate3d(0, 0.12rem, 8px) rotate(calc(var(--card-rotation) - 1deg)) scale(var(--card-scale));
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes hidn-room-card-arrival {
+  0% {
+    filter: brightness(0.38) blur(1.5px);
+    opacity: 0;
+    transform: translate3d(var(--card-drift-x), 1.4rem, -620px) rotate(var(--card-rotation)) scale(calc(var(--card-scale) * 0.38));
+  }
+
+  18% {
+    filter: brightness(0.66) blur(0.8px);
+    opacity: 0.34;
+    transform: translate3d(calc(var(--card-drift-x) * 0.55), 0.72rem, -310px) rotate(var(--card-rotation)) scale(calc(var(--card-scale) * 0.68));
+  }
+
+  52% {
+    filter: brightness(0.98);
+    opacity: 0.92;
+    transform: translate3d(0, 0.08rem, 40px) rotate(calc(var(--card-rotation) - 1deg)) scale(var(--card-scale));
+  }
+
+  78% {
+    filter: brightness(1.12);
+    opacity: 0.78;
+    transform: translate3d(calc(var(--card-drift-x) * -0.35), -0.32rem, 300px) rotate(calc(var(--card-rotation) + 1deg)) scale(calc(var(--card-scale) * 1.18));
   }
 
   100% {
-    filter: brightness(1.08);
-    opacity: 0.8;
-    transform: translate3d(var(--card-drift-x), 0.72rem, -4px) rotate(calc(var(--card-rotation) + 2deg)) scale(var(--card-scale));
+    filter: brightness(1.2) blur(1px);
+    opacity: 0;
+    transform: translate3d(calc(var(--card-drift-x) * -0.7), -1.1rem, 680px) rotate(calc(var(--card-rotation) + 2deg)) scale(calc(var(--card-scale) * 1.58));
   }
 }
 
@@ -3594,6 +3723,12 @@
   .home-room-card {
     min-height: 7rem;
     width: 10.5rem;
+  }
+
+  .home-room-invite {
+    bottom: 3.75rem;
+    right: 0.8rem;
+    width: min(15.5rem, calc(100vw - 1.6rem));
   }
 
   .home-room-card:nth-child(1) {
@@ -3682,6 +3817,10 @@
   .home-room-enter::after {
     animation: none;
     opacity: 0;
+  }
+
+  .home-room-invite:not([hidden]) {
+    animation: none;
   }
 
   .home-room-enter {

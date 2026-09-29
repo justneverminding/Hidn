@@ -73,6 +73,7 @@ let activeRoomChannel: RoomChannel = "general";
 let roomChannelNotice = "";
 let homeStreamTimer: number | undefined;
 let homeReceivingTimer: number | undefined;
+let homeInviteTimer: number | undefined;
 let homeHeadlineTimer: number | undefined;
 let homeHeadlineCursorTimer: number | undefined;
 let homeHeadlineHasRun = false;
@@ -130,6 +131,7 @@ interface HomeAudioSession {
   pulseTimer: number;
   radarTimer: number;
   staticTimer: number;
+  resumeAudio: () => void;
 }
 
 const HOME_STREAM_LIMIT = 4;
@@ -511,6 +513,32 @@ function stopHomeStream(): void {
   }
 }
 
+function stopHomeInvite(): void {
+  if (homeInviteTimer !== undefined) {
+    window.clearTimeout(homeInviteTimer);
+    homeInviteTimer = undefined;
+  }
+}
+
+function scheduleHomeInvite(root: ParentNode, delayMs: number): void {
+  stopHomeInvite();
+
+  const invite = root.querySelector<HTMLElement>("[data-home-invite]");
+  if (!invite) {
+    return;
+  }
+
+  homeInviteTimer = window.setTimeout(() => {
+    invite.hidden = false;
+    invite.dataset.state = "visible";
+    homeInviteTimer = undefined;
+  }, delayMs);
+}
+
+function startHomeInvite(root: ParentNode): void {
+  scheduleHomeInvite(root, 20000);
+}
+
 function setHomeAudioState(root: ParentNode, enabled: boolean): void {
   const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
   const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
@@ -734,7 +762,19 @@ function startHomeAudio(root: ParentNode): void {
   const pulseTimer = window.setInterval(pulse, 2680);
   const radarTimer = window.setInterval(radarPing, 4300);
   const staticTimer = window.setInterval(staticBurst, 6200);
-  homeAudioSession = { context, master, noise, motifTimer, oscillators, pulseTimer, radarTimer, staticTimer };
+  const resumeAudio = (): void => {
+    if (document.visibilityState !== "visible" || context.state === "closed" || context.state === "running") {
+      return;
+    }
+
+    void context.resume().catch(() => {
+      // Browsers can reject a resume while the document is backgrounded; the
+      // visibility and state listeners will retry when audio is allowed again.
+    });
+  };
+  document.addEventListener("visibilitychange", resumeAudio);
+  context.addEventListener("statechange", resumeAudio);
+  homeAudioSession = { context, master, noise, motifTimer, oscillators, pulseTimer, radarTimer, staticTimer, resumeAudio };
   master.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 1.6);
   playMotifNote();
   pulse();
@@ -761,6 +801,8 @@ function stopHomeAudio(root?: ParentNode): void {
   window.clearInterval(session.motifTimer);
   window.clearInterval(session.radarTimer);
   window.clearInterval(session.staticTimer);
+  document.removeEventListener("visibilitychange", session.resumeAudio);
+  session.context.removeEventListener("statechange", session.resumeAudio);
   const now = session.context.currentTime;
   session.master.gain.cancelScheduledValues(now);
   session.master.gain.setTargetAtTime(0.0001, now, 0.12);
@@ -2449,8 +2491,15 @@ function renderHome(): RenderedProductRoute {
             <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
             </a>
-            <p class="home-room-core__status">LOCAL MOCK ROOM / NO LIVE USERS</p>
+            <p class="home-room-core__status">WRITE FREELY / STAY UNKNOWN</p>
           </div>
+          <aside class="home-room-invite" data-home-invite hidden aria-label="Private room invitation">
+            <button class="home-room-invite__close" type="button" data-action="home-invite-close" aria-label="Dismiss room invitation">×</button>
+            <span class="home-room-invite__eyebrow">SIGNAL DETECTED / ROOM OPEN</span>
+            <p>What are you waiting for?</p>
+            <span class="home-room-invite__copy">The room is already receiving.</span>
+            <a class="home-room-invite__enter" href="/room/access" data-room-enter>ENTER ROOM <span aria-hidden="true">→</span></a>
+          </aside>
         </section>
       </main>`,
       "public-page--home",
@@ -2684,16 +2733,19 @@ export function bindProductRoute(root: ParentNode = document): void {
     }
   });
 
-  root.querySelector<HTMLAnchorElement>("[data-room-enter]")?.addEventListener("click", (event) => {
-    if (!hasVerifiedRoomSession()) {
-      return;
-    }
+  root.querySelectorAll<HTMLAnchorElement>("[data-room-enter]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (!hasVerifiedRoomSession()) {
+        return;
+      }
 
-    event.preventDefault();
-    startRoomEntryTransition();
+      event.preventDefault();
+      startRoomEntryTransition();
+    });
   });
 
   if (normalizePath(window.location.pathname) === "/") {
+    startHomeInvite(root);
     const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
     if (audioToggle && typeof window.AudioContext === "undefined") {
       setHomeAudioUnavailable(root);
@@ -2703,6 +2755,7 @@ export function bindProductRoute(root: ParentNode = document): void {
       });
     }
   } else {
+    stopHomeInvite();
     stopHomeStream();
     stopHomeHeadline();
     stopHomeAudio();
@@ -2741,6 +2794,16 @@ export function bindProductRoute(root: ParentNode = document): void {
           activeTextSelection = undefined;
           hideSelectionTools(root);
           break;
+        case "home-invite-close": {
+          stopHomeInvite();
+          const invite = root.querySelector<HTMLElement>("[data-home-invite]");
+          if (invite) {
+            invite.hidden = true;
+            invite.dataset.state = "dismissed";
+            scheduleHomeInvite(root, 30000);
+          }
+          break;
+        }
         case "room-menu-toggle": {
           const menu = button.closest<HTMLElement>("[data-room-menu]");
           const panel = menu?.querySelector<HTMLElement>(".room-menu__panel");
