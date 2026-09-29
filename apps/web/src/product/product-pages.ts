@@ -131,7 +131,7 @@ interface HomeFileAudioSession {
 
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
-const HOME_AUDIO_DEFAULT_VOLUME = 0.147;
+const HOME_AUDIO_DEFAULT_VOLUME = 0.1029;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
 let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
@@ -1542,8 +1542,8 @@ function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus 
         ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
         ${renderAmbientAudioControl()}
         ${renderVisitorTimeSignal("public-page__window-meta")}
-        ${showRoomMenu ? renderRoomMenu() : ""}
       </div>
+      ${showRoomMenu ? renderRoomMenu() : ""}
     </div>
   </div>`;
 }
