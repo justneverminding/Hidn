@@ -4130,6 +4130,22 @@
     justify-content: center;
     width: 100%;
   }
+
+  .room-access-atmosphere .home-room-card {
+    min-height: 5.5rem;
+    padding: 0.65rem;
+    width: 8rem;
+  }
+
+  .room-access-atmosphere .home-room-card__meta,
+  .room-access-atmosphere .home-room-card footer {
+    font-size: 0.42rem;
+    letter-spacing: 0.1em;
+  }
+
+  .room-access-atmosphere .home-room-card p {
+    font-size: 0.68rem;
+  }
 }
 
 /* Phase 2.11 — shared terminal chrome for every public surface */
