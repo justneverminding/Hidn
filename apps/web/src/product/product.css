@@ -3976,6 +3976,13 @@
   order: 3;
 }
 
+.public-page--room .public-page__window-actions .home-room-audio-toggle {
+  font-size: 0.48rem;
+  gap: 0.28rem;
+  min-height: 1.25rem;
+  padding: 0.14rem 0.28rem;
+}
+
 .public-page--room .public-main {
   display: flex;
   justify-content: center;
@@ -4016,6 +4023,7 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
+
 }
 
 .room-entry-transition {
@@ -4677,6 +4685,7 @@
   .room-access-atmosphere .home-room-card p {
     font-size: 0.68rem;
   }
+
 }
 
 /* Phase 2.11 — shared terminal chrome for every public surface */

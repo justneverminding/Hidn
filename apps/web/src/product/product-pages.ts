@@ -124,19 +124,13 @@ const roomChannelOptions: Array<{
   { key: "work", label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
 ];
 
-interface HomeAudioSession {
-  context: AudioContext;
-  master: GainNode;
-  noise: AudioBufferSourceNode;
-  motifTimer: number;
-  oscillators: OscillatorNode[];
-  pulseTimer: number;
-  radarTimer: number;
-  staticTimer: number;
+interface HomeFileAudioSession {
+  audio: HTMLAudioElement;
   resumeAudio: () => void;
 }
 
 const HOME_STREAM_LIMIT = 4;
+const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
 let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
@@ -147,7 +141,7 @@ let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_
     category: confession.category,
   }));
 let homeStreamCursor = 0;
-let homeAudioSession: HomeAudioSession | undefined;
+let homeFileAudioSession: HomeFileAudioSession | undefined;
 let cachedCipherScanHeight: number | undefined;
 let cachedCipherScanAt = 0;
 let cipherScanRequest: Promise<number> | undefined;
@@ -576,6 +570,13 @@ function setHomeAudioState(root: ParentNode, enabled: boolean): void {
   }
 }
 
+function renderAmbientAudioToggle(): string {
+  return `<button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="false" aria-label="Toggle ambient room sound">
+    <span class="home-room-audio-toggle__label">SIGNAL</span>
+    <span data-home-audio-label>OFF</span>
+  </button>`;
+}
+
 function setHomeAudioUnavailable(root: ParentNode): void {
   const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
   const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
@@ -592,259 +593,54 @@ function setHomeAudioUnavailable(root: ParentNode): void {
 }
 
 function startHomeAudio(root: ParentNode): void {
-  if (typeof window.AudioContext === "undefined") {
+  if (typeof window.Audio === "undefined") {
     setHomeAudioUnavailable(root);
     return;
   }
 
-  if (homeAudioSession) {
-    void homeAudioSession.context.resume();
+  if (homeFileAudioSession) {
+    void homeFileAudioSession.audio.play();
     setHomeAudioState(root, true);
     return;
   }
 
-  const context = new window.AudioContext();
-  const master = context.createGain();
-  const compressor = context.createDynamicsCompressor();
-  const filter = context.createBiquadFilter();
-  const subFilter = context.createBiquadFilter();
-  const oscillators: OscillatorNode[] = [];
+  const audio = new window.Audio(HOME_AUDIO_SRC);
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.volume = 0.72;
 
-  master.gain.setValueAtTime(0.0001, context.currentTime);
-  compressor.threshold.value = -32;
-  compressor.knee.value = 16;
-  compressor.ratio.value = 5;
-  compressor.attack.value = 0.012;
-  compressor.release.value = 0.42;
-  master.connect(compressor).connect(context.destination);
-
-  filter.type = "lowpass";
-  filter.frequency.value = 540;
-  filter.Q.value = 1.4;
-  filter.connect(master);
-
-  subFilter.type = "lowpass";
-  subFilter.frequency.value = 260;
-  subFilter.Q.value = 0.7;
-  subFilter.connect(master);
-
-  const addTone = (
-    frequency: number,
-    type: OscillatorType,
-    volume: number,
-    detune = 0,
-    destination: AudioNode = filter,
-  ): void => {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = type;
-    oscillator.frequency.value = frequency;
-    oscillator.detune.value = detune;
-    gain.gain.value = volume;
-    oscillator.connect(gain).connect(destination);
-    oscillator.start();
-    oscillators.push(oscillator);
-  };
-
-  addTone(36.71, "sine", 0.54, 0, subFilter);
-  addTone(55, "triangle", 0.1, -5, subFilter);
-  addTone(73.42, "sawtooth", 0.018, 4, subFilter);
-  addTone(110, "sine", 0.028, 3);
-  addTone(146.83, "sawtooth", 0.009, -8);
-
-  const filterLfo = context.createOscillator();
-  const filterLfoDepth = context.createGain();
-  filterLfo.frequency.value = 0.045;
-  filterLfoDepth.gain.value = 72;
-  filterLfo.connect(filterLfoDepth).connect(filter.frequency);
-  filterLfo.start();
-  oscillators.push(filterLfo);
-
-  const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-  const noiseData = noiseBuffer.getChannelData(0);
-  for (let index = 0; index < noiseData.length; index += 1) {
-    noiseData[index] = (Math.random() * 2 - 1) * 0.2;
-  }
-
-  const noise = context.createBufferSource();
-  const noiseFilter = context.createBiquadFilter();
-  const noiseGain = context.createGain();
-  noise.buffer = noiseBuffer;
-  noise.loop = true;
-  noiseFilter.type = "bandpass";
-  noiseFilter.frequency.value = 720;
-  noiseFilter.Q.value = 0.8;
-  noiseGain.gain.value = 0.008;
-  noise.connect(noiseFilter).connect(noiseGain).connect(master);
-  noise.start();
-
-  const noteDelay = context.createDelay(1);
-  const delayFeedback = context.createGain();
-  noteDelay.delayTime.value = 0.58;
-  delayFeedback.gain.value = 0.24;
-  noteDelay.connect(delayFeedback).connect(noteDelay);
-  noteDelay.connect(master);
-
-  // A slow, six-step signal signature: three notes, a gap, then a low return.
-  // The rest is intentional; it keeps the phrase atmospheric instead of game-like.
-  const motif = [146.83, 110, 0, 98, 73.42, 0];
-  let motifIndex = 0;
-  const playMotifNote = (): void => {
-    const now = context.currentTime + 0.02;
-    const frequency = motif[motifIndex % motif.length];
-    motifIndex += 1;
-    if (frequency === 0) {
-      return;
-    }
-
-    const oscillator = context.createOscillator();
-    const harmonic = context.createOscillator();
-    const harmonicGain = context.createGain();
-    const envelope = context.createGain();
-    const noteFilter = context.createBiquadFilter();
-
-    oscillator.type = "sawtooth";
-    oscillator.frequency.setValueAtTime(frequency, now);
-    harmonic.type = "sine";
-    harmonic.frequency.setValueAtTime(frequency * 2, now);
-    harmonic.detune.value = -11;
-    harmonicGain.gain.value = 0.08;
-    noteFilter.type = "lowpass";
-    noteFilter.frequency.value = Math.min(1150, frequency * 4.5);
-    noteFilter.Q.value = 1.8;
-    envelope.gain.setValueAtTime(0.0001, now);
-    envelope.gain.exponentialRampToValueAtTime(motifIndex % motif.length === 1 ? 0.062 : 0.045, now + 0.04);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.86);
-
-    oscillator.connect(envelope);
-    harmonic.connect(harmonicGain).connect(envelope);
-    envelope.connect(noteFilter);
-    noteFilter.connect(master);
-    noteFilter.connect(noteDelay);
-    oscillator.start(now);
-    harmonic.start(now);
-    oscillator.stop(now + 0.74);
-    harmonic.stop(now + 0.74);
-  };
-
-  const pulse = (): void => {
-    const now = context.currentTime;
-    [
-      { offset: 0, frequency: 52, endFrequency: 31, volume: 0.13, duration: 0.7 },
-      { offset: 0.22, frequency: 44, endFrequency: 28, volume: 0.065, duration: 0.52 },
-    ].forEach(({ offset, frequency, endFrequency, volume, duration }) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const start = now + offset;
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(frequency, start);
-      oscillator.frequency.exponentialRampToValueAtTime(endFrequency, start + duration * 0.58);
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(volume, start + 0.045);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      oscillator.connect(gain).connect(master);
-      oscillator.start(start);
-      oscillator.stop(start + duration + 0.02);
-    });
-  };
-
-  const radarPing = (): void => {
-    const now = context.currentTime;
-    const oscillator = context.createOscillator();
-    const harmonic = context.createOscillator();
-    const gain = context.createGain();
-    const harmonicGain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(920, now);
-    oscillator.frequency.exponentialRampToValueAtTime(430, now + 0.26);
-    harmonic.type = "sine";
-    harmonic.frequency.setValueAtTime(1840, now);
-    harmonic.frequency.exponentialRampToValueAtTime(860, now + 0.26);
-    harmonicGain.gain.value = 0.22;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.038, now + 0.022);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
-    harmonic.connect(harmonicGain).connect(gain);
-    oscillator.connect(gain).connect(master);
-    harmonic.start(now);
-    harmonic.stop(now + 0.38);
-    oscillator.start(now);
-    oscillator.stop(now + 0.38);
-  };
-
-  const staticBurst = (): void => {
-    const now = context.currentTime;
-    noiseGain.gain.cancelScheduledValues(now);
-    noiseGain.gain.setValueAtTime(0.008, now);
-    noiseGain.gain.linearRampToValueAtTime(0.026, now + 0.025);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.18);
-    noiseGain.gain.linearRampToValueAtTime(0.008, now + 0.52);
-  };
-
-  const motifTimer = window.setInterval(playMotifNote, 720);
-  const pulseTimer = window.setInterval(pulse, 2680);
-  const radarTimer = window.setInterval(radarPing, 4300);
-  const staticTimer = window.setInterval(staticBurst, 6200);
   const resumeAudio = (): void => {
-    if (document.visibilityState !== "visible" || context.state === "closed" || context.state === "running") {
+    if (document.visibilityState !== "visible" || !audio.paused) {
       return;
     }
 
-    void context.resume().catch(() => {
-      // Browsers can reject a resume while the document is backgrounded; the
-      // visibility and state listeners will retry when audio is allowed again.
+    void audio.play().catch(() => {
+      // Playback may be deferred until the visitor interacts with the page again.
     });
   };
   document.addEventListener("visibilitychange", resumeAudio);
-  context.addEventListener("statechange", resumeAudio);
-  homeAudioSession = { context, master, noise, motifTimer, oscillators, pulseTimer, radarTimer, staticTimer, resumeAudio };
-  master.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 1.6);
-  playMotifNote();
-  pulse();
-  radarPing();
-  staticBurst();
+  homeFileAudioSession = { audio, resumeAudio };
   setHomeAudioState(root, true);
-
-  void context.resume().catch(() => {
+  void audio.play().catch(() => {
     stopHomeAudio(root);
   });
+  return;
 }
 
 function stopHomeAudio(root?: ParentNode): void {
-  const session = homeAudioSession;
-  homeAudioSession = undefined;
-  if (!session) {
+  if (homeFileAudioSession) {
+    const session = homeFileAudioSession;
+    homeFileAudioSession = undefined;
+    document.removeEventListener("visibilitychange", session.resumeAudio);
+    session.audio.pause();
+    session.audio.currentTime = 0;
+    session.audio.removeAttribute("src");
+    session.audio.load();
     if (root) {
       setHomeAudioState(root, false);
     }
     return;
   }
-
-  window.clearInterval(session.pulseTimer);
-  window.clearInterval(session.motifTimer);
-  window.clearInterval(session.radarTimer);
-  window.clearInterval(session.staticTimer);
-  document.removeEventListener("visibilitychange", session.resumeAudio);
-  session.context.removeEventListener("statechange", session.resumeAudio);
-  const now = session.context.currentTime;
-  session.master.gain.cancelScheduledValues(now);
-  session.master.gain.setTargetAtTime(0.0001, now, 0.12);
-
-  window.setTimeout(() => {
-    session.oscillators.forEach((oscillator) => {
-      try {
-        oscillator.stop();
-      } catch {
-        // The oscillator may have already stopped during teardown.
-      }
-    });
-    try {
-      session.noise.stop();
-    } catch {
-      // The noise source may have already stopped during teardown.
-    }
-    void session.context.close();
-  }, 500);
 
   if (root) {
     setHomeAudioState(root, false);
@@ -852,7 +648,7 @@ function stopHomeAudio(root?: ParentNode): void {
 }
 
 function toggleHomeAudio(root: ParentNode): void {
-  if (homeAudioSession) {
+  if (homeFileAudioSession) {
     stopHomeAudio(root);
     return;
   }
@@ -1725,6 +1521,8 @@ function publicWindowTitle(path: string): string {
 }
 
 function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus = false): string {
+  const normalizedPath = normalizePath(path);
+
   return `<div class="public-page__window-chrome">
     <div class="public-page__window-bar">
       <div class="public-page__window-controls" aria-hidden="true">
@@ -1735,6 +1533,7 @@ function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus 
       <span class="public-page__window-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN://${publicWindowTitle(path)}</span>
       <div class="public-page__window-actions">
         ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
+        ${normalizedPath === "/room/access" ? renderAmbientAudioToggle() : ""}
         ${renderVisitorTimeSignal("public-page__window-meta")}
         ${showRoomMenu ? renderRoomMenu() : ""}
       </div>
@@ -2554,10 +2353,7 @@ function renderHome(): RenderedProductRoute {
               </div>
               <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
               <div class="home-room-window__right">
-                <button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="false" aria-label="Toggle ambient room sound">
-                  <span class="home-room-audio-toggle__label">SIGNAL</span>
-                  <span data-home-audio-label>OFF</span>
-                </button>
+                ${renderAmbientAudioToggle()}
                 ${renderVisitorTimeSignal("home-room-window__meta")}
               </div>
             </div>
@@ -2828,12 +2624,21 @@ export function bindProductRoute(root: ParentNode = document): void {
     });
   });
 
-  if (normalizePath(window.location.pathname) === "/") {
-    startHomeInvite(root);
+  const normalizedPath = normalizePath(window.location.pathname);
+  const isAudioSurface = normalizedPath === "/" || normalizedPath === "/room/access";
+  if (isAudioSurface) {
+    if (normalizedPath === "/") {
+      startHomeInvite(root);
+    } else {
+      stopHomeInvite();
+    }
     const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
-    if (audioToggle && typeof window.AudioContext === "undefined") {
+    if (audioToggle && typeof window.Audio === "undefined") {
       setHomeAudioUnavailable(root);
     } else {
+      if (homeFileAudioSession) {
+        setHomeAudioState(root, true);
+      }
       audioToggle?.addEventListener("click", () => {
         toggleHomeAudio(root);
       });
