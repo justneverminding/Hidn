@@ -2167,7 +2167,7 @@ function startRoomEntryTransition(): void {
     roomEntryTransitionActive = false;
     roomEntryTimer = undefined;
     rerenderProductRoute();
-  }, 1200);
+  }, 2300);
 }
 
 function renderRoomAccessChooser(): string {

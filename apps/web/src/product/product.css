@@ -3732,7 +3732,7 @@
   place-items: center;
   position: fixed;
   z-index: 50;
-  animation: hidn-room-entry-fade 1.2s ease both;
+  animation: hidn-room-entry-fade 2.3s ease both;
 }
 
 .room-entry-transition::before,
@@ -3770,19 +3770,19 @@
   transform: translate(-50%, -50%) scale(0.08) rotateX(18deg);
   width: 100%;
   height: 100%;
-  animation: hidn-room-entry-ring 1.05s var(--hidn-ease-sharp) both;
+  animation: hidn-room-entry-ring 2.05s var(--hidn-ease-sharp) both;
 }
 
 .room-entry-transition__rings span:nth-child(2) {
-  animation-delay: 0.08s;
-}
-
-.room-entry-transition__rings span:nth-child(3) {
   animation-delay: 0.16s;
 }
 
+.room-entry-transition__rings span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
 .room-entry-transition__rings span:nth-child(4) {
-  animation-delay: 0.24s;
+  animation-delay: 0.48s;
 }
 
 .room-entry-transition__label {
@@ -3794,7 +3794,7 @@
   position: relative;
   text-transform: uppercase;
   z-index: 2;
-  animation: hidn-room-entry-label 1.2s steps(2, end) both;
+  animation: hidn-room-entry-label 2.3s steps(2, end) both;
 }
 
 .room-entry-transition__label span {
