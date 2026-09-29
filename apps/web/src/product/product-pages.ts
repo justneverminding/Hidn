@@ -56,6 +56,7 @@ export interface RenderedProductRoute {
 }
 
 type FeedTab = "latest" | "random" | "felt";
+type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 
 let activeFeedTab: FeedTab = "latest";
@@ -68,6 +69,8 @@ let roomZecAmount = "CALCULATING...";
 let roomZecRateStatus = "";
 let roomBackendStatus: "local" | "connecting" | "connected" | "offline" = "local";
 let roomBackendId = "";
+let activeRoomChannel: RoomChannel = "general";
+let roomChannelNotice = "";
 let homeStreamTimer: number | undefined;
 let homeReceivingTimer: number | undefined;
 let homeHeadlineTimer: number | undefined;
@@ -81,10 +84,27 @@ interface AnonymousReply {
 }
 
 interface TransmissionView {
+  id?: string;
+  reference?: string;
   text: string;
   time: string;
   category?: string;
+  reactions?: number;
 }
+
+const roomChannelOptions: Array<{
+  key: RoomChannel;
+  label: string;
+  description: string;
+  categories?: MockCategory[];
+}> = [
+  { key: "general", label: "GENERAL", description: "all signals" },
+  { key: "love", label: "LOVE", description: "what stays unsaid", categories: ["RELATIONSHIPS", "JOY"] },
+  { key: "privacy", label: "PRIVACY", description: "the hidden layer", categories: ["IDENTITY", "LONELINESS"] },
+  { key: "politics", label: "POLITICS", description: "power / public life", categories: ["UNCERTAINTY", "MONEY"] },
+  { key: "family", label: "FAMILY", description: "the rooms we inherit", categories: ["FAMILY", "RELATIONSHIPS"] },
+  { key: "work", label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
+];
 
 interface HomeAudioSession {
   context: AudioContext;
@@ -124,6 +144,8 @@ const roomThreadReplies = new Map<string, AnonymousReply[]>([
     [{ text: "Choosing slowly is still choosing. You do not owe the room a performance.", time: "11 MIN AGO" }],
   ],
 ]);
+const roomLikeCounts = new Map<string, number>();
+const roomLikedIds = new Set<string>();
 
 const categoryOptions: Array<{ value: MockCategory; label: string }> = [
   { value: "REGRET", label: "Regret" },
@@ -158,10 +180,28 @@ function formatTransmissionTime(value: string): string {
 
 function transmissionViewFromConfession(confession: MockConfession): TransmissionView {
   return {
+    id: confession.id,
+    reference: confession.reference,
     text: confession.text,
     time: confession.time,
     category: confession.category,
+    reactions: confession.reactions,
   };
+}
+
+function repliesForThread(id: string): AnonymousReply[] {
+  const replies = roomThreadReplies.get(id);
+  if (replies) {
+    return replies;
+  }
+
+  const emptyReplies: AnonymousReply[] = [];
+  roomThreadReplies.set(id, emptyReplies);
+  return emptyReplies;
+}
+
+function reactionCountForThread(id: string, fallback = 0): number {
+  return roomLikeCounts.get(id) ?? fallback;
 }
 
 function renderTransmissionRow(
@@ -172,13 +212,20 @@ function renderTransmissionRow(
   const category = transmission.category
     ? `<span class="transmission-row__category">${escapeHtml(transmission.category)}</span>`
     : "";
-  const action = options.href
-    ? `<a class="transmission-row__view" href="${escapeHtml(options.href)}">VIEW <span aria-hidden="true">→</span></a>`
-    : "";
+  const threadId = transmission.id;
+  const action = options.href && threadId
+    ? `<div class="transmission-row__actions">
+        <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}">♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
+        <a class="room-message__action" href="${escapeHtml(options.href)}">COMMENTS ${repliesForThread(threadId).length}</a>
+        <a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>
+      </div>`
+    : options.href
+      ? `<a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>`
+      : "";
 
   return `<article class="transmission-row${className}">
     <div class="transmission-row__meta">
-      <span>ANONYMOUS MESSAGE</span>
+      <span>${escapeHtml(transmission.reference ?? "ANONYMOUS MESSAGE")}</span>
       <time>${escapeHtml(formatTransmissionTime(transmission.time))}</time>
     </div>
     <p class="transmission-row__thought">“${escapeHtml(transmission.text)}”</p>
@@ -365,7 +412,7 @@ async function registerRoomBackend(): Promise<void> {
     roomBackendStatus = "offline";
   }
 
-  if (normalizePath(window.location.pathname) === "/room" && roomAccessMode === "create") {
+  if (normalizePath(window.location.pathname) === "/room/access" && roomAccessMode === "create") {
     rerenderProductRoute();
   }
 }
@@ -850,10 +897,10 @@ function startVisitorClock(root: ParentNode): void {
 
 function publicNavigation(path: string): string {
   const normalizedPath = normalizePath(path);
-  const links = (normalizedPath === "/" || normalizedPath === "/room" || normalizedPath === "/how-it-works"
+  const links = (normalizedPath === "/" || normalizedPath === "/room" || normalizedPath === "/room/access" || normalizedPath === "/how-it-works"
     ? []
     : [
-        { label: "EXPLORE", href: "/explore" },
+        { label: "THE ROOM", href: "/room" },
         { label: "HOW IT WORKS", href: "/how-it-works" },
         { label: "MANIFESTO", href: "/manifesto" },
       ]
@@ -893,7 +940,7 @@ function publicWindowTitle(path: string): string {
     return "THREAD_ROOM";
   }
 
-  if (normalizedPath === "/explore") {
+  if (normalizedPath === "/room" || normalizedPath === "/explore") {
     return "THE_ROOM";
   }
 
@@ -924,9 +971,9 @@ function publicWindowChrome(path: string, showRoomMenu = false): string {
 function publicFrame(path: string, main: string, pageClass = ""): string {
   const normalizedPath = normalizePath(path);
   const isHome = normalizedPath === "/";
-  const isRoomCreation = normalizedPath === "/room";
+  const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
-  const isRoomSurface = normalizedPath === "/explore" || normalizedPath === "/confess" || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/confess" || normalizedPath.startsWith("/c/");
   const footerLinks = isHome || isRoomCreation
     ? [{ label: "HOW IT WORKS", href: "/how-it-works" }]
     : isHowItWorks
@@ -937,7 +984,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
           { label: "LOG OUT", href: "/" },
         ]
     : [
-        { label: "EXPLORE", href: "/explore" },
+        { label: "THE ROOM", href: "/room" },
         { label: "HOW IT WORKS", href: "/how-it-works" },
         { label: "MANIFESTO", href: "/manifesto" },
         { label: "PRIVACY", href: "/privacy" },
@@ -948,7 +995,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface)}
     ${isRoomSurface ? "" : publicNavigation(path)}
     ${main}
-    ${FooterShell({
+    ${isRoomSurface ? "" : FooterShell({
       links: footerLinks,
       identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
     })}
@@ -1099,7 +1146,7 @@ function renderSuccessStep(): string {
       <p class="flow-panel__lead">The message stays. You don't.</p>
       <p class="flow-success__note">This demo keeps the new confession in memory for this browser session only. No identity, account, or history was created.</p>
       <div class="flow-actions">
-        ${actionLink("VIEW →", confessionId ? `/c/${confessionId}` : "/explore", "primary")}
+        ${actionLink("VIEW →", confessionId ? `/c/${confessionId}` : "/room", "primary")}
         ${GhostButton({ label: "LEAVE →", dataAction: "leave-hidn" })}
       </div>
     </div>
@@ -1132,16 +1179,30 @@ function renderConfess(): string {
   );
 }
 
+function roomChannelOption(key: RoomChannel): (typeof roomChannelOptions)[number] {
+  return roomChannelOptions.find((channel) => channel.key === key) ?? roomChannelOptions[0];
+}
+
+function feedForRoomChannel(confessions: MockConfession[]): MockConfession[] {
+  const channel = roomChannelOption(activeRoomChannel);
+  if (!channel.categories) {
+    return confessions;
+  }
+
+  return confessions.filter((confession) => channel.categories?.includes(confession.category));
+}
+
 function feedForTab(tab: FeedTab): MockConfession[] {
+  let confessions: MockConfession[];
   if (tab === "felt") {
-    return [...MOCK_CONFESSIONS].sort((left, right) => right.reactions - left.reactions);
+    confessions = [...MOCK_CONFESSIONS].sort((left, right) => right.reactions - left.reactions);
+  } else if (tab === "random") {
+    confessions = [...MOCK_CONFESSIONS.slice(4), ...MOCK_CONFESSIONS.slice(0, 4)];
+  } else {
+    confessions = MOCK_CONFESSIONS;
   }
 
-  if (tab === "random") {
-    return [...MOCK_CONFESSIONS.slice(4), ...MOCK_CONFESSIONS.slice(0, 4)];
-  }
-
-  return MOCK_CONFESSIONS;
+  return feedForRoomChannel(confessions);
 }
 
 function renderTransmissionRows(tab: FeedTab): string {
@@ -1171,9 +1232,64 @@ function renderExploreTabs(): string {
   </div>`;
 }
 
-function renderExplore(): string {
+function renderRoomDirectory(): string {
+  const activeChannel = roomChannelOption(activeRoomChannel);
+  const folderGroups: Array<{ key: string; label: string; channels: typeof roomChannelOptions; open: boolean }> = [
+    {
+      key: "discussion",
+      label: "DISCUSSION ROOMS",
+      channels: roomChannelOptions.filter((channel) => channel.key !== "general"),
+      open: true,
+    },
+    {
+      key: "system",
+      label: "SYSTEM CHANNELS",
+      channels: roomChannelOptions.filter((channel) => channel.key === "general"),
+      open: activeRoomChannel === "general",
+    },
+  ];
+
+  return `<aside class="room-directory" aria-label="Discussion rooms">
+    <div class="room-directory__header">
+      ${TerminalLabel("ROOM INDEX / OPEN CHANNELS")}
+      <span class="room-directory__count">${roomChannelOptions.length} ROOMS</span>
+    </div>
+    <h2>Find your room.</h2>
+    <p class="room-directory__intro">Every channel is a shared wall. No handles, no member list, no public identity.</p>
+    <div class="room-directory__tree" role="tree" aria-label="Room folders">
+      ${folderGroups
+        .map(
+          (folder) => `<section class="room-directory__folder${folder.open ? " room-directory__folder--open" : ""}">
+            <button class="room-directory__folder-toggle" type="button" data-room-folder-toggle="${folder.key}" aria-expanded="${folder.open}" aria-controls="room-folder-${folder.key}">
+              <span class="room-directory__folder-caret" aria-hidden="true">${folder.open ? "▾" : "▸"}</span>
+              <span class="room-directory__folder-icon" aria-hidden="true"></span>
+              <strong>${folder.label}</strong>
+              <small>${String(folder.channels.length).padStart(2, "0")}</small>
+            </button>
+            <div class="room-directory__folder-children" id="room-folder-${folder.key}" role="group"${folder.open ? "" : " hidden"}>
+              ${folder.channels
+                .map((channel, index) => `<button class="room-directory__room${activeRoomChannel === channel.key ? " room-directory__room--active" : ""}" type="button" data-room-channel="${channel.key}" aria-pressed="${activeRoomChannel === channel.key}">
+                  <span class="room-directory__room-number">${String(index + 1).padStart(2, "0")}</span>
+                  <span class="room-directory__room-copy"><strong>${channel.label}</strong><small>${channel.description}</small></span>
+                  <span class="room-directory__room-arrow" aria-hidden="true">↗</span>
+                </button>`)
+                .join("")}
+            </div>
+          </section>`,
+        )
+        .join("")}
+    </div>
+    <div class="room-directory__footer">
+      <span>ACTIVE CHANNEL</span><strong>// ${activeChannel.label}</strong>
+      ${roomChannelNotice ? `<p role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
+      ${SecondaryButton({ label: "CREATE A ROOM →", dataAction: "room-create-channel" })}
+    </div>
+  </aside>`;
+}
+
+function renderExplore(path = "/room"): string {
   return publicFrame(
-    "/explore",
+    path,
     `<main id="main-content" class="public-main explore-main">
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
@@ -1186,13 +1302,14 @@ function renderExplore(): string {
             <div class="explore-feed__heading">
               <div>
                 ${TerminalLabel("RECEIVING / ANONYMOUS SIGNAL")}
-                <h2 id="explore-feed-title" class="type-heading-2">Thoughts in motion.</h2>
+                <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
               ${StatusIndicator("LOCAL THREAD / LIVE FEEL", "warning", true)}
             </div>
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
           </section>
+          ${renderRoomDirectory()}
         </div>
       </div>
     </main>`,
@@ -1200,18 +1317,7 @@ function renderExplore(): string {
   );
 }
 
-function repliesForThread(id: string): AnonymousReply[] {
-  const replies = roomThreadReplies.get(id);
-  if (replies) {
-    return replies;
-  }
-
-  const emptyReplies: AnonymousReply[] = [];
-  roomThreadReplies.set(id, emptyReplies);
-  return emptyReplies;
-}
-
-function renderThreadRoom(id: string): string {
+function renderThreadRoom(id: string, quotedText = ""): string {
   const replies = repliesForThread(id);
   const replyCount = replies.length;
   const messages = replyCount
@@ -1233,10 +1339,11 @@ function renderThreadRoom(id: string): string {
       </div>
       <span class="thread-room__signal"><i aria-hidden="true"></i> ${replyCount ? `RECEIVING / ${replyCount}` : "OPEN CHANNEL"}</span>
     </header>
+    ${quotedText ? `<blockquote class="thread-room__quote">“${escapeHtml(quotedText)}”</blockquote>` : ""}
     <div class="thread-room__messages" aria-live="polite">${messages}</div>
     <form class="thread-room__composer" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
-        <span class="ui-field__label">REPLY WITHOUT A NAME</span>
+        <span class="ui-field__label">QUOTE / REPLY WITHOUT A NAME</span>
         <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="Add your thought to the thread..."></textarea>
       </label>
       <div class="thread-room__composer-footer">
@@ -1266,7 +1373,7 @@ function renderDetail(id: string): RenderedProductRoute {
           <div class="hidn-container--reading detail-page">
             <h1 class="detail-page__title">TRANSMISSION NOT FOUND</h1>
             ${ErrorState("TRANSMISSION NOT FOUND", "This local demo confession is no longer available in memory.")}
-            ${actionLink("BACK TO CONFESSIONS", "/explore", "secondary")}
+            ${actionLink("BACK TO THE ROOM", "/room", "secondary")}
           </div>
         </main>`,
         "public-page--detail",
@@ -1293,19 +1400,21 @@ function renderDetail(id: string): RenderedProductRoute {
             </div>
           </article>
           <div class="detail-meta-grid">
-            <div><span>REACTIONS</span><strong>${escapeHtml(String(confession.reactions))} FELT</strong></div>
+            <div><span>LIKES</span><strong>${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</strong></div>
+            <div><span>COMMENTS</span><strong>${escapeHtml(String(repliesForThread(confession.id).length))}</strong></div>
             <div><span>POSTED</span><strong>${escapeHtml(confession.relativeTime)}</strong></div>
-            <div><span>HISTORY</span><strong>NONE</strong></div>
           </div>
           ${SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
-            <button class="ui-confession-card__action" type="button" data-demo="true">♡ ${escapeHtml(String(confession.reactions))}</button>
-            <button class="ui-confession-card__action" type="button" data-demo="true">SHARE</button>
-            <button class="ui-confession-card__action" type="button" data-demo="true">REPORT</button>
+            <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}">♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
+            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).length))}</a>
+            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
+            <button class="room-message__action" type="button" data-demo="true">SHARE</button>
+            <button class="room-message__action" type="button" data-demo="true">REPORT</button>
           </div>
-          ${renderThreadRoom(confession.id)}
+          ${renderThreadRoom(confession.id, confession.text)}
           <p class="detail-boundary">NO PROFILE / NO AUTHOR PAGE / NO MORE FROM THIS PERSON</p>
-          ${actionLink("BACK TO CONFESSIONS", "/explore", "ghost", "detail-back")}
+          ${actionLink("BACK TO THE ROOM", "/room", "ghost", "detail-back")}
         </div>
       </main>`,
       "public-page--detail",
@@ -1465,7 +1574,7 @@ function renderRoomAccess(): RenderedProductRoute {
   return {
     metadata: ROOM_METADATA,
     html: publicFrame(
-      "/room",
+      "/room/access",
       `<main id="main-content" class="public-main room-main">
         ${content}
       </main>`,
@@ -1542,7 +1651,7 @@ function renderPlaceholder(path: string): RenderedProductRoute {
           }
         </div>
       </main>`,
-      "public-page--placeholder",
+      `public-page--placeholder${path === "/how-it-works" ? " public-page--how-it-works" : ""}`,
     ),
   };
 }
@@ -1602,7 +1711,7 @@ function renderHome(): RenderedProductRoute {
             <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
             <h1 id="home-room-title">A ROOM<br />WITHOUT <em>NAMES.</em></h1>
             <p class="home-room-core__copy">A room for anonymous thoughts and unnamed conversations.</p>
-            <a class="ui-button ui-button--primary home-room-enter" href="/room" data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
+            <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
             </a>
             <p class="home-room-core__status">LOCAL MOCK ROOM / NO LIVE USERS</p>
@@ -1622,6 +1731,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   }
 
   if (normalizedPath === "/room") {
+    return { metadata: EXPLORE_METADATA, html: renderExplore("/room") };
+  }
+
+  if (normalizedPath === "/room/access") {
     return renderRoomAccess();
   }
 
@@ -1630,7 +1743,8 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   }
 
   if (normalizedPath === "/explore") {
-    return { metadata: EXPLORE_METADATA, html: renderExplore() };
+    window.history.replaceState({}, "", "/room");
+    return { metadata: EXPLORE_METADATA, html: renderExplore("/room") };
   }
 
   if (["/manifesto", "/how-it-works", "/privacy"].includes(normalizedPath)) {
@@ -1725,13 +1839,81 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
     button.setAttribute("aria-selected", String(button.dataset.feedTab === tab));
   });
   bindComponentInteractions(list);
+  bindRoomLikeInteractions(list);
+}
+
+function bindRoomLikeInteractions(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>('[data-action="room-like"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const threadId = button.dataset.threadId;
+      if (!threadId) {
+        return;
+      }
+
+      const liked = roomLikedIds.has(threadId);
+      const displayedCount = Number(button.textContent?.match(/\d+/)?.[0] ?? "0");
+      const currentCount = reactionCountForThread(threadId, displayedCount);
+      const nextCount = currentCount + (liked ? -1 : 1);
+      if (liked) {
+        roomLikedIds.delete(threadId);
+      } else {
+        roomLikedIds.add(threadId);
+      }
+      roomLikeCounts.set(threadId, Math.max(0, nextCount));
+
+      if (normalizePath(window.location.pathname) === "/room" || normalizePath(window.location.pathname) === "/explore") {
+        renderExploreFeed(root, activeFeedTab);
+      } else {
+        rerenderProductRoute();
+      }
+    });
+  });
+}
+
+function bindRoomChannelInteractions(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-room-channel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.roomChannel as RoomChannel | undefined;
+      if (!key || !roomChannelOptions.some((channel) => channel.key === key)) {
+        return;
+      }
+
+      activeRoomChannel = key;
+      roomChannelNotice = "";
+      rerenderProductRoute();
+    });
+  });
+}
+
+function bindRoomFolderInteractions(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-room-folder-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const panelId = button.getAttribute("aria-controls");
+      const panel = panelId ? root.querySelector<HTMLElement>(`#${panelId}`) : null;
+      if (!panel) {
+        return;
+      }
+
+      const isOpen = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!isOpen));
+      panel.hidden = isOpen;
+      button.closest<HTMLElement>(".room-directory__folder")?.classList.toggle("room-directory__folder--open", !isOpen);
+      const caret = button.querySelector<HTMLElement>(".room-directory__folder-caret");
+      if (caret) {
+        caret.textContent = isOpen ? "▸" : "▾";
+      }
+    });
+  });
 }
 
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
+  bindRoomLikeInteractions(root);
+  bindRoomChannelInteractions(root);
+  bindRoomFolderInteractions(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
-  if (normalizePath(window.location.pathname) === "/room" && roomAccessMode === "create") {
+  if (normalizePath(window.location.pathname) === "/room/access" && roomAccessMode === "create") {
     void refreshRoomConfig(root);
   }
   root.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
@@ -1828,7 +2010,11 @@ export function bindProductRoute(root: ParentNode = document): void {
         }
         case "room-enter":
           sessionStorage.setItem("hidn:room:entered", "true");
-          navigateProductRoute("/explore");
+          navigateProductRoute("/room");
+          break;
+        case "room-create-channel":
+          roomChannelNotice = "ROOM CREATION REQUEST QUEUED / LOCAL PROTOTYPE";
+          rerenderProductRoute();
           break;
         case "thread-reply": {
           const threadRoot = button.closest<HTMLElement>("[data-thread-root]");

@@ -22,7 +22,7 @@ export interface HidnMetadata {
 
 export const SHELL_METADATA: HidnMetadata = {
   kind: "shell",
-  title: "HIDN — Anonymous Internet Noir",
+  title: "Hidn - A room without names",
   description:
     "HIDN is an anonymous confession platform designed around privacy by default.",
   canonicalPath: "/",
@@ -30,7 +30,7 @@ export const SHELL_METADATA: HidnMetadata = {
 
 export const HOME_METADATA: HidnMetadata = {
   kind: "public-home",
-  title: "HIDN — Say What You Can't Say Publicly",
+  title: "Hidn - A room without names",
   description:
     "Anonymous confessions without accounts or public identity. No accounts. No usernames. No public history.",
   canonicalPath: "/",
@@ -39,9 +39,9 @@ export const HOME_METADATA: HidnMetadata = {
 
 export const EXPLORE_METADATA: HidnMetadata = {
   kind: "explore",
-  title: "HIDN — Confessions",
-  description: "Anonymous transmissions in a local mock stream. No identities.",
-  canonicalPath: "/explore",
+  title: "HIDN — The Room",
+  description: "Anonymous thoughts and conversations in a room without names.",
+  canonicalPath: "/room",
   imagePath: "/brand/references/hidn-brand-reference-02.png",
 };
 
@@ -56,7 +56,7 @@ export const ROOM_METADATA: HidnMetadata = {
   kind: "private-room",
   title: "HIDN — Enter the Private Room",
   description: "A local prototype for creating or using a nameless HIDN room ID.",
-  canonicalPath: "/room",
+  canonicalPath: "/room/access",
 };
 
 export const SYSTEM_METADATA: HidnMetadata = {
