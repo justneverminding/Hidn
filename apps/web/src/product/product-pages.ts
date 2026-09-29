@@ -58,6 +58,7 @@ export interface RenderedProductRoute {
 type FeedTab = "latest" | "random" | "felt";
 type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
+type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 
 let activeFeedTab: FeedTab = "latest";
 let proofRunActive = false;
@@ -77,6 +78,10 @@ let homeHeadlineTimer: number | undefined;
 let homeHeadlineCursorTimer: number | undefined;
 let homeHeadlineHasRun = false;
 let visitorClockTimer: number | undefined;
+let activeTextSelection: SelectedTextItem | undefined;
+let selectedTextBatch: SelectedTextItem[] = [];
+let textSelectionInteractionsBound = false;
+let textSelectionRoot: ParentNode | undefined;
 
 interface AnonymousReply {
   text: string;
@@ -90,6 +95,15 @@ interface TransmissionView {
   time: string;
   category?: string;
   reactions?: number;
+}
+
+interface SelectedTextItem {
+  text: string;
+  id: string;
+  label: string;
+  kind: "thread" | "reply" | "text";
+  category: string;
+  time: string;
 }
 
 const roomChannelOptions: Array<{
@@ -213,6 +227,9 @@ function renderTransmissionRow(
     ? `<span class="transmission-row__category">${escapeHtml(transmission.category)}</span>`
     : "";
   const threadId = transmission.id;
+  const shareTextAttributes = threadId
+    ? `data-share-text data-share-id="${escapeHtml(threadId)}" data-share-kind="thread" data-share-label="${escapeHtml(transmission.reference ?? "ANONYMOUS THREAD")}" data-share-category="${escapeHtml(transmission.category ?? "IDENTITY")}" data-share-time="${escapeHtml(transmission.time)}"`
+    : "";
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}">♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
@@ -231,7 +248,7 @@ function renderTransmissionRow(
       <span>${escapeHtml(transmission.reference ?? "ANONYMOUS MESSAGE")}</span>
       <time>${escapeHtml(formatTransmissionTime(transmission.time))}</time>
     </div>
-    <p class="transmission-row__thought">“${escapeHtml(transmission.text)}”</p>
+    <p class="transmission-row__thought" ${shareTextAttributes}>“${escapeHtml(transmission.text)}”</p>
     <footer class="transmission-row__footer">
       ${category}
       ${action}
@@ -929,10 +946,16 @@ interface ThreadImageReply {
   reply: AnonymousReply;
 }
 
-async function createThreadImage(confession: MockConfession, focusReply?: ThreadImageReply): Promise<Blob> {
+async function createThreadImage(
+  confession: MockConfession,
+  focusReply?: ThreadImageReply,
+  cardType: ShareCardType = "THREAD",
+  suppliedReplies?: AnonymousReply[],
+): Promise<Blob> {
+  const compactCard = cardType === "TEXT" || cardType === "REPLY";
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
-  canvas.height = 1500;
+  canvas.height = compactCard ? 1000 : 1500;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Canvas rendering is unavailable.");
@@ -1020,14 +1043,15 @@ async function createThreadImage(confession: MockConfession, focusReply?: Thread
   ctx.fillText("NO NAME / NO PROFILE", canvas.width - 74, 91);
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 19px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`${formatTransmissionTime(confession.time)} / ${focusReply ? "REPLY" : "THREAD"}`, canvas.width - 74, 126);
+  ctx.fillText(`${formatTransmissionTime(confession.time)} / ${focusReply ? "REPLY" : cardType}`, canvas.width - 74, 126);
   ctx.fillStyle = "#a1bca7";
   ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.fillText("LOCAL IMAGE / HIDN", canvas.width - 74, 158);
   ctx.textAlign = "left";
 
-  const replyCount = repliesForThread(confession.id).length;
-  const replies = repliesForThread(confession.id).slice(0, 2);
+  const allReplies = suppliedReplies ?? repliesForThread(confession.id);
+  const replyCount = allReplies.length;
+  const replies = allReplies.slice(0, 2);
   const contentX = 82;
   const contentWidth = canvas.width - 164;
   let cursorY = 258;
@@ -1055,7 +1079,16 @@ async function createThreadImage(confession: MockConfession, focusReply?: Thread
 
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(focusReply ? `REPLY / ${String(focusReply.index + 1).padStart(2, "0")}` : `THREAD / ${confession.reference.replace("// ", "")}`, contentX, cursorY);
+  const cardHeading = focusReply
+    ? `REPLY / ${String(focusReply.index + 1).padStart(2, "0")}`
+    : cardType === "TEXT"
+      ? "SELECTED TEXT"
+      : cardType === "BATCH"
+        ? "SELECTED TEXT / BATCH"
+        : cardType === "REPLY"
+          ? "SELECTED REPLY"
+          : `THREAD / ${confession.reference.replace("// ", "")}`;
+  ctx.fillText(cardHeading, contentX, cursorY);
   ctx.fillStyle = "#a1bca7";
   ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "right";
@@ -1067,7 +1100,13 @@ async function createThreadImage(confession: MockConfession, focusReply?: Thread
     drawChatBubble("ORIGINAL SIGNAL / CONTEXT", confession.text, false, 23, 3);
     drawChatBubble(`ANONYMOUS / REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, focusReply.reply.text, true, 42, 6);
   } else {
-    drawChatBubble("ANONYMOUS / ORIGINAL SIGNAL", confession.text, true, 42, 6);
+    drawChatBubble(
+      cardType === "TEXT" ? "SELECTED / EXACT TEXT" : cardType === "REPLY" ? "SELECTED / REPLY" : cardType === "BATCH" ? "SELECTED / 01" : "ANONYMOUS / ORIGINAL SIGNAL",
+      confession.text,
+      true,
+      42,
+      compactCard ? 4 : 5,
+    );
   }
 
   ctx.fillStyle = "#5dff8f";
@@ -1078,25 +1117,26 @@ async function createThreadImage(confession: MockConfession, focusReply?: Thread
     if (focusReply) {
       return;
     }
-    drawChatBubble(`ANONYMOUS / ${String(index + 1).padStart(2, "0")}`, reply.text, false, 23, 3);
+    drawChatBubble(cardType === "BATCH" ? `SELECTED / ${String(index + 2).padStart(2, "0")}` : `ANONYMOUS / ${String(index + 1).padStart(2, "0")}`, reply.text, false, 23, 3);
   });
 
+  const signalY = compactCard ? Math.max(500, cursorY + 18) : 1110;
   ctx.fillStyle = "rgba(93, 255, 143, 0.09)";
-  drawCanvasRoundedRect(ctx, contentX, 1110, contentWidth, 104, 18);
+  drawCanvasRoundedRect(ctx, contentX, signalY, contentWidth, 104, 18);
   ctx.fill();
   ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.fillStyle = "#a1bca7";
   ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("THREAD SIGNAL", contentX + 26, 1144);
+  ctx.fillText("THREAD SIGNAL", contentX + 26, signalY + 34);
   ctx.fillStyle = "#f0f4e9";
   ctx.font = "700 24px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`♡ ${reactionCountForThread(confession.id, confession.reactions)}`, contentX + 26, 1182);
+  ctx.fillText(`♡ ${reactionCountForThread(confession.id, confession.reactions)}`, contentX + 26, signalY + 72);
   ctx.fillStyle = "#a1bca7";
   ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "right";
-  ctx.fillText(`${replyCount} COMMENTS`, canvas.width - contentX - 26, 1173);
+  ctx.fillText(`${replyCount} COMMENTS`, canvas.width - contentX - 26, signalY + 63);
   ctx.textAlign = "left";
 
   const code = `${confession.id}${focusReply ? `R${focusReply.index}` : "T"}`;
@@ -1104,34 +1144,45 @@ async function createThreadImage(confession: MockConfession, focusReply?: Thread
   let barX = canvas.width - contentX - 190;
   for (let index = 0; index < 24; index += 1) {
     const height = 17 + (code.charCodeAt(index % code.length) % 22);
-    ctx.fillRect(barX, 1237 - height, 3 + (index % 2), height);
+    ctx.fillRect(barX, signalY + 127 - height, 3 + (index % 2), height);
     barX += 7;
   }
 
+  const footerLineY = signalY + (compactCard ? 150 : 166);
   ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(contentX, 1276);
-  ctx.lineTo(canvas.width - contentX, 1276);
+  ctx.moveTo(contentX, footerLineY);
+  ctx.lineTo(canvas.width - contentX, footerLineY);
   ctx.stroke();
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 26px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("PRIVATE ROOMS WITHOUT NAMES.", contentX, 1330);
+  ctx.fillText("PRIVATE ROOMS WITHOUT NAMES.", contentX, footerLineY + (compactCard ? 50 : 54));
   ctx.fillStyle = "#a1bca7";
   ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("NO HANDLE / NO PROFILE / NO TRAIL", contentX, 1372);
+  ctx.fillText("NO HANDLE / NO PROFILE / NO TRAIL", contentX, footerLineY + (compactCard ? 86 : 96));
   ctx.textAlign = "right";
   ctx.fillStyle = "#5dff8f";
-  ctx.fillText(focusReply ? "HIDN / REPLY CARD" : "HIDN / THREAD CARD", canvas.width - contentX, 1372);
+  const cardFooter = focusReply
+    ? "HIDN / REPLY CARD"
+    : cardType === "TEXT"
+      ? "HIDN / TEXT CARD"
+      : cardType === "REPLY"
+        ? "HIDN / REPLY CARD"
+        : cardType === "BATCH"
+          ? "HIDN / BATCH CARD"
+          : "HIDN / THREAD CARD";
+  ctx.fillText(cardFooter, canvas.width - contentX, footerLineY + (compactCard ? 86 : 96));
   ctx.textAlign = "left";
 
+  const footerDotY = footerLineY + (compactCard ? 123 : 134);
   ctx.fillStyle = "rgba(93, 255, 143, 0.5)";
-  ctx.fillRect(contentX, 1410, 8, 8);
-  ctx.fillRect(contentX + 16, 1410, 8, 8);
-  ctx.fillRect(contentX + 32, 1410, 8, 8);
+  ctx.fillRect(contentX, footerDotY, 8, 8);
+  ctx.fillRect(contentX + 16, footerDotY, 8, 8);
+  ctx.fillRect(contentX + 32, footerDotY, 8, 8);
   ctx.fillStyle = "#5dff8f";
   ctx.font = "600 14px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("HIDN://THE_ROOM", contentX + 58, 1420);
+  ctx.fillText("HIDN://THE_ROOM", contentX + 58, footerLineY + (compactCard ? 133 : 144));
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -1166,6 +1217,77 @@ function setThreadShareStatus(root: ParentNode, id: string, message: string): vo
   });
 }
 
+function selectionConfession(item: SelectedTextItem, index: number): MockConfession {
+  return {
+    id: `selected-${index}-${Date.now().toString(36)}`,
+    reference: "// SELECTED",
+    text: item.text,
+    category: isMockCategory(item.category) ? item.category : "IDENTITY",
+    relativeTime: "SELECTED TEXT",
+    reactions: 0,
+    time: item.time || new Date().toISOString(),
+  };
+}
+
+function setSelectionStatus(root: ParentNode, message: string): void {
+  const status = root.querySelector<HTMLElement>("[data-selection-status]");
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+async function shareSelectedTexts(root: ParentNode, items: SelectedTextItem[], mode: "save" | "share"): Promise<void> {
+  if (!items.length) {
+    return;
+  }
+
+  setSelectionStatus(root, "BUILDING TEXT CARD...");
+  try {
+    const confession = selectionConfession(items[0], items.length);
+    const suppliedReplies = items.slice(1).map((item) => ({ text: item.text, time: item.time || "SELECTED" }));
+    const cardType: ShareCardType = items.length > 1 ? "BATCH" : items[0].kind === "reply" ? "REPLY" : "TEXT";
+    const blob = await createThreadImage(confession, undefined, cardType, suppliedReplies);
+    const filename = items.length > 1 ? "hidn-selected-text-batch.png" : "hidn-selected-text.png";
+    const file = new File([blob], filename, { type: "image/png" });
+
+    if (mode === "save") {
+      downloadThreadImage(blob, confession, filename);
+      setSelectionStatus(root, "TEXT CARD SAVED TO DEVICE");
+      return;
+    }
+
+    const canShareImage =
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [file] });
+
+    if (canShareImage) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: items.length > 1 ? "HIDN / selected text batch" : "HIDN / selected text",
+          text: "A selected text card from HIDN / THE ROOM.",
+        });
+        setSelectionStatus(root, "SHARE SHEET READY");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setSelectionStatus(root, "SHARE CANCELLED");
+          return;
+        }
+      }
+    }
+
+    downloadThreadImage(blob, confession, filename);
+    const xText = items.map((item) => `“${item.text}”`).join(" ");
+    const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${xText} — HIDN / THE ROOM`)}`;
+    const composer = window.open(xUrl, "_blank", "noopener,noreferrer");
+    setSelectionStatus(root, composer ? "TEXT CARD SAVED / X COMPOSER OPEN" : "TEXT CARD SAVED / OPEN X TO ATTACH");
+  } catch {
+    setSelectionStatus(root, "TEXT CARD UNAVAILABLE");
+  }
+}
+
 function replyIndexFromButton(button: HTMLButtonElement): number | undefined {
   const rawIndex = button.dataset.replyIndex;
   if (rawIndex === undefined) {
@@ -1188,7 +1310,10 @@ async function shareThreadImage(root: ParentNode, id: string, mode: "save" | "sh
   setThreadShareStatus(root, shareKey, "RENDERING IMAGE...");
 
   try {
-    const blob = await createThreadImage(confession, focusReply);
+    const cardConfession = focusReply
+      ? { ...confession, reference: `// REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, text: focusReply.reply.text, time: focusReply.reply.time }
+      : confession;
+    const blob = await createThreadImage(cardConfession, undefined, focusReply ? "REPLY" : "TEXT", []);
     const filename = focusReply
       ? `hidn-reply-${confession.id}-${focusReply.index + 1}.png`
       : `hidn-thread-${confession.id}.png`;
@@ -1234,6 +1359,108 @@ async function shareThreadImage(root: ParentNode, id: string, mode: "save" | "sh
   } catch {
     setThreadShareStatus(root, shareKey, "IMAGE SHARE UNAVAILABLE");
   }
+}
+
+function selectionHostFromNode(node: Node): HTMLElement | null {
+  const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  return element?.closest<HTMLElement>("[data-share-text]") ?? null;
+}
+
+function hideSelectionTools(root: ParentNode): void {
+  const tools = root.querySelector<HTMLElement>("#hidn-selection-tools");
+  if (tools) {
+    tools.hidden = true;
+  }
+}
+
+function updateSelectionBatch(root: ParentNode): void {
+  const batch = root.querySelector<HTMLElement>("[data-selection-batch]");
+  const count = root.querySelector<HTMLElement>("[data-selection-batch-count]");
+  if (!batch || !count) {
+    return;
+  }
+
+  batch.hidden = selectedTextBatch.length === 0;
+  count.textContent = `${selectedTextBatch.length} SELECTED`;
+}
+
+function showSelectionTools(root: ParentNode, selection: Selection, item: SelectedTextItem): void {
+  const tools = root.querySelector<HTMLElement>("#hidn-selection-tools");
+  const preview = root.querySelector<HTMLElement>("[data-selection-preview]");
+  const label = root.querySelector<HTMLElement>("[data-selection-tool-label]");
+  if (!tools || !preview || !label) {
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  const width = 326;
+  const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left + rect.width / 2 - width / 2));
+  const top = Math.max(12, Math.min(window.innerHeight - 188, rect.bottom + 12));
+  label.textContent = `${item.kind === "reply" ? "REPLY" : item.kind === "thread" ? "THREAD" : "TEXT"} SIGNAL SELECTED`;
+  preview.textContent = `“${item.text}”`;
+  tools.style.left = `${left}px`;
+  tools.style.top = `${top}px`;
+  tools.hidden = false;
+  updateSelectionBatch(root);
+}
+
+function updateTextSelection(root: ParentNode): void {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  const startHost = selectionHostFromNode(range.startContainer);
+  const endHost = selectionHostFromNode(range.endContainer);
+  const text = selection.toString().replace(/\s+/g, " ").trim().replace(/^“|”$/g, "");
+  if (!startHost || startHost !== endHost || text.length < 2) {
+    hideSelectionTools(root);
+    return;
+  }
+
+  activeTextSelection = {
+    text,
+    id: startHost.dataset.shareId ?? "selected",
+    label: startHost.dataset.shareLabel ?? "SELECTED TEXT",
+    kind: startHost.dataset.shareKind === "reply" ? "reply" : startHost.dataset.shareKind === "thread" ? "thread" : "text",
+    category: startHost.dataset.shareCategory ?? "IDENTITY",
+    time: startHost.dataset.shareTime ?? new Date().toISOString(),
+  };
+  showSelectionTools(root, selection, activeTextSelection);
+}
+
+function bindTextSelectionInteractions(root: ParentNode): void {
+  textSelectionRoot = root;
+  if (textSelectionInteractionsBound) {
+    updateSelectionBatch(root);
+    return;
+  }
+
+  textSelectionInteractionsBound = true;
+  document.addEventListener("selectionchange", () => {
+    if (document.activeElement?.closest("#hidn-selection-tools")) {
+      return;
+    }
+
+    updateTextSelection(textSelectionRoot ?? document);
+  });
+  document.addEventListener("mouseup", () => {
+    window.setTimeout(() => updateTextSelection(textSelectionRoot ?? document), 0);
+  });
+  document.addEventListener("touchend", () => {
+    window.setTimeout(() => updateTextSelection(textSelectionRoot ?? document), 0);
+  });
+  window.addEventListener("resize", () => {
+    if (activeTextSelection) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+        showSelectionTools(textSelectionRoot ?? document, selection, activeTextSelection);
+      }
+    }
+  });
+  updateSelectionBatch(root);
 }
 
 function renderVisitorTimeSignal(className: string): string {
@@ -1332,6 +1559,27 @@ function publicWindowChrome(path: string, showRoomMenu = false): string {
   </div>`;
 }
 
+function renderSelectionTools(): string {
+  return `<aside class="hidn-selection-tools" id="hidn-selection-tools" hidden aria-label="Selected text actions">
+    <header class="hidn-selection-tools__header">
+      <span data-selection-tool-label>TEXT SIGNAL SELECTED</span>
+      <button class="hidn-selection-tools__close" type="button" data-action="selection-close" aria-label="Close text actions">×</button>
+    </header>
+    <p class="hidn-selection-tools__preview" data-selection-preview></p>
+    <div class="hidn-selection-tools__actions">
+      <button type="button" data-action="selection-save">SAVE TEXT CARD</button>
+      <button type="button" data-action="selection-share">SHARE TEXT</button>
+      <button type="button" data-action="selection-add">ADD TO BATCH</button>
+    </div>
+    <div class="hidn-selection-tools__batch" data-selection-batch hidden>
+      <span data-selection-batch-count>0 SELECTED</span>
+      <button type="button" data-action="selection-batch-share">SHARE BATCH</button>
+      <button type="button" data-action="selection-batch-clear">CLEAR</button>
+    </div>
+    <p class="hidn-selection-tools__status" data-selection-status role="status" aria-live="polite"></p>
+  </aside>`;
+}
+
 function publicFrame(path: string, main: string, pageClass = ""): string {
   const normalizedPath = normalizePath(path);
   const isHome = normalizedPath === "/";
@@ -1359,6 +1607,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface)}
     ${isRoomSurface ? "" : publicNavigation(path)}
     ${main}
+    ${isRoomSurface ? renderSelectionTools() : ""}
     ${isRoomSurface ? "" : FooterShell({
       links: footerLinks,
       identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
@@ -1689,7 +1938,7 @@ function renderThreadRoom(id: string, quotedText = ""): string {
         .map(
           (reply, index) => `<article class="thread-room__message">
             <header><span>ANONYMOUS / ${String(index + 1).padStart(2, "0")}</span><time>${escapeHtml(reply.time)}</time></header>
-            <p>${escapeHtml(reply.text)}</p>
+            <p data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="reply" data-share-index="${index}" data-share-label="${escapeHtml(`REPLY / ${String(index + 1).padStart(2, "0")}`)}" data-share-category="IDENTITY" data-share-time="${escapeHtml(reply.time)}">${escapeHtml(reply.text)}</p>
             <footer class="thread-room__message-actions">
               <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SAVE IMAGE</button>
               <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SHARE IMAGE</button>
@@ -1708,7 +1957,7 @@ function renderThreadRoom(id: string, quotedText = ""): string {
       </div>
       <span class="thread-room__signal"><i aria-hidden="true"></i> ${replyCount ? `RECEIVING / ${replyCount}` : "OPEN CHANNEL"}</span>
     </header>
-    ${quotedText ? `<blockquote class="thread-room__quote">“${escapeHtml(quotedText)}”</blockquote>` : ""}
+    ${quotedText ? `<blockquote class="thread-room__quote" data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="thread" data-share-label="ORIGINAL THREAD" data-share-category="IDENTITY" data-share-time="NOW">“${escapeHtml(quotedText)}”</blockquote>` : ""}
     <div class="thread-room__messages" aria-live="polite">${messages}</div>
     <form class="thread-room__composer" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
@@ -1762,7 +2011,7 @@ function renderDetail(id: string): RenderedProductRoute {
             <div class="detail-header__meta"><span>${escapeHtml(confession.reference)}</span><time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></div>
           </header>
           <article class="detail-card" aria-labelledby="detail-thought">
-            <p id="detail-thought" class="detail-card__thought">“${escapeHtml(confession.text)}”</p>
+            <p id="detail-thought" class="detail-card__thought" data-share-text data-share-id="${escapeHtml(confession.id)}" data-share-kind="thread" data-share-label="${escapeHtml(confession.reference)}" data-share-category="${escapeHtml(confession.category)}" data-share-time="${escapeHtml(confession.time)}">“${escapeHtml(confession.text)}”</p>
             <div class="detail-card__footer">
               ${CategoryTag(confession.category)}
               ${PrivacyBadge("NO IDENTITY")}
@@ -2312,6 +2561,36 @@ export function bindProductRoute(root: ParentNode = document): void {
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
       switch (button.dataset.action) {
+        case "selection-save":
+          void shareSelectedTexts(root, activeTextSelection ? [activeTextSelection] : [], "save");
+          break;
+        case "selection-share":
+          void shareSelectedTexts(root, activeTextSelection ? [activeTextSelection] : [], "share");
+          break;
+        case "selection-add":
+          if (activeTextSelection) {
+            const alreadySelected = selectedTextBatch.some(
+              (item) => item.id === activeTextSelection?.id && item.text === activeTextSelection.text,
+            );
+            if (!alreadySelected) {
+              selectedTextBatch = [...selectedTextBatch, activeTextSelection];
+            }
+            updateSelectionBatch(root);
+            setSelectionStatus(root, `${selectedTextBatch.length} TEXT SIGNAL${selectedTextBatch.length === 1 ? "" : "S"} READY`);
+          }
+          break;
+        case "selection-batch-share":
+          void shareSelectedTexts(root, selectedTextBatch, "share");
+          break;
+        case "selection-batch-clear":
+          selectedTextBatch = [];
+          updateSelectionBatch(root);
+          setSelectionStatus(root, "TEXT BATCH CLEARED");
+          break;
+        case "selection-close":
+          activeTextSelection = undefined;
+          hideSelectionTools(root);
+          break;
         case "room-menu-toggle": {
           const menu = button.closest<HTMLElement>("[data-room-menu]");
           const panel = menu?.querySelector<HTMLElement>(".room-menu__panel");
@@ -2479,4 +2758,6 @@ export function bindProductRoute(root: ParentNode = document): void {
       }
     });
   });
+
+  bindTextSelectionInteractions(root);
 }
