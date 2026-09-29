@@ -55,7 +55,7 @@ export const CONFESS_METADATA: HidnMetadata = {
 export const ROOM_METADATA: HidnMetadata = {
   kind: "private-room",
   title: "HIDN — Enter the Private Room",
-  description: "A local prototype for creating or using a nameless HIDN room ID.",
+  description: "Create a D1-backed HIDN access code or use one you already hold.",
   canonicalPath: "/room/access",
 };
 

@@ -3,6 +3,7 @@ const CIPHERSCAN_RECENT_BLOCKS_URL =
 const COINGECKO_ZEC_PRICE_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd";
 const ROOM_USD_TARGET_CENTS = 100;
+const ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 interface AssetFetcher {
   fetch(request: Request): Promise<Response>;
@@ -83,6 +84,25 @@ function createRoomId(): string {
   return `HIDN-${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`;
 }
 
+function createAccessCode(): string {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  const raw = Array.from(bytes, (byte) => ACCESS_CODE_ALPHABET[byte % ACCESS_CODE_ALPHABET.length]).join("");
+  return `HIDN-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}`;
+}
+
+function normalizeAccessCode(accessCode: string): string {
+  return accessCode.trim().toUpperCase().replace(/[\s-]/g, "");
+}
+
+async function hashAccessCode(accessCode: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(normalizeAccessCode(accessCode)),
+  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function createRoomSession(request: Request, env: HidnWorkerEnv): Promise<Response> {
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
@@ -90,38 +110,68 @@ async function createRoomSession(request: Request, env: HidnWorkerEnv): Promise<
   }
 
   const body = await requestBody(request);
-  const credentialHash = typeof body.credentialHash === "string" ? body.credentialHash.trim() : "";
   const memoReference = typeof body.memoReference === "string" ? body.memoReference.trim() : "";
   const returnAddress = typeof body.returnAddress === "string" ? body.returnAddress.trim() : "";
-  if (!credentialHash || !memoReference) {
-    return jsonResponse({ error: "credentialHash and memoReference are required." }, 400);
+  if (!memoReference) {
+    return jsonResponse({ error: "memoReference is required." }, 400);
   }
 
-  const roomId = createRoomId();
-  await env.ROOM_DB!.prepare(
-    `INSERT INTO room_credentials
-      (room_id, credential_hash, memo_reference, return_address, amount_usd_cents, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(roomId, credentialHash, memoReference, returnAddress, ROOM_USD_TARGET_CENTS, "pending", new Date().toISOString())
-    .run();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const accessCode = createAccessCode();
+    const credentialHash = await hashAccessCode(accessCode);
+    const roomId = createRoomId();
 
-  return jsonResponse({ roomId, status: "pending" }, 201);
+    try {
+      await env.ROOM_DB!.prepare(
+        `INSERT INTO room_credentials
+          (room_id, credential_hash, memo_reference, return_address, amount_usd_cents, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(roomId, credentialHash, memoReference, returnAddress, ROOM_USD_TARGET_CENTS, "pending", new Date().toISOString())
+        .run();
+
+      return jsonResponse({ roomId, accessCode, status: "pending" }, 201);
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Could not allocate a unique room access code.");
 }
 
-async function verifyRoomDemoPayment(roomId: string, env: HidnWorkerEnv): Promise<Response> {
+async function verifyRoomDemoPayment(roomId: string, request: Request, env: HidnWorkerEnv): Promise<Response> {
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
   }
 
-  await env.ROOM_DB!.prepare(
-    `UPDATE room_credentials
-     SET status = ?, verified_at = ?
-     WHERE room_id = ?`,
+  const body = await requestBody(request);
+  const accessCode = typeof body.accessCode === "string" ? body.accessCode.trim() : "";
+  if (!accessCode) {
+    return jsonResponse({ error: "accessCode is required." }, 400);
+  }
+
+  const credentialHash = await hashAccessCode(accessCode);
+  const existing = await env.ROOM_DB!.prepare(
+    "SELECT room_id, status FROM room_credentials WHERE room_id = ? AND credential_hash = ? LIMIT 1",
   )
-    .bind("verified", new Date().toISOString(), roomId)
-    .run();
+    .bind(roomId, credentialHash)
+    .first<{ room_id: string; status: "pending" | "verified" }>();
+  if (!existing) {
+    return jsonResponse({ error: "Access code does not match this room." }, 401);
+  }
+
+  if (existing.status === "pending") {
+    await env.ROOM_DB!.prepare(
+      `UPDATE room_credentials
+       SET status = ?, verified_at = ?
+       WHERE room_id = ? AND credential_hash = ?`,
+    )
+      .bind("verified", new Date().toISOString(), roomId, credentialHash)
+      .run();
+  }
 
   const row = await env.ROOM_DB!.prepare("SELECT room_id, status FROM room_credentials WHERE room_id = ? LIMIT 1")
     .bind(roomId)
@@ -140,18 +190,19 @@ async function loginRoom(request: Request, env: HidnWorkerEnv): Promise<Response
   }
 
   const body = await requestBody(request);
-  const credentialHash = typeof body.credentialHash === "string" ? body.credentialHash.trim() : "";
-  if (!credentialHash) {
-    return jsonResponse({ error: "credentialHash is required." }, 400);
+  const accessCode = typeof body.accessCode === "string" ? body.accessCode.trim() : "";
+  if (!accessCode) {
+    return jsonResponse({ error: "accessCode is required." }, 400);
   }
 
+  const credentialHash = await hashAccessCode(accessCode);
   const row = await env.ROOM_DB!.prepare(
     "SELECT room_id, status FROM room_credentials WHERE credential_hash = ? LIMIT 1",
   )
     .bind(credentialHash)
     .first<{ room_id: string; status: "pending" | "verified" }>();
   if (!row || row.status !== "verified") {
-    return jsonResponse({ error: "Room ID is not verified." }, 401);
+    return jsonResponse({ error: "Access code is invalid or not verified." }, 401);
   }
 
   return jsonResponse({ roomId: row.room_id, status: row.status });
@@ -202,7 +253,7 @@ const worker = {
       }
 
       try {
-        return await verifyRoomDemoPayment(decodeURIComponent(verifyMatch[1]), env);
+        return await verifyRoomDemoPayment(decodeURIComponent(verifyMatch[1]), request, env);
       } catch {
         return jsonResponse({ error: "Room session could not be verified." }, 500);
       }

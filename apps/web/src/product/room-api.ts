@@ -8,6 +8,7 @@ export interface RoomConfig {
 export interface RoomSessionResponse {
   roomId: string;
   status: "pending" | "verified";
+  accessCode?: string;
 }
 
 export async function fetchRoomConfig(): Promise<RoomConfig> {
@@ -52,29 +53,25 @@ async function roomRequest<T>(path: string, body: Record<string, unknown>): Prom
   });
 
   if (!response.ok) {
-    throw new Error(`Room backend returned HTTP ${response.status}.`);
+    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const message = typeof payload?.error === "string" ? payload.error : `Room backend returned HTTP ${response.status}.`;
+    throw new Error(message);
   }
 
   return (await response.json()) as T;
 }
 
-export async function hashRoomSecret(secret: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 export function createRoomSession(input: {
-  credentialHash: string;
   memoReference: string;
   returnAddress: string;
 }): Promise<RoomSessionResponse> {
   return roomRequest<RoomSessionResponse>("/api/room/sessions", input);
 }
 
-export function verifyRoomDemoPayment(roomId: string): Promise<RoomSessionResponse> {
-  return roomRequest<RoomSessionResponse>(`/api/room/sessions/${encodeURIComponent(roomId)}/verify-demo`, {});
+export function verifyRoomDemoPayment(roomId: string, accessCode: string): Promise<RoomSessionResponse> {
+  return roomRequest<RoomSessionResponse>(`/api/room/sessions/${encodeURIComponent(roomId)}/verify-demo`, { accessCode });
 }
 
-export function loginRoomSession(credentialHash: string): Promise<RoomSessionResponse> {
-  return roomRequest<RoomSessionResponse>("/api/room/login", { credentialHash });
+export function loginRoomSession(accessCode: string): Promise<RoomSessionResponse> {
+  return roomRequest<RoomSessionResponse>("/api/room/login", { accessCode });
 }

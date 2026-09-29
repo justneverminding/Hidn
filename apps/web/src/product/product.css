@@ -2993,6 +2993,32 @@
   position: relative;
 }
 
+.hidn-pointer-surface {
+  --pointer-x: 50%;
+  --pointer-y: 50%;
+}
+
+.hidn-pointer-spotlight {
+  background:
+    radial-gradient(circle 9rem at var(--pointer-x) var(--pointer-y), rgba(93, 255, 143, 0.19), transparent 72%),
+    radial-gradient(circle 28rem at var(--pointer-x) var(--pointer-y), rgba(18, 68, 42, 0.2), transparent 76%);
+  inset: 0;
+  mix-blend-mode: screen;
+  opacity: 0.32;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity 220ms ease;
+  z-index: 2;
+}
+
+.hidn-pointer-surface[data-pointer-active="true"] .hidn-pointer-spotlight {
+  opacity: 0.9;
+}
+
+.hidn-pointer-surface[data-pointer-active="true"] .home-room-card {
+  filter: brightness(1.08) saturate(1.08);
+}
+
 .home-room-stage::before,
 .home-room-stage::after,
 .home-room-noise,
@@ -3678,6 +3704,52 @@
   justify-content: center;
   min-height: min(52rem, calc(100vh - 9rem));
   padding: clamp(5rem, 9vw, 8rem) clamp(1rem, 4vw, 3.5rem);
+}
+
+.room-access-main {
+  background:
+    radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(18, 68, 42, 0.12), transparent 25rem),
+    #010302;
+  isolation: isolate;
+  overflow-x: clip;
+  position: relative;
+}
+
+.room-access-main::before {
+  background:
+    linear-gradient(rgba(93, 255, 143, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(93, 255, 143, 0.02) 1px, transparent 1px);
+  background-size: 100% 5px, 4rem 100%;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.room-access-atmosphere,
+.room-access-atmosphere__cards {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.room-access-atmosphere {
+  z-index: 1;
+}
+
+.room-access-atmosphere .home-room-card {
+  filter: brightness(0.64) saturate(0.62);
+  opacity: 0.44;
+}
+
+.room-access-main[data-pointer-active="true"] .room-access-atmosphere .home-room-card {
+  opacity: 0.7;
+}
+
+.room-access-main .room-access-page {
+  position: relative;
+  z-index: 3;
 }
 
 .room-access-page {

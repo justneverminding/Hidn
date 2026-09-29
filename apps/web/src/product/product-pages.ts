@@ -45,7 +45,6 @@ import { fetchCipherScanMainnetTip } from "./cipherscan";
 import {
   createRoomSession,
   fetchRoomConfig,
-  hashRoomSecret,
   loginRoomSession,
   verifyRoomDemoPayment,
 } from "./room-api";
@@ -128,6 +127,7 @@ interface HomeAudioSession {
   oscillators: OscillatorNode[];
   pulseTimer: number;
   radarTimer: number;
+  staticTimer: number;
 }
 
 const HOME_STREAM_LIMIT = 4;
@@ -300,6 +300,10 @@ function renderHomeRoomCards(): string {
     .join("");
 }
 
+function renderPointerSpotlight(): string {
+  return `<div class="hidn-pointer-spotlight" aria-hidden="true"></div>`;
+}
+
 function renderPreviewTransmission(): string {
   return renderTransmissionRow({
     text: mockFlow.thought,
@@ -419,17 +423,23 @@ function roomBackendStatusLabel(): string {
 
 async function registerRoomBackend(): Promise<void> {
   try {
-    const credentialHash = await hashRoomSecret(roomDemoId);
     const response = await createRoomSession({
-      credentialHash,
       memoReference: roomDemoMemo,
       returnAddress: "",
     });
+    if (!response.accessCode) {
+      throw new Error("The Worker did not return an access code.");
+    }
+
+    roomDemoId = response.accessCode;
     roomBackendId = response.roomId;
     roomBackendStatus = "connected";
+    roomLoginError = "";
+    sessionStorage.setItem("hidn:room:secret", roomDemoId);
     sessionStorage.setItem("hidn:room:backend-id", roomBackendId);
-  } catch {
+  } catch (error) {
     roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not issue an access code.";
   }
 
   if (normalizePath(window.location.pathname) === "/room/access" && roomAccessMode === "create") {
@@ -443,21 +453,47 @@ async function verifyRoomBackend(): Promise<void> {
   }
 
   try {
-    await verifyRoomDemoPayment(roomBackendId);
+    const response = await verifyRoomDemoPayment(roomBackendId, roomDemoId);
+    if (response.status !== "verified") {
+      throw new Error("The Worker did not verify this access code.");
+    }
+
     roomBackendStatus = "connected";
-  } catch {
+    roomLoginError = "";
+    roomAccessMode = "ready";
+    sessionStorage.setItem("hidn:room:verified", "true");
+  } catch (error) {
     roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not verify this access code.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
   }
 }
 
-async function syncRoomLogin(secret: string): Promise<void> {
+async function syncRoomLogin(accessCode: string): Promise<void> {
   try {
-    const response = await loginRoomSession(await hashRoomSecret(secret));
+    const response = await loginRoomSession(accessCode);
+    if (response.status !== "verified") {
+      throw new Error("This access code is not verified yet.");
+    }
+
+    roomDemoId = accessCode.trim();
     roomBackendId = response.roomId;
     roomBackendStatus = "connected";
+    roomLoginError = "";
+    roomAccessMode = "ready";
+    sessionStorage.setItem("hidn:room:secret", roomDemoId);
     sessionStorage.setItem("hidn:room:backend-id", roomBackendId);
-  } catch {
+    sessionStorage.setItem("hidn:room:verified", "true");
+  } catch (error) {
     roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not verify this access code.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
   }
 }
 
@@ -530,13 +566,13 @@ function startHomeAudio(root: ParentNode): void {
   master.connect(compressor).connect(context.destination);
 
   filter.type = "lowpass";
-  filter.frequency.value = 620;
-  filter.Q.value = 1;
+  filter.frequency.value = 540;
+  filter.Q.value = 1.4;
   filter.connect(master);
 
   subFilter.type = "lowpass";
-  subFilter.frequency.value = 340;
-  subFilter.Q.value = 0.55;
+  subFilter.frequency.value = 260;
+  subFilter.Q.value = 0.7;
   subFilter.connect(master);
 
   const addTone = (
@@ -557,15 +593,16 @@ function startHomeAudio(root: ParentNode): void {
     oscillators.push(oscillator);
   };
 
-  addTone(41.2, "sine", 0.48, 0, subFilter);
-  addTone(55, "triangle", 0.12, -4, subFilter);
-  addTone(82.41, "sawtooth", 0.022, 3, subFilter);
-  addTone(110, "sine", 0.035, 3);
+  addTone(36.71, "sine", 0.54, 0, subFilter);
+  addTone(55, "triangle", 0.1, -5, subFilter);
+  addTone(73.42, "sawtooth", 0.018, 4, subFilter);
+  addTone(110, "sine", 0.028, 3);
+  addTone(146.83, "sawtooth", 0.009, -8);
 
   const filterLfo = context.createOscillator();
   const filterLfoDepth = context.createGain();
-  filterLfo.frequency.value = 0.08;
-  filterLfoDepth.gain.value = 90;
+  filterLfo.frequency.value = 0.045;
+  filterLfoDepth.gain.value = 72;
   filterLfo.connect(filterLfoDepth).connect(filter.frequency);
   filterLfo.start();
   oscillators.push(filterLfo);
@@ -582,25 +619,30 @@ function startHomeAudio(root: ParentNode): void {
   noise.buffer = noiseBuffer;
   noise.loop = true;
   noiseFilter.type = "bandpass";
-  noiseFilter.frequency.value = 900;
-  noiseFilter.Q.value = 1.1;
-  noiseGain.gain.value = 0.018;
+  noiseFilter.frequency.value = 720;
+  noiseFilter.Q.value = 0.8;
+  noiseGain.gain.value = 0.008;
   noise.connect(noiseFilter).connect(noiseGain).connect(master);
   noise.start();
 
   const noteDelay = context.createDelay(1);
   const delayFeedback = context.createGain();
-  noteDelay.delayTime.value = 0.42;
-  delayFeedback.gain.value = 0.3;
+  noteDelay.delayTime.value = 0.58;
+  delayFeedback.gain.value = 0.24;
   noteDelay.connect(delayFeedback).connect(noteDelay);
   noteDelay.connect(master);
 
-  const motif = [146.83, 155.56, 196, 174.61, 146.83, 130.81, 155.56, 138.59];
+  // A slow, six-step signal signature: three notes, a gap, then a low return.
+  // The rest is intentional; it keeps the phrase atmospheric instead of game-like.
+  const motif = [146.83, 110, 0, 98, 73.42, 0];
   let motifIndex = 0;
   const playMotifNote = (): void => {
     const now = context.currentTime + 0.02;
     const frequency = motif[motifIndex % motif.length];
     motifIndex += 1;
+    if (frequency === 0) {
+      return;
+    }
 
     const oscillator = context.createOscillator();
     const harmonic = context.createOscillator();
@@ -608,18 +650,18 @@ function startHomeAudio(root: ParentNode): void {
     const envelope = context.createGain();
     const noteFilter = context.createBiquadFilter();
 
-    oscillator.type = "triangle";
+    oscillator.type = "sawtooth";
     oscillator.frequency.setValueAtTime(frequency, now);
     harmonic.type = "sine";
     harmonic.frequency.setValueAtTime(frequency * 2, now);
-    harmonic.detune.value = -7;
-    harmonicGain.gain.value = 0.12;
+    harmonic.detune.value = -11;
+    harmonicGain.gain.value = 0.08;
     noteFilter.type = "lowpass";
-    noteFilter.frequency.value = Math.min(1600, frequency * 6);
-    noteFilter.Q.value = 1;
+    noteFilter.frequency.value = Math.min(1150, frequency * 4.5);
+    noteFilter.Q.value = 1.8;
     envelope.gain.setValueAtTime(0.0001, now);
-    envelope.gain.exponentialRampToValueAtTime(0.075, now + 0.022);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+    envelope.gain.exponentialRampToValueAtTime(motifIndex % motif.length === 1 ? 0.062 : 0.045, now + 0.04);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.86);
 
     oscillator.connect(envelope);
     harmonic.connect(harmonicGain).connect(envelope);
@@ -634,42 +676,68 @@ function startHomeAudio(root: ParentNode): void {
 
   const pulse = (): void => {
     const now = context.currentTime;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(58, now);
-    oscillator.frequency.exponentialRampToValueAtTime(34, now + 0.38);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.64);
-    oscillator.connect(gain).connect(master);
-    oscillator.start(now);
-    oscillator.stop(now + 0.68);
+    [
+      { offset: 0, frequency: 52, endFrequency: 31, volume: 0.13, duration: 0.7 },
+      { offset: 0.22, frequency: 44, endFrequency: 28, volume: 0.065, duration: 0.52 },
+    ].forEach(({ offset, frequency, endFrequency, volume, duration }) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = now + offset;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      oscillator.frequency.exponentialRampToValueAtTime(endFrequency, start + duration * 0.58);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(volume, start + 0.045);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain).connect(master);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.02);
+    });
   };
 
   const radarPing = (): void => {
     const now = context.currentTime;
     const oscillator = context.createOscillator();
+    const harmonic = context.createOscillator();
     const gain = context.createGain();
+    const harmonicGain = context.createGain();
     oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(1180, now);
-    oscillator.frequency.exponentialRampToValueAtTime(690, now + 0.2);
+    oscillator.frequency.setValueAtTime(920, now);
+    oscillator.frequency.exponentialRampToValueAtTime(430, now + 0.26);
+    harmonic.type = "sine";
+    harmonic.frequency.setValueAtTime(1840, now);
+    harmonic.frequency.exponentialRampToValueAtTime(860, now + 0.26);
+    harmonicGain.gain.value = 0.22;
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.045, now + 0.018);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    gain.gain.exponentialRampToValueAtTime(0.038, now + 0.022);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+    harmonic.connect(harmonicGain).connect(gain);
     oscillator.connect(gain).connect(master);
+    harmonic.start(now);
+    harmonic.stop(now + 0.38);
     oscillator.start(now);
-    oscillator.stop(now + 0.32);
+    oscillator.stop(now + 0.38);
   };
 
-  const motifTimer = window.setInterval(playMotifNote, 520);
-  const pulseTimer = window.setInterval(pulse, 2080);
-  const radarTimer = window.setInterval(radarPing, 3200);
-  homeAudioSession = { context, master, noise, motifTimer, oscillators, pulseTimer, radarTimer };
+  const staticBurst = (): void => {
+    const now = context.currentTime;
+    noiseGain.gain.cancelScheduledValues(now);
+    noiseGain.gain.setValueAtTime(0.008, now);
+    noiseGain.gain.linearRampToValueAtTime(0.026, now + 0.025);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.18);
+    noiseGain.gain.linearRampToValueAtTime(0.008, now + 0.52);
+  };
+
+  const motifTimer = window.setInterval(playMotifNote, 720);
+  const pulseTimer = window.setInterval(pulse, 2680);
+  const radarTimer = window.setInterval(radarPing, 4300);
+  const staticTimer = window.setInterval(staticBurst, 6200);
+  homeAudioSession = { context, master, noise, motifTimer, oscillators, pulseTimer, radarTimer, staticTimer };
   master.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 1.6);
   playMotifNote();
   pulse();
   radarPing();
+  staticBurst();
   setHomeAudioState(root, true);
 
   void context.resume().catch(() => {
@@ -690,6 +758,7 @@ function stopHomeAudio(root?: ParentNode): void {
   window.clearInterval(session.pulseTimer);
   window.clearInterval(session.motifTimer);
   window.clearInterval(session.radarTimer);
+  window.clearInterval(session.staticTimer);
   const now = session.context.currentTime;
   session.master.gain.cancelScheduledValues(now);
   session.master.gain.setTargetAtTime(0.0001, now, 0.12);
@@ -2060,10 +2129,12 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:room:secret");
   sessionStorage.removeItem("hidn:room:backend-id");
   sessionStorage.removeItem("hidn:room:entered");
+  sessionStorage.removeItem("hidn:room:verified");
   roomAccessMode = "choose";
   roomDemoId = "";
   roomDemoMemo = "";
   roomLoginError = "";
+  roomBackendStatus = "local";
 }
 
 function renderRoomAccessChooser(): string {
@@ -2078,7 +2149,7 @@ function renderRoomAccessChooser(): string {
         <span class="room-access-option__number">01</span>
         <div>
           <h2>CREATE AN ID</h2>
-          <p>Set up a nameless room identity. The planned production flow will verify a shielded payment without turning it into a public profile.</p>
+          <p>Set up a nameless room identity. The Worker generates a unique access code and stores its verification record in D1.</p>
         </div>
         ${PrimaryButton({ label: "CREATE ID →", dataAction: "room-create" })}
       </article>
@@ -2091,19 +2162,23 @@ function renderRoomAccessChooser(): string {
         ${SecondaryButton({ label: "USE MY ID →", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("LOCAL PROTOTYPE / NO FUNDS", "This demo does not connect a wallet, accept ZEC, create a real zero-knowledge proof, or issue a real recovery secret.", "DEMO")}
+    ${SystemMessage("D1 WORKER / LIVE CREDENTIALS", "Create an ID to receive a unique access code. You will need that code to log in from this or another browser.", "LIVE")}
   </div>`;
 }
 
 function renderRoomCreate(): string {
-  const demoId = roomDemoId || "HIDN-DEMO-LOCAL";
-  const memo = roomDemoMemo || `HIDN-ROOM-${demoId.slice(-6)}`;
+  const memo = roomDemoMemo || "HIDN-ROOM-PENDING";
+  const verifyLabel = roomBackendStatus === "connecting"
+    ? "CREATING ACCESS CODE..."
+    : roomBackendStatus === "connected"
+      ? "VERIFY DEMO PAYMENT →"
+      : "WORKER UNAVAILABLE";
 
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
       ${TerminalLabel("HIDN / CREATE ID")}
       <h1 class="type-display-lg room-access-header__title">FUND THE<br /><em>THRESHOLD.</em></h1>
-      <p class="room-access-header__copy">A production version could use a shielded contribution as an anti-spam signal. This screen only demonstrates the handoff.</p>
+      <p class="room-access-header__copy">The Worker has created your D1-backed room record. Complete the demo handoff, then save the access code it returns.</p>
     </header>
     <div class="room-access-stepbar" aria-label="Create ID steps">
       <span class="room-access-stepbar__step room-access-stepbar__step--current">01 / SEND</span>
@@ -2130,10 +2205,11 @@ function renderRoomCreate(): string {
       </label>
       <p class="room-payment-card__note">In production, a wallet would send the amount and memo to the room vault, then receive a privacy-preserving credential at the return address. Never place a secret or recovery phrase in a memo.</p>
     </section>
-    ${SystemMessage("NO FUNDS / LOCAL DEMO", "The destination above is fictional. Clicking verify only advances the visual prototype; no payment is created or checked.", "DEMO")}
+    ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
+    ${SystemMessage("PAYMENT DEMO / D1 LIVE", "The payment verification control is still a demo step, but the access code and login check are real Worker + D1 operations.", "LIVE")}
     <div class="room-access-actions">
       ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-      ${PrimaryButton({ label: "VERIFY DEMO PAYMENT →", dataAction: "room-verify-demo" })}
+      ${PrimaryButton({ label: verifyLabel, disabled: roomBackendStatus !== "connected", dataAction: "room-verify-demo" })}
     </div>
   </div>`;
 }
@@ -2143,15 +2219,15 @@ function renderRoomLogin(): string {
     <header class="room-access-header room-access-header--compact">
       ${TerminalLabel("HIDN / ID LOGIN")}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
-      <p class="room-access-header__copy">Enter the room ID or access key you keep on your side. HIDN does not ask for a name.</p>
+      <p class="room-access-header__copy">Enter the access code issued by the HIDN Worker. Without a verified code, the room stays closed.</p>
     </header>
     ${roomLoginError ? AlertMessage("ID NEEDED", roomLoginError, "danger") : ""}
     <form class="room-login-card" novalidate>
       <label class="room-access-field" for="room-login-id">
-        <span>ROOM ID / ACCESS KEY</span>
-        <input id="room-login-id" type="text" placeholder="HIDN-ID-..." autocomplete="off" spellcheck="false" />
+        <span>ROOM ACCESS CODE</span>
+        <input id="room-login-id" type="text" placeholder="HIDN-XXXX-..." autocomplete="off" spellcheck="false" />
       </label>
-      <p class="room-payment-card__note">This local demo accepts any non-empty value. A real implementation should prove control of a secret without storing the secret itself.</p>
+      <p class="room-payment-card__note">The Worker hashes the code before checking D1. The plaintext code is never stored in the database.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
         ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-submit-login" })}
@@ -2161,23 +2237,23 @@ function renderRoomLogin(): string {
 }
 
 function renderRoomReady(): string {
-  const demoId = roomDemoId || "HIDN-DEMO-LOCAL";
+  const demoId = roomDemoId || "NO CODE ISSUED";
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
       ${TerminalLabel("HIDN / ACCESS READY")}
       <h1 class="type-display-lg room-access-header__title">THE KEY STAYS<br /><em>WITH YOU.</em></h1>
-      <p class="room-access-header__copy">This is a local demo credential. In production, HIDN should never receive or store the secret behind your ID.</p>
+      <p class="room-access-header__copy">The Worker issued this code and D1 stores only its hash. Keep the plaintext code on your side and use it to log in again.</p>
     </header>
     <div class="room-access-key">
-      <span class="room-access-key__label">DEMO ROOM ID / SHOW ONCE</span>
+      <span class="room-access-key__label">D1 ACCESS CODE / SAVE THIS</span>
       <code>${escapeHtml(demoId)}</code>
-      <span class="room-access-key__warning">BACK IT UP YOURSELF. LOST ACCESS CANNOT BE RECOVERED IN THIS DEMO.</span>
+      <span class="room-access-key__warning">The Worker generated this code. D1 stores only its hash. Use this exact code to log in again.</span>
     </div>
-    ${SystemMessage("PRODUCTION BOUNDARY", "A real Zcash-backed flow would need wallet integration, shielded payment verification, replay protection, abuse controls, and a carefully designed credential recovery policy before accepting funds.", "INFO")}
+    ${SystemMessage("D1 VERIFICATION COMPLETE", "Your room access record is verified. The Zcash payment step remains a demo until a wallet watcher is connected.", "LIVE")}
     <div class="room-access-actions">
       ${GhostButton({ label: "START OVER", dataAction: "room-back" })}
-      ${PrimaryButton({ label: "ENTER MOCK ROOM →", dataAction: "room-enter" })}
+      ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-enter" })}
     </div>
   </div>`;
 }
@@ -2196,7 +2272,11 @@ function renderRoomAccess(): RenderedProductRoute {
     metadata: ROOM_METADATA,
     html: publicFrame(
       "/room/access",
-      `<main id="main-content" class="public-main room-main">
+      `<main id="main-content" class="public-main room-main room-access-main hidn-pointer-surface" data-pointer-surface>
+        <div class="room-access-atmosphere" aria-hidden="true">
+          ${renderPointerSpotlight()}
+          <div class="room-access-atmosphere__cards">${renderHomeRoomCards()}</div>
+        </div>
         ${content}
       </main>`,
       "public-page--room",
@@ -2305,9 +2385,10 @@ function renderHome(): RenderedProductRoute {
     html: publicFrame(
       "/",
       `<main id="main-content" class="public-main home-main">
-        <section class="home-room-stage" aria-labelledby="home-room-title">
+        <section class="home-room-stage hidn-pointer-surface" data-pointer-surface aria-labelledby="home-room-title">
           <div class="home-room-stars" aria-hidden="true"></div>
           <div class="home-room-noise" aria-hidden="true"></div>
+          ${renderPointerSpotlight()}
           <div class="home-room-window">
             <div class="home-room-window__bar">
               <div class="home-room-window__controls">
@@ -2318,7 +2399,7 @@ function renderHome(): RenderedProductRoute {
               <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
               <div class="home-room-window__right">
                 <button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="false" aria-label="Toggle ambient room sound">
-                  <span class="home-room-audio-toggle__label">SCORE</span>
+                  <span class="home-room-audio-toggle__label">SIGNAL</span>
                   <span data-home-audio-label>OFF</span>
                 </button>
                 ${renderVisitorTimeSignal("home-room-window__meta")}
@@ -2527,11 +2608,38 @@ function bindRoomFolderInteractions(root: ParentNode): void {
   });
 }
 
+function bindPointerSpotlightInteractions(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-pointer-surface]").forEach((surface) => {
+    const updatePointer = (event: PointerEvent): void => {
+      const bounds = surface.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) {
+        return;
+      }
+
+      const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+      const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+      surface.style.setProperty("--pointer-x", `${Math.max(0, Math.min(100, x))}%`);
+      surface.style.setProperty("--pointer-y", `${Math.max(0, Math.min(100, y))}%`);
+      surface.dataset.pointerActive = "true";
+    };
+
+    const resetPointer = (): void => {
+      surface.dataset.pointerActive = "false";
+    };
+
+    surface.addEventListener("pointerenter", updatePointer, { passive: true });
+    surface.addEventListener("pointermove", updatePointer, { passive: true });
+    surface.addEventListener("pointerleave", resetPointer, { passive: true });
+    surface.addEventListener("pointercancel", resetPointer, { passive: true });
+  });
+}
+
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
   bindRoomLikeInteractions(root);
   bindRoomChannelInteractions(root);
   bindRoomFolderInteractions(root);
+  bindPointerSpotlightInteractions(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
   if (normalizePath(window.location.pathname) === "/room/access" && roomAccessMode === "create") {
@@ -2607,12 +2715,12 @@ export function bindProductRoute(root: ParentNode = document): void {
         }
         case "room-create":
           roomAccessMode = "create";
-          roomDemoId = createRoomDemoId();
-          roomDemoMemo = `HIDN-ROOM-${roomDemoId.slice(-6)}`;
+          roomDemoId = "";
+          roomDemoMemo = `HIDN-ROOM-${createRoomDemoId().slice(-6)}`;
           roomLoginError = "";
           roomBackendId = "";
           roomBackendStatus = "connecting";
-          sessionStorage.setItem("hidn:room:secret", roomDemoId);
+          sessionStorage.removeItem("hidn:room:secret");
           sessionStorage.removeItem("hidn:room:verified");
           rerenderProductRoute();
           void registerRoomBackend();
@@ -2627,11 +2735,18 @@ export function bindProductRoute(root: ParentNode = document): void {
           roomDemoId = "";
           roomDemoMemo = "";
           roomLoginError = "";
+          roomBackendStatus = "local";
           rerenderProductRoute();
           break;
         case "room-verify-demo":
-          roomAccessMode = "ready";
-          sessionStorage.setItem("hidn:room:verified", "true");
+          if (roomBackendStatus !== "connected" || !roomBackendId || !roomDemoId) {
+            roomLoginError = "Wait for the Worker to issue your access code before verifying the demo payment.";
+            rerenderProductRoute();
+            break;
+          }
+
+          roomBackendStatus = "connecting";
+          roomLoginError = "";
           rerenderProductRoute();
           void verifyRoomBackend();
           break;
@@ -2644,17 +2759,9 @@ export function bindProductRoute(root: ParentNode = document): void {
             break;
           }
 
-          const storedSecret = sessionStorage.getItem("hidn:room:secret");
-          const verified = sessionStorage.getItem("hidn:room:verified") === "true";
-          if (!storedSecret || value !== storedSecret || !verified) {
-            roomLoginError = "That demo ID is not verified in this browser. Create an ID and complete the demo payment first.";
-            rerenderProductRoute();
-            break;
-          }
-
           roomDemoId = value;
           roomLoginError = "";
-          roomAccessMode = "ready";
+          roomBackendStatus = "connecting";
           rerenderProductRoute();
           void syncRoomLogin(value);
           break;
