@@ -2836,6 +2836,15 @@
 }
 
 @media (max-width: 760px) {
+  .public-page:not(.public-page--home) .ui-nav-shell__status {
+    display: inline-flex;
+    font-size: 0.56rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .public-page .ui-nav-shell__links {
     gap: 0.35rem 0.65rem;
   }
@@ -3609,15 +3618,16 @@
   }
 
   .home-room-window__meta {
-    display: none;
+    display: inline-flex;
+    font-size: 0.42rem;
   }
 
   .home-room-window__right {
-    gap: 0;
+    gap: 0.35rem;
   }
 
   .home-room-audio-toggle__label {
-    display: inline;
+    display: none;
   }
 
   .home-room-window__title {
@@ -3799,6 +3809,7 @@
   }
 
   .public-page__window-meta {
-    display: none;
+    display: inline-flex;
+    font-size: 0.42rem;
   }
 }

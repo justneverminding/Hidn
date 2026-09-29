@@ -40,6 +40,7 @@ import {
   type ProofState,
   resetMockFlow,
 } from "./mock-data";
+import { fetchCipherScanMainnetTip } from "./cipherscan";
 
 export interface RenderedProductRoute {
   html: string;
@@ -75,6 +76,7 @@ interface HomeAudioSession {
 
 const HOME_STREAM_LIMIT = 4;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
+const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
 let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
   .reverse()
   .map((confession) => ({
@@ -84,6 +86,9 @@ let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_
   }));
 let homeStreamCursor = 0;
 let homeAudioSession: HomeAudioSession | undefined;
+let cachedCipherScanHeight: number | undefined;
+let cachedCipherScanAt = 0;
+let cipherScanRequest: Promise<number> | undefined;
 
 const categoryOptions: Array<{ value: MockCategory; label: string }> = [
   { value: "REGRET", label: "Regret" },
@@ -215,6 +220,55 @@ function setHomeReceivingStatus(root: ParentNode, state: "ambient" | "receiving"
       : state === "static"
         ? "STATIC / REDUCED MOTION"
         : "LOCAL MOCK / AMBIENT";
+}
+
+function getCipherScanMainnetTip(): Promise<number> {
+  if (cachedCipherScanHeight !== undefined && Date.now() - cachedCipherScanAt < CIPHERSCAN_CACHE_DURATION_MS) {
+    return Promise.resolve(cachedCipherScanHeight);
+  }
+
+  if (!cipherScanRequest) {
+    cipherScanRequest = fetchCipherScanMainnetTip()
+      .then((height) => {
+        cachedCipherScanHeight = height;
+        cachedCipherScanAt = Date.now();
+        return height;
+      })
+      .finally(() => {
+        cipherScanRequest = undefined;
+      });
+  }
+
+  return cipherScanRequest;
+}
+
+async function refreshZcashNetworkStatus(root: ParentNode): Promise<void> {
+  const status = root.querySelector<HTMLElement>(".ui-nav-shell__status");
+  if (!status || status.textContent?.trim() !== "BUILT ON ZCASH") {
+    return;
+  }
+
+  status.setAttribute("aria-live", "polite");
+  status.title = "Checking the current Zcash mainnet block with CipherScan.";
+
+  try {
+    const height = await getCipherScanMainnetTip();
+    if (!status.isConnected) {
+      return;
+    }
+
+    const formattedHeight = new Intl.NumberFormat("en-US").format(height);
+    status.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
+    status.dataset.zcashState = "live";
+    status.title = `Zcash mainnet block #${formattedHeight} from CipherScan.`;
+  } catch {
+    if (!status.isConnected) {
+      return;
+    }
+
+    status.dataset.zcashState = "unavailable";
+    status.title = "CipherScan could not provide the current Zcash mainnet block.";
+  }
 }
 
 function stopHomeStream(): void {
@@ -1300,6 +1354,7 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
 
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
+  void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
 
   if (normalizePath(window.location.pathname) === "/") {
