@@ -119,6 +119,7 @@ let adminReportError = "";
 let adminReportLoading = false;
 let hiddenModerationTargets = new Set<string>();
 let moderationVisibilityRequest: Promise<void> | undefined;
+let moderationVisibilityReady = false;
 let homeStreamTimer: number | undefined;
 let homeReceivingTimer: number | undefined;
 let homeInviteTimer: number | undefined;
@@ -190,6 +191,7 @@ const HOME_AUDIO_DEFAULT_VOLUME = 0.1029;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
+const MODERATION_GATE_MIN_DURATION_MS = 800;
 
 function completeRoomHandle(value: string): string {
   const normalized = value.trim().toUpperCase();
@@ -306,8 +308,17 @@ async function refreshModerationVisibility(): Promise<void> {
     return moderationVisibilityRequest;
   }
 
+  const wasReady = moderationVisibilityReady;
+  const startedAt = Date.now();
+  const holdGateOpen = async (): Promise<void> => {
+    const remaining = MODERATION_GATE_MIN_DURATION_MS - (Date.now() - startedAt);
+    if (remaining > 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
+    }
+  };
   moderationVisibilityRequest = fetchModerationVisibility()
-    .then((response) => {
+    .then(async (response) => {
+      await holdGateOpen();
       const nextTargets = new Set(
         response.hiddenTargets
           .filter((target) => (target.targetType === "thread" || target.targetType === "reply") && Boolean(target.targetId))
@@ -316,12 +327,18 @@ async function refreshModerationVisibility(): Promise<void> {
       const previousKeys = Array.from(hiddenModerationTargets).sort().join("|");
       const nextKeys = Array.from(nextTargets).sort().join("|");
       hiddenModerationTargets = nextTargets;
-      if (previousKeys !== nextKeys && isModerationSurfacePath(normalizePath(window.location.pathname))) {
+      moderationVisibilityReady = true;
+      if ((!wasReady || previousKeys !== nextKeys) && isModerationSurfacePath(normalizePath(window.location.pathname))) {
         rerenderProductRoute();
       }
     })
-    .catch(() => {
+    .catch(async () => {
+      await holdGateOpen();
       // The demo remains usable when the optional moderation visibility endpoint is unavailable.
+      moderationVisibilityReady = true;
+      if (!wasReady && isModerationSurfacePath(normalizePath(window.location.pathname))) {
+        rerenderProductRoute();
+      }
     })
     .finally(() => {
       moderationVisibilityRequest = undefined;
@@ -2224,6 +2241,29 @@ function renderAdminReports(): RenderedProductRoute {
   };
 }
 
+function renderModerationGate(path: string): RenderedProductRoute {
+  const normalizedPath = normalizePath(path);
+  const metadata: HidnMetadata = normalizedPath.startsWith("/c/")
+    ? {
+        kind: "anonymous-confession",
+        title: "HIDN — Anonymous confession",
+        description: "Checking HIDN moderation state before opening this transmission.",
+        canonicalPath: path,
+      }
+    : EXPLORE_METADATA;
+
+  return {
+    metadata,
+    html: publicFrame(
+      path,
+      `<main id="main-content" class="public-main explore-main" aria-busy="true">
+        ${renderRoomEntryTransition("return")}
+      </main>`,
+      "public-page--explore",
+    ),
+  };
+}
+
 function renderExplore(path = "/room"): string {
   if (!hasRoomSession()) {
     return publicFrame(
@@ -2495,8 +2535,8 @@ function formattedZecAmount(zatoshis: number): string {
   return `${(zatoshis / 100_000_000).toFixed(8)} ZEC`;
 }
 
-function renderRoomEntryTransition(): string {
-  const isReturning = roomEntryTransitionKind === "return";
+function renderRoomEntryTransition(kind = roomEntryTransitionKind): string {
+  const isReturning = kind === "return";
   return `<div class="room-entry-transition room-entry-transition--${isReturning ? "return" : "first"}" role="status" aria-live="polite">
     ${isReturning
       ? `<div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>`
@@ -2968,6 +3008,10 @@ function renderHome(): RenderedProductRoute {
 
 export function renderProductRoute(path: string): RenderedProductRoute {
   const normalizedPath = normalizePath(path);
+
+  if (isModerationSurfacePath(normalizedPath) && !moderationVisibilityReady) {
+    return renderModerationGate(path);
+  }
 
   if (normalizedPath === "/") {
     return renderHome();
