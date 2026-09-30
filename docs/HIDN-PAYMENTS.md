@@ -26,7 +26,7 @@ Apply the new migration to the configured database before deploying the Worker:
 npx wrangler d1 migrations apply hidn-room --remote
 ```
 
-The migration creates `hidn_users`, `hidn_sessions`, `payment_intents`, `payment_events`, and `unmatched_payments`.
+The migrations create `hidn_users`, `hidn_sessions`, `payment_intents`, `payment_events`, `unmatched_payments`, `hidn_reports`, and the append-only `hidn_moderation_events` audit table.
 
 ## Required Worker secrets/configuration
 
@@ -37,12 +37,14 @@ npx wrangler secret put ROOM_SHIELDED_ADDRESS
 npx wrangler secret put ROOM_PAYMENT_ZATOSHIS
 npx wrangler secret put PAYMENT_WATCHER_SECRET
 npx wrangler secret put REFUND_ENCRYPTION_KEY
+npx wrangler secret put REPORT_ADMIN_TOKEN
 ```
 
 - `ROOM_SHIELDED_ADDRESS`: the receiving shielded address watched by the separate watcher.
 - `ROOM_PAYMENT_ZATOSHIS`: the exact fixed amount expected for a payment intent. Store zatoshis, not a floating-point ZEC amount.
 - `PAYMENT_WATCHER_SECRET`: a long random secret shared only by the watcher and this Worker.
 - `REFUND_ENCRYPTION_KEY`: exactly 32 bytes, supplied as 64 hex characters or base64. Keep it separate from D1 and the watcher.
+- `REPORT_ADMIN_TOKEN`: a long random secret used only for the private `/admin/reports` console and `/api/admin/reports` endpoints. Never commit it or place it in frontend source.
 - `PAYMENT_MIN_CONFIRMATIONS` may be set as a Wrangler variable; it defaults to `3`.
 
 The amount is fixed by configuration so a price change cannot silently change an already-created payment request. Change it deliberately and document the effective time.
@@ -86,6 +88,25 @@ The payment reference is the link between a payment intent and an account. The w
 
 Funds are not automatically returned by this code. A refund address is encrypted and retained for an authorized refund process, but an automatic refund requires a separately controlled payout signer and an explicit review policy.
 
+## Moderation reports
+
+Logged-in accounts can submit a report for a thread or reply with a reason and
+optional context. D1 stores the report target, a short content snapshot, the
+pseudonymous reporter account ID, and a review status. Report submission is
+rate-limited and duplicate open reports from the same account for the same
+target are rejected.
+
+The private operator console is available at `/admin/reports` after the Worker
+has `REPORT_ADMIN_TOKEN` configured. The token is entered in memory, sent as a
+Bearer token, and is not saved by the browser. The admin API can list and
+update report statuses, hide reported thread/reply content, and restore a
+previously hidden item. Hiding is reversible and records an event rather than
+deleting the report or content. Public room surfaces read
+`GET /api/moderation/visibility` so the demo UI can respect those decisions;
+when a matching D1 content row exists, the Worker also updates its moderation
+state. It never returns recovery-code hashes, session hashes, or wallet
+secrets.
+
 ## Inspecting D1
 
 The Cloudflare dashboard's D1 SQL console can inspect the tables. From a terminal, use read-only queries such as:
@@ -99,6 +120,12 @@ npx wrangler d1 execute hidn-room --remote \
 
 npx wrangler d1 execute hidn-room --remote \
   --command="SELECT * FROM unmatched_payments ORDER BY created_at DESC LIMIT 50"
+
+npx wrangler d1 execute hidn-room --remote \
+  --command="SELECT report_id, target_type, target_id, reason, status, created_at FROM hidn_reports ORDER BY created_at DESC LIMIT 50"
+
+npx wrangler d1 execute hidn-room --remote \
+  --command="SELECT event_id, target_type, target_id, action, reason, created_at FROM hidn_moderation_events ORDER BY created_at DESC LIMIT 50"
 ```
 
 Recovery-code hashes, session hashes, and encrypted refund addresses should not be exported as a public spreadsheet. If an admin export is added later, it should be a separately authenticated, redacted endpoint.

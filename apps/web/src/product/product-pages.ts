@@ -52,18 +52,28 @@ import {
 import {
   createPaymentIntent,
   createRoomSession,
+  fetchAdminReports,
+  fetchModerationVisibility,
   fetchPaymentIntent,
   fetchRoomConfig,
   loginAccount,
   loginRoomSession,
   logoutAccount,
+  moderateAdminContent,
   requestZkChallenge,
   signupZkAccount,
+  submitReport,
+  updateAdminReport,
   verifyZkLogin,
   verifyRoomDemoPayment,
+  type AdminReportsResponse,
   type AccountAccessLevel,
   type AccountResponse,
+  type ModerationTargetType,
   type PaymentIntentResponse,
+  type ReportReason,
+  type ReportStatus,
+  type ReportTargetType,
 } from "./room-api";
 
 export interface RenderedProductRoute {
@@ -96,6 +106,19 @@ let roomVerificationRequested = false;
 let activeRoomChannel: RoomChannel = "general";
 let roomProfileOpen = false;
 let roomChannelNotice = "";
+let activeReportTarget: ReportTarget | undefined;
+let roomReportReason: ReportReason = "spam";
+let roomReportDetails = "";
+let roomReportFeedback = "";
+let roomReportNotice = "";
+let roomReportSubmitting = false;
+let adminReportToken = "";
+let adminReports: AdminReportsResponse | undefined;
+let adminReportFilter: ReportStatus | "all" = "all";
+let adminReportError = "";
+let adminReportLoading = false;
+let hiddenModerationTargets = new Set<string>();
+let moderationVisibilityRequest: Promise<void> | undefined;
 let homeStreamTimer: number | undefined;
 let homeReceivingTimer: number | undefined;
 let homeInviteTimer: number | undefined;
@@ -132,6 +155,13 @@ interface SelectedTextItem {
   kind: "thread" | "reply" | "text";
   category: string;
   time: string;
+}
+
+interface ReportTarget {
+  targetType: ReportTargetType;
+  targetId: string;
+  targetExcerpt: string;
+  label: string;
 }
 
 const roomChannelOptions: Array<{
@@ -259,8 +289,99 @@ function repliesForThread(id: string): AnonymousReply[] {
   return emptyReplies;
 }
 
+function moderationTargetKey(targetType: ModerationTargetType, targetId: string): string {
+  return `${targetType}:${targetId}`;
+}
+
+function isModerationHidden(targetType: ModerationTargetType, targetId: string): boolean {
+  return hiddenModerationTargets.has(moderationTargetKey(targetType, targetId));
+}
+
+function isModerationSurfacePath(path: string): boolean {
+  return path === "/room" || path === "/explore" || path.startsWith("/c/");
+}
+
+async function refreshModerationVisibility(): Promise<void> {
+  if (moderationVisibilityRequest) {
+    return moderationVisibilityRequest;
+  }
+
+  moderationVisibilityRequest = fetchModerationVisibility()
+    .then((response) => {
+      const nextTargets = new Set(
+        response.hiddenTargets
+          .filter((target) => (target.targetType === "thread" || target.targetType === "reply") && Boolean(target.targetId))
+          .map((target) => moderationTargetKey(target.targetType, target.targetId)),
+      );
+      const previousKeys = Array.from(hiddenModerationTargets).sort().join("|");
+      const nextKeys = Array.from(nextTargets).sort().join("|");
+      hiddenModerationTargets = nextTargets;
+      if (previousKeys !== nextKeys && isModerationSurfacePath(normalizePath(window.location.pathname))) {
+        rerenderProductRoute();
+      }
+    })
+    .catch(() => {
+      // The demo remains usable when the optional moderation visibility endpoint is unavailable.
+    })
+    .finally(() => {
+      moderationVisibilityRequest = undefined;
+    });
+
+  return moderationVisibilityRequest;
+}
+
 function reactionCountForThread(id: string, fallback = 0): number {
   return roomLikeCounts.get(id) ?? fallback;
+}
+
+const REPORT_REASON_OPTIONS: Array<{ value: ReportReason; label: string }> = [
+  { value: "spam", label: "Spam or flooding" },
+  { value: "harassment", label: "Harassment" },
+  { value: "threats", label: "Threats or violence" },
+  { value: "sexual_content", label: "Sexual content" },
+  { value: "personal_data", label: "Private information" },
+  { value: "self_harm", label: "Self-harm concern" },
+  { value: "other", label: "Other" },
+];
+
+function reportReasonLabel(reason: ReportReason): string {
+  return REPORT_REASON_OPTIONS.find((option) => option.value === reason)?.label ?? "Other";
+}
+
+function renderReportDialog(): string {
+  if (!activeReportTarget) {
+    return "";
+  }
+
+  return `<section class="hidn-report-dialog" role="dialog" aria-modal="true" aria-labelledby="hidn-report-title">
+    <button class="hidn-report-dialog__backdrop" type="button" data-action="report-close" aria-label="Close report dialog"></button>
+    <form class="hidn-report-dialog__panel" novalidate>
+      <header class="hidn-report-dialog__header">
+        <div>
+          ${TerminalLabel("MODERATION / PRIVATE REPORT")}
+          <h2 id="hidn-report-title">REPORT THIS SURFACE.</h2>
+        </div>
+        <button class="hidn-report-dialog__close" type="button" data-action="report-close" aria-label="Close report dialog">×</button>
+      </header>
+      <p class="hidn-report-dialog__target"><span>${escapeHtml(activeReportTarget.label)}</span><br />“${escapeHtml(activeReportTarget.targetExcerpt || "NO CONTENT SNAPSHOT")}"</p>
+      <label class="ui-field" for="hidn-report-reason">
+        <span class="ui-field__label">REASON</span>
+        <select id="hidn-report-reason">
+          ${REPORT_REASON_OPTIONS.map((option) => `<option value="${option.value}"${option.value === roomReportReason ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="ui-field" for="hidn-report-details">
+        <span class="ui-field__label">DETAILS / OPTIONAL</span>
+        <textarea id="hidn-report-details" rows="4" maxlength="2000" placeholder="Add context for the moderator...">${escapeHtml(roomReportDetails)}</textarea>
+      </label>
+      <p class="hidn-report-dialog__note">Your report is tied to your pseudonymous HIDN account for abuse prevention. It is not displayed publicly.</p>
+      ${roomReportFeedback ? `<p class="hidn-report-dialog__feedback" role="status">${escapeHtml(roomReportFeedback)}</p>` : ""}
+      <div class="hidn-report-dialog__actions">
+        ${GhostButton({ label: "CANCEL", dataAction: "report-close" })}
+        ${PrimaryButton({ label: roomReportSubmitting ? "SENDING..." : "SEND REPORT →", disabled: roomReportSubmitting, dataAction: "report-submit" })}
+      </div>
+    </form>
+  </section>`;
 }
 
 function renderTransmissionRow(
@@ -1663,9 +1784,12 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isHome = normalizedPath === "/";
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
+  const isAdminPage = normalizedPath.startsWith("/admin/");
   const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/confess" || normalizedPath.startsWith("/c/");
-  const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface;
-  const footerLinks = isHome || isRoomCreation
+  const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
+  const footerLinks = isAdminPage
+    ? []
+    : isHome || isRoomCreation
     ? [{ label: "HOW IT WORKS", href: "/how-it-works" }]
     : isHowItWorks
       ? [{ label: "HOME", href: "/" }]
@@ -1685,10 +1809,10 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface, normalizedPath === "/room" || normalizedPath === "/explore")}
-    ${isRoomSurface ? "" : publicNavigation(path)}
+    ${isRoomSurface || isAdminPage ? "" : publicNavigation(path)}
     ${main}
     ${isRoomSurface ? renderSelectionTools() : ""}
-    ${isRoomSurface ? "" : FooterShell({
+    ${isRoomSurface || isAdminPage ? "" : FooterShell({
       links: footerLinks,
       identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
     })}
@@ -1878,11 +2002,12 @@ function roomChannelOption(key: RoomChannel): (typeof roomChannelOptions)[number
 
 function feedForRoomChannel(confessions: MockConfession[]): MockConfession[] {
   const channel = roomChannelOption(activeRoomChannel);
+  const visibleConfessions = confessions.filter((confession) => !isModerationHidden("thread", confession.id));
   if (!channel.categories) {
-    return confessions;
+    return visibleConfessions;
   }
 
-  return confessions.filter((confession) => channel.categories?.includes(confession.category));
+  return visibleConfessions.filter((confession) => channel.categories?.includes(confession.category));
 }
 
 function feedForTab(tab: FeedTab): MockConfession[] {
@@ -1980,6 +2105,125 @@ function renderRoomDirectory(): string {
   </aside>`;
 }
 
+function adminReportStatusLabel(status: ReportStatus): string {
+  switch (status) {
+    case "reviewed":
+      return "REVIEWED";
+    case "dismissed":
+      return "DISMISSED";
+    case "actioned":
+      return "ACTIONED";
+    default:
+      return "OPEN";
+  }
+}
+
+function renderAdminReportCard(report: AdminReportsResponse["reports"][number]): string {
+  return `<article class="admin-report-card" data-admin-report-id="${escapeHtml(report.reportId)}">
+    <header class="admin-report-card__header">
+      <div>
+        <span class="admin-report-card__id">${escapeHtml(report.reportId)}</span>
+        <h2>${escapeHtml(reportReasonLabel(report.reason))}</h2>
+      </div>
+      <span class="admin-report-card__status admin-report-card__status--${escapeHtml(report.status)}">${escapeHtml(adminReportStatusLabel(report.status))}</span>
+    </header>
+    <dl class="admin-report-card__meta">
+      <div><dt>TARGET</dt><dd>${escapeHtml(report.targetType)} / ${escapeHtml(report.targetId)}</dd></div>
+      <div><dt>REPORTED BY</dt><dd>${escapeHtml(report.reporterUsername ?? "ACCOUNT REMOVED")}</dd></div>
+      <div><dt>CREATED</dt><dd>${escapeHtml(report.createdAt)}</dd></div>
+    </dl>
+    <blockquote class="admin-report-card__excerpt">“${escapeHtml(report.targetExcerpt || "NO CONTENT SNAPSHOT")}"</blockquote>
+    ${report.details ? `<p class="admin-report-card__details"><strong>REPORTER DETAILS</strong>${escapeHtml(report.details)}</p>` : ""}
+    <div class="admin-report-card__review">
+      <label class="ui-field" for="admin-report-status-${escapeHtml(report.reportId)}">
+        <span class="ui-field__label">REVIEW STATUS</span>
+        <select id="admin-report-status-${escapeHtml(report.reportId)}" data-admin-report-status>
+          ${(["open", "reviewed", "dismissed", "actioned"] as ReportStatus[]).map((status) => `<option value="${status}"${status === report.status ? " selected" : ""}>${adminReportStatusLabel(status)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="ui-field" for="admin-report-note-${escapeHtml(report.reportId)}">
+        <span class="ui-field__label">MODERATOR NOTE</span>
+        <textarea id="admin-report-note-${escapeHtml(report.reportId)}" data-admin-report-note rows="3" maxlength="2000" placeholder="Internal note...">${escapeHtml(report.reviewerNote)}</textarea>
+      </label>
+      <button class="ui-button ui-button--secondary" type="button" data-action="admin-report-update" data-report-id="${escapeHtml(report.reportId)}">UPDATE REPORT →</button>
+    </div>
+    ${report.targetType === "thread" || report.targetType === "reply"
+      ? `<div class="admin-report-card__moderation-actions">
+        <span class="ui-field__label">CONTENT ACTION</span>
+        <button class="ui-button ui-button--danger" type="button" data-action="admin-report-moderate" data-report-id="${escapeHtml(report.reportId)}" data-target-type="${escapeHtml(report.targetType)}" data-target-id="${escapeHtml(report.targetId)}" data-moderation-action="hide" data-moderation-reason="${escapeHtml(reportReasonLabel(report.reason))}">HIDE CONTENT →</button>
+        <button class="ui-button ui-button--secondary" type="button" data-action="admin-report-moderate" data-report-id="${escapeHtml(report.reportId)}" data-target-type="${escapeHtml(report.targetType)}" data-target-id="${escapeHtml(report.targetId)}" data-moderation-action="approve" data-moderation-reason="RESTORED BY MODERATOR">RESTORE CONTENT →</button>
+      </div>`
+      : `<p class="admin-report-card__no-moderation">ACCOUNT REPORT / REVIEW THE ACCOUNT SEPARATELY</p>`}
+  </article>`;
+}
+
+function renderAdminReports(): RenderedProductRoute {
+  const reportRows = adminReports?.reports ?? [];
+  const summary = adminReports?.summary ?? [];
+
+  return {
+    metadata: {
+      kind: "admin",
+      title: "HIDN — Report Console",
+      description: "Private HIDN moderation report console.",
+      canonicalPath: "/admin/reports",
+    },
+    html: publicFrame(
+      "/admin/reports",
+      `<main id="main-content" class="public-main admin-main">
+        <div class="hidn-container--reading admin-reports-page">
+          <header class="admin-reports-page__header">
+            ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
+            <h1 class="type-display-lg">REPORT<br /><em>CONSOLE.</em></h1>
+            <p>Review user-submitted moderation reports, then hide or restore thread and reply content. This surface is not linked from public navigation and report data is only loaded after Worker-token authorization.</p>
+          </header>
+          <section class="admin-reports-gate" aria-labelledby="admin-reports-gate-title">
+            <div>
+              ${TerminalLabel("WORKER AUTHORIZATION")}
+              <h2 id="admin-reports-gate-title">OPEN THE PRIVATE QUEUE.</h2>
+            </div>
+            <label class="ui-field" for="admin-report-token">
+              <span class="ui-field__label">REPORT ADMIN TOKEN / MEMORY ONLY</span>
+              <input id="admin-report-token" type="password" autocomplete="off" placeholder="Paste the Worker secret" />
+            </label>
+            <div class="admin-reports-gate__actions">
+              ${PrimaryButton({ label: adminReportLoading ? "LOADING REPORTS..." : "LOAD REPORTS →", disabled: adminReportLoading, dataAction: "admin-reports-load" })}
+              ${GhostButton({ label: "CLEAR", dataAction: "admin-reports-clear" })}
+            </div>
+            <p class="admin-reports-gate__status" role="status">${adminReportToken ? "TOKEN PRESENT / NOT STORED" : "NO TOKEN PRESENT"}</p>
+          </section>
+          ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
+          ${adminReports ? `<section class="admin-reports-results" aria-labelledby="admin-reports-results-title">
+            <header class="admin-reports-results__header">
+              <div>
+                ${TerminalLabel("MODERATION QUEUE")}
+                <h2 id="admin-reports-results-title">${adminReports.reports.length} REPORT${adminReports.reports.length === 1 ? "" : "S"} LOADED.</h2>
+              </div>
+              <label class="ui-field admin-reports-results__filter" for="admin-report-filter">
+                <span class="ui-field__label">FILTER</span>
+                <select id="admin-report-filter" data-admin-report-filter>
+                  <option value="all"${adminReportFilter === "all" ? " selected" : ""}>ALL REPORTS</option>
+                  <option value="open"${adminReportFilter === "open" ? " selected" : ""}>OPEN</option>
+                  <option value="reviewed"${adminReportFilter === "reviewed" ? " selected" : ""}>REVIEWED</option>
+                  <option value="dismissed"${adminReportFilter === "dismissed" ? " selected" : ""}>DISMISSED</option>
+                  <option value="actioned"${adminReportFilter === "actioned" ? " selected" : ""}>ACTIONED</option>
+                </select>
+              </label>
+            </header>
+            <div class="admin-reports-summary" aria-label="Report totals">
+              ${summary.length ? summary.map((item) => `<span><strong>${escapeHtml(String(item.count))}</strong> ${escapeHtml(adminReportStatusLabel(item.status))}</span>`).join("") : "<span>NO REPORTS YET</span>"}
+            </div>
+            <div class="admin-reports-list">
+              ${reportRows.length ? reportRows.map(renderAdminReportCard).join("") : `<p class="admin-reports-empty">No reports match this filter.</p>`}
+            </div>
+          </section>` : SystemMessage("PRIVATE QUEUE / LOCKED", "Enter the REPORT_ADMIN_TOKEN configured on the HIDN Worker. The token is sent only in the request header and is not saved in this browser.", "INFO")}
+        </div>
+      </main>`,
+      "public-page--admin",
+    ),
+  };
+}
+
 function renderExplore(path = "/room"): string {
   if (!hasRoomSession()) {
     return publicFrame(
@@ -2028,17 +2272,21 @@ function renderExplore(path = "/room"): string {
 
 function renderThreadRoom(id: string, quotedText = ""): string {
   const replies = repliesForThread(id);
-  const replyCount = replies.length;
+  const visibleReplies = replies
+    .map((reply, index) => ({ reply, index }))
+    .filter(({ index }) => !isModerationHidden("reply", `${id}:reply:${index}`));
+  const replyCount = visibleReplies.length;
   const fullAccess = hasFullRoomAccess();
   const messages = replyCount
-    ? replies
+    ? visibleReplies
         .map(
-          (reply, index) => `<article class="thread-room__message">
+          ({ reply, index }) => `<article class="thread-room__message">
             <header><span>ANONYMOUS / ${String(index + 1).padStart(2, "0")}</span><time>${escapeHtml(reply.time)}</time></header>
             <p data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="reply" data-share-index="${index}" data-share-label="${escapeHtml(`REPLY / ${String(index + 1).padStart(2, "0")}`)}" data-share-category="IDENTITY" data-share-time="${escapeHtml(reply.time)}">${escapeHtml(reply.text)}</p>
             <footer class="thread-room__message-actions">
               <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SAVE IMAGE</button>
               <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SHARE IMAGE</button>
+              <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="reply" data-report-target-id="${escapeHtml(`${id}:reply:${index}`)}" data-report-target-label="REPLY / ${String(index + 1).padStart(2, "0")}" data-report-target-excerpt="${escapeHtml(reply.text)}">REPORT</button>
               <span class="thread-share-status" data-share-status="${escapeHtml(`${id}:reply:${index}`)}" role="status" aria-live="polite"></span>
             </footer>
           </article>`,
@@ -2096,6 +2344,24 @@ function renderDetail(id: string): RenderedProductRoute {
     };
   }
 
+  if (isModerationHidden("thread", id)) {
+    return {
+      metadata,
+      html: publicFrame(
+        `/c/${id}`,
+        `<main id="main-content" class="public-main detail-main">
+          <div class="hidn-container--reading detail-page">
+            ${TerminalLabel("MODERATION / CONTENT HIDDEN")}
+            <h1 class="detail-page__title">TRANSMISSION HIDDEN</h1>
+            ${SystemMessage("CONTENT UNAVAILABLE", "This transmission was hidden by a HIDN moderator. If the decision changes, the room will restore it without deleting the audit record.", "INFO")}
+            ${actionLink("BACK TO THE ROOM", "/room", "secondary")}
+          </div>
+        </main>`,
+        "public-page--detail",
+      ),
+    };
+  }
+
   return {
     metadata,
     html: publicFrame(
@@ -2116,24 +2382,26 @@ function renderDetail(id: string): RenderedProductRoute {
           </article>
           <div class="detail-meta-grid">
             <div><span>LIKES</span><strong>${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</strong></div>
-            <div><span>COMMENTS</span><strong>${escapeHtml(String(repliesForThread(confession.id).length))}</strong></div>
+            <div><span>COMMENTS</span><strong>${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</strong></div>
             <div><span>POSTED</span><strong>${escapeHtml(confession.relativeTime)}</strong></div>
           </div>
           ${SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
             <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasFullRoomAccess() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
-            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).length))}</a>
+            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</a>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
             <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
             <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">SHARE IMAGE</button>
             <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">X / POST</button>
-            <button class="room-message__action" type="button" data-demo="true">REPORT</button>
+            <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">REPORT</button>
           </div>
           <p class="thread-share-status thread-share-status--detail" data-share-status="${escapeHtml(confession.id)}" role="status" aria-live="polite"></p>
+          ${roomReportNotice ? `<p class="thread-share-status thread-share-status--detail" role="status">${escapeHtml(roomReportNotice)}</p>` : ""}
           ${renderThreadRoom(confession.id, confession.text)}
           <p class="detail-boundary">NO PROFILE / NO AUTHOR PAGE / NO MORE FROM THIS PERSON</p>
           ${actionLink("BACK TO THE ROOM", "/room", "ghost", "detail-back")}
         </div>
+        ${renderReportDialog()}
       </main>`,
       "public-page--detail",
     ),
@@ -2474,6 +2742,9 @@ function renderRoomReady(): string {
   const payment = roomPayment;
   const accountLabel = roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
   const showVerification = roomVerificationRequested && !isFull;
+  const titleText = isFull ? "THE ROOM IS OPEN." : "THE ROOM IS VISIBLE.";
+  const titleSignal = isFull ? "OPEN." : "VISIBLE.";
+  const showResetAction = Boolean(roomAccountRecoveryCode || showVerification);
   const accountCopy = isFull
     ? `${accountLabel} is active with full room access.`
     : `${accountLabel} is active. Enter the room to view your channels. Profile verification is available later from the Channels menu.`;
@@ -2481,7 +2752,10 @@ function renderRoomReady(): string {
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
       ${TerminalLabel(isFull ? "HIDN / FULL ACCESS" : "HIDN / READ ONLY")}
-      <h1 class="type-display-lg room-access-header__title">THE ROOM IS<br /><em>${isFull ? "OPEN." : "VISIBLE."}</em></h1>
+      <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
+        THE ROOM IS<br />
+        <em>${escapeHtml(titleSignal)}</em>
+      </h1>
       <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
     </header>
     ${roomAccountRecoveryCode ? `<div class="room-access-key">
@@ -2513,7 +2787,7 @@ function renderRoomReady(): string {
       ${PrimaryButton({ label: roomBackendStatus === "connecting" ? "CREATING PAYMENT REQUEST..." : "CREATE PAYMENT REQUEST →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-payment-intent" })}
     </form>` : ""}
     <div class="room-access-actions">
-      ${GhostButton({ label: "START OVER", dataAction: "room-back" })}
+      ${showResetAction ? GhostButton({ label: "START OVER", dataAction: "room-back" }) : ""}
       ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-enter" })}
     </div>
   </div>`;
@@ -2707,6 +2981,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderRoomAccess();
   }
 
+  if (normalizedPath === "/admin/reports") {
+    return renderAdminReports();
+  }
+
   if (normalizedPath === "/confess") {
     return { metadata: CONFESS_METADATA, html: renderConfess() };
   }
@@ -2879,6 +3157,131 @@ function bindRoomFolderInteractions(root: ParentNode): void {
   });
 }
 
+async function submitActiveReport(): Promise<void> {
+  const target = activeReportTarget;
+  if (!target || roomReportSubmitting) {
+    return;
+  }
+
+  const reason = roomReportReason;
+  const details = roomReportDetails;
+  roomReportSubmitting = true;
+  roomReportFeedback = "TRANSMITTING REPORT...";
+  rerenderProductRoute();
+
+  try {
+    await submitReport({
+      targetType: target.targetType,
+      targetId: target.targetId,
+      targetExcerpt: target.targetExcerpt,
+      reason,
+      details,
+    });
+    activeReportTarget = undefined;
+    roomReportFeedback = "";
+    roomReportDetails = "";
+    roomReportNotice = "REPORT RECEIVED / MODERATION QUEUE UPDATED";
+  } catch (error) {
+    roomReportFeedback = error instanceof Error ? error.message : "The report could not be submitted.";
+  } finally {
+    roomReportSubmitting = false;
+  }
+
+  if (normalizePath(window.location.pathname).startsWith("/c/")) {
+    rerenderProductRoute();
+  }
+}
+
+async function loadAdminReports(): Promise<void> {
+  if (!adminReportToken) {
+    adminReportError = "Paste the REPORT_ADMIN_TOKEN before loading the queue.";
+    adminReports = undefined;
+    rerenderProductRoute();
+    return;
+  }
+
+  adminReportLoading = true;
+  adminReportError = "";
+  rerenderProductRoute();
+  try {
+    adminReports = await fetchAdminReports(adminReportToken, adminReportFilter);
+  } catch (error) {
+    adminReports = undefined;
+    adminReportError = error instanceof Error ? error.message : "Reports could not be loaded.";
+  } finally {
+    adminReportLoading = false;
+  }
+
+  if (normalizePath(window.location.pathname) === "/admin/reports") {
+    rerenderProductRoute();
+  }
+}
+
+async function updateAdminReportFromRoot(button: HTMLButtonElement): Promise<void> {
+  const reportId = button.dataset.reportId;
+  const card = button.closest<HTMLElement>("[data-admin-report-id]");
+  const status = card?.querySelector<HTMLSelectElement>("[data-admin-report-status]")?.value as ReportStatus | undefined;
+  const reviewerNote = card?.querySelector<HTMLTextAreaElement>("[data-admin-report-note]")?.value.trim() ?? "";
+  if (!reportId || !status || !adminReportToken) {
+    adminReportError = "Load the private report queue before updating a report.";
+    rerenderProductRoute();
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    await updateAdminReport(adminReportToken, reportId, status, reviewerNote);
+    adminReports = await fetchAdminReports(adminReportToken, adminReportFilter);
+    adminReportError = "REPORT UPDATED / QUEUE REFRESHED";
+  } catch (error) {
+    adminReportError = error instanceof Error ? error.message : "The report could not be updated.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/admin/reports") {
+    rerenderProductRoute();
+  }
+}
+
+async function moderateAdminContentFromRoot(button: HTMLButtonElement): Promise<void> {
+  const reportId = button.dataset.reportId;
+  const targetType = button.dataset.targetType;
+  const targetId = button.dataset.targetId?.trim();
+  const action = button.dataset.moderationAction;
+  const reason = button.dataset.moderationReason?.trim() || "ADMIN ACTION";
+  if (
+    !reportId ||
+    (targetType !== "thread" && targetType !== "reply") ||
+    !targetId ||
+    (action !== "approve" && action !== "hide" && action !== "reject") ||
+    !adminReportToken
+  ) {
+    adminReportError = "Load the private report queue before changing content visibility.";
+    rerenderProductRoute();
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    const result = await moderateAdminContent(adminReportToken, {
+      targetType,
+      targetId,
+      action,
+      reason,
+      reportId,
+    });
+    await refreshModerationVisibility();
+    adminReports = await fetchAdminReports(adminReportToken, adminReportFilter);
+    const actionLabel = action === "approve" ? "RESTORED" : action === "reject" ? "REJECTED" : "HIDDEN";
+    adminReportError = `${actionLabel} / MODERATION EVENT RECORDED${result.persistedContentRow ? "" : " / DEMO EVENT"}`;
+  } catch (error) {
+    adminReportError = error instanceof Error ? error.message : "The moderation action could not be recorded.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/admin/reports") {
+    rerenderProductRoute();
+  }
+}
+
 function bindPointerSpotlightInteractions(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>("[data-pointer-surface]").forEach((surface) => {
     const updatePointer = (event: PointerEvent): void => {
@@ -2940,6 +3343,24 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
+  if (isModerationSurfacePath(normalizedPath)) {
+    void refreshModerationVisibility();
+  }
+  if (normalizedPath !== "/admin/reports" && (adminReportToken || adminReports || adminReportError)) {
+    adminReportToken = "";
+    adminReports = undefined;
+    adminReportError = "";
+    adminReportFilter = "all";
+  }
+  root.querySelector<HTMLSelectElement>('[data-admin-report-filter]')?.addEventListener("change", (event) => {
+    const filter = (event.currentTarget as HTMLSelectElement).value;
+    if (filter !== "all" && filter !== "open" && filter !== "reviewed" && filter !== "dismissed" && filter !== "actioned") {
+      return;
+    }
+
+    adminReportFilter = filter;
+    void loadAdminReports();
+  });
   const audioToggle = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
   const isAudioSurface = Boolean(audioToggle);
   if (isAudioSurface) {
@@ -2972,6 +3393,70 @@ export function bindProductRoute(root: ParentNode = document): void {
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
       switch (button.dataset.action) {
+        case "report-open": {
+          const targetType = button.dataset.reportTargetType;
+          if (targetType !== "thread" && targetType !== "reply" && targetType !== "account") {
+            break;
+          }
+
+          activeReportTarget = {
+            targetType,
+            targetId: button.dataset.reportTargetId ?? "",
+            targetExcerpt: button.dataset.reportTargetExcerpt ?? "",
+            label: button.dataset.reportTargetLabel ?? "REPORTED SURFACE",
+          };
+          roomReportReason = "spam";
+          roomReportDetails = "";
+          roomReportFeedback = "";
+          rerenderProductRoute();
+          break;
+        }
+        case "report-close":
+          activeReportTarget = undefined;
+          roomReportFeedback = "";
+          roomReportDetails = "";
+          roomReportSubmitting = false;
+          rerenderProductRoute();
+          break;
+        case "report-submit": {
+          const reason = root.querySelector<HTMLSelectElement>("#hidn-report-reason")?.value ?? "";
+          const details = root.querySelector<HTMLTextAreaElement>("#hidn-report-details")?.value.trim() ?? "";
+          if (!REPORT_REASON_OPTIONS.some((option) => option.value === reason)) {
+            roomReportFeedback = "Choose a report reason before sending.";
+            rerenderProductRoute();
+            break;
+          }
+
+          roomReportReason = reason as ReportReason;
+          roomReportDetails = details;
+          void submitActiveReport();
+          break;
+        }
+        case "admin-reports-load": {
+          const token = root.querySelector<HTMLInputElement>("#admin-report-token")?.value.trim() ?? "";
+          if (token) {
+            adminReportToken = token;
+          }
+          const filter = root.querySelector<HTMLSelectElement>("#admin-report-filter")?.value ?? adminReportFilter;
+          if (filter === "all" || filter === "open" || filter === "reviewed" || filter === "dismissed" || filter === "actioned") {
+            adminReportFilter = filter;
+          }
+          void loadAdminReports();
+          break;
+        }
+        case "admin-reports-clear":
+          adminReportToken = "";
+          adminReports = undefined;
+          adminReportError = "";
+          adminReportFilter = "all";
+          rerenderProductRoute();
+          break;
+        case "admin-report-update":
+          void updateAdminReportFromRoot(button);
+          break;
+        case "admin-report-moderate":
+          void moderateAdminContentFromRoot(button);
+          break;
         case "selection-save":
           void shareSelectedTexts(root, activeTextSelection ? [activeTextSelection] : [], "save");
           break;

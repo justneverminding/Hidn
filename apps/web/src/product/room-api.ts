@@ -13,6 +13,11 @@ export interface RoomSessionResponse {
 
 export type AccountAccessLevel = "read_only" | "full";
 export type AccountAuthMethod = "recovery_code" | "schnorr";
+export type ReportTargetType = "thread" | "reply" | "account";
+export type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
+export type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
+export type ModerationTargetType = "thread" | "reply";
+export type ModerationAction = "approve" | "hide" | "reject";
 
 export interface AccountResponse {
   userId: string;
@@ -54,6 +59,41 @@ export interface PaymentIntentResponse {
   createdAt: string;
   expiresAt: string;
   confirmedAt: string | null;
+}
+
+export interface ReportSubmissionResponse {
+  reportId: string;
+  status: "open";
+  createdAt: string;
+}
+
+export interface AdminReport {
+  reportId: string;
+  targetType: ReportTargetType;
+  targetId: string;
+  targetExcerpt: string;
+  reason: ReportReason;
+  details: string;
+  reporterUserId: string;
+  reporterUsername: string | null;
+  status: ReportStatus;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewerNote: string;
+}
+
+export interface AdminReportsResponse {
+  reports: AdminReport[];
+  summary: Array<{ status: ReportStatus; count: number }>;
+  filter: ReportStatus | "all";
+  limit: number;
+}
+
+export interface ModerationVisibilityResponse {
+  hiddenTargets: Array<{
+    targetType: ModerationTargetType;
+    targetId: string;
+  }>;
 }
 
 export async function fetchRoomConfig(): Promise<RoomConfig> {
@@ -158,6 +198,93 @@ export async function fetchAccountSession(): Promise<AccountResponse> {
 
 export function logoutAccount(): Promise<{ ok: boolean }> {
   return accountRequest<{ ok: boolean }>("/api/account/logout", {});
+}
+
+export function submitReport(input: {
+  targetType: ReportTargetType;
+  targetId: string;
+  targetExcerpt: string;
+  reason: ReportReason;
+  details: string;
+}): Promise<ReportSubmissionResponse> {
+  return accountRequest<ReportSubmissionResponse>("/api/reports", input);
+}
+
+async function adminRequest<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(init.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const message = typeof payload?.error === "string" ? payload.error : `Admin reports returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  return (await response.json()) as T;
+}
+
+export function fetchAdminReports(token: string, status: ReportStatus | "all" = "all"): Promise<AdminReportsResponse> {
+  const query = status === "all" ? "" : `?status=${encodeURIComponent(status)}`;
+  return adminRequest<AdminReportsResponse>(`/api/admin/reports${query}`, token);
+}
+
+export function updateAdminReport(
+  token: string,
+  reportId: string,
+  status: ReportStatus,
+  reviewerNote: string,
+): Promise<{ report: AdminReport }> {
+  return adminRequest<{ report: AdminReport }>(`/api/admin/reports/${encodeURIComponent(reportId)}`, token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, reviewerNote }),
+  });
+}
+
+export function moderateAdminContent(
+  token: string,
+  input: {
+    targetType: ModerationTargetType;
+    targetId: string;
+    action: ModerationAction;
+    reason?: string;
+    reportId?: string;
+  },
+): Promise<{
+  action: ModerationAction;
+  targetType: ModerationTargetType;
+  targetId: string;
+  persistedContentRow: boolean;
+  linkedReport: boolean;
+  createdAt: string;
+}> {
+  return adminRequest(`/api/admin/moderation`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchModerationVisibility(): Promise<ModerationVisibilityResponse> {
+  const response = await fetch("/api/moderation/visibility", {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const message = typeof payload?.error === "string"
+      ? payload.error
+      : `Moderation visibility returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  return (await response.json()) as ModerationVisibilityResponse;
 }
 
 export function createPaymentIntent(refundAddress: string): Promise<PaymentIntentResponse> {

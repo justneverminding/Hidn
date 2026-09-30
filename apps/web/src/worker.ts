@@ -18,6 +18,10 @@ const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 type AccessLevel = "read_only" | "full";
 type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
+type ReportTargetType = "thread" | "reply" | "account";
+type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
+type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
+type ModerationAction = "approve" | "hide" | "reject";
 type PaymentStatus =
   | "pending"
   | "detected"
@@ -36,6 +40,7 @@ interface AssetFetcher {
 interface D1Statement {
   bind(...values: unknown[]): D1Statement;
   first<T>(): Promise<T | null>;
+  all<T>(): Promise<{ results: T[] }>;
   run(): Promise<unknown>;
 }
 
@@ -52,6 +57,7 @@ interface HidnWorkerEnv {
   PAYMENT_MIN_CONFIRMATIONS?: string;
   PAYMENT_WATCHER_SECRET?: string;
   REFUND_ENCRYPTION_KEY?: string;
+  REPORT_ADMIN_TOKEN?: string;
 }
 
 interface AuthenticatedUser {
@@ -76,6 +82,42 @@ interface PaymentIntentRow {
   expires_at: string;
   confirmed_at: string | null;
 }
+
+interface AdminReportRow {
+  report_id: string;
+  target_type: ReportTargetType;
+  target_id: string;
+  target_excerpt: string;
+  reason: ReportReason;
+  details: string;
+  reporter_user_id: string;
+  reporter_username: string | null;
+  status: ReportStatus;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewer_note: string;
+}
+
+interface ModerationVisibilityRow {
+  target_type: "thread" | "reply";
+  target_id: string;
+}
+
+const REPORT_REASONS: readonly ReportReason[] = [
+  "spam",
+  "harassment",
+  "threats",
+  "sexual_content",
+  "personal_data",
+  "self_harm",
+  "other",
+];
+const REPORT_STATUSES: readonly ReportStatus[] = ["open", "reviewed", "dismissed", "actioned"];
+const REPORT_MAX_PER_HOUR = 20;
+const REPORT_MAX_TARGET_ID_LENGTH = 200;
+const REPORT_MAX_EXCERPT_LENGTH = 1000;
+const REPORT_MAX_DETAILS_LENGTH = 2000;
+const MODERATION_MAX_REASON_LENGTH = 2000;
 
 function jsonResponse(
   body: unknown,
@@ -168,6 +210,14 @@ function createPaymentReference(): string {
   return `HIDN-PAY-${createRandomHex(8).toUpperCase()}`;
 }
 
+function createReportId(): string {
+  return `RPT-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createModerationEventId(): string {
+  return `MOD-${createRandomHex(12).toUpperCase()}`;
+}
+
 function createAccessCode(): string {
   const rawCharacters: string[] = [];
   const bucketSize = Math.floor(256 / ACCESS_CODE_ALPHABET.length) * ACCESS_CODE_ALPHABET.length;
@@ -198,6 +248,26 @@ function normalizeUsername(username: string): string {
 
 function isValidUsername(username: string): boolean {
   return /^HIDN-[A-Z0-9]{1,20}$/.test(username);
+}
+
+function isReportTargetType(value: string): value is ReportTargetType {
+  return value === "thread" || value === "reply" || value === "account";
+}
+
+function isReportReason(value: string): value is ReportReason {
+  return REPORT_REASONS.includes(value as ReportReason);
+}
+
+function isReportStatus(value: string): value is ReportStatus {
+  return REPORT_STATUSES.includes(value as ReportStatus);
+}
+
+function isModerationTargetType(value: string): value is "thread" | "reply" {
+  return value === "thread" || value === "reply";
+}
+
+function isModerationAction(value: string): value is ModerationAction {
+  return value === "approve" || value === "hide" || value === "reject";
 }
 
 async function hashText(value: string): Promise<string> {
@@ -646,6 +716,338 @@ async function logoutAccount(request: Request, env: HidnWorkerEnv): Promise<Resp
     "no-store",
     { "Set-Cookie": sessionCookie(request, "", 0) },
   );
+}
+
+async function submitReport(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before submitting a report." }, 401);
+  }
+
+  const body = await requestBody(request);
+  const targetType = typeof body.targetType === "string" ? body.targetType.trim().toLowerCase() : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId.trim() : "";
+  const targetExcerpt = typeof body.targetExcerpt === "string" ? body.targetExcerpt.trim() : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim().toLowerCase() : "";
+  const details = typeof body.details === "string" ? body.details.trim() : "";
+
+  if (!isReportTargetType(targetType)) {
+    return jsonResponse({ error: "The report target is invalid." }, 400);
+  }
+  if (!targetId || targetId.length > REPORT_MAX_TARGET_ID_LENGTH) {
+    return jsonResponse({ error: "The report target ID is invalid." }, 400);
+  }
+  if (targetExcerpt.length > REPORT_MAX_EXCERPT_LENGTH) {
+    return jsonResponse({ error: "The reported content excerpt is too long." }, 400);
+  }
+  if (!isReportReason(reason)) {
+    return jsonResponse({ error: "Choose a valid report reason." }, 400);
+  }
+  if (details.length > REPORT_MAX_DETAILS_LENGTH) {
+    return jsonResponse({ error: "Report details are too long." }, 400);
+  }
+
+  const now = new Date();
+  const recentWindow = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+  const recentCount = await env.ROOM_DB!.prepare(
+    "SELECT COUNT(*) AS count FROM hidn_reports WHERE reporter_user_id = ? AND created_at >= ?",
+  )
+    .bind(user.userId, recentWindow)
+    .first<{ count: number }>();
+  if (Number(recentCount?.count ?? 0) >= REPORT_MAX_PER_HOUR) {
+    return jsonResponse({ error: "Report limit reached. Try again later." }, 429);
+  }
+
+  const reportId = createReportId();
+  try {
+    await env.ROOM_DB!.prepare(
+      `INSERT INTO hidn_reports
+        (report_id, target_type, target_id, target_excerpt, reason, details,
+         reporter_user_id, status, created_at, reviewer_note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        reportId,
+        targetType,
+        targetId,
+        targetExcerpt,
+        reason,
+        details,
+        user.userId,
+        "open",
+        now.toISOString(),
+        "",
+      )
+      .run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (message.includes("unique") || message.includes("constraint")) {
+      return jsonResponse({ error: "You already have an open report for this surface." }, 409);
+    }
+
+    throw error;
+  }
+
+  return jsonResponse(
+    { reportId, status: "open" satisfies ReportStatus, createdAt: now.toISOString() },
+    201,
+  );
+}
+
+async function hasValidAdminToken(request: Request, env: HidnWorkerEnv): Promise<boolean> {
+  const expected = env.REPORT_ADMIN_TOKEN?.trim() ?? "";
+  if (!expected) {
+    return false;
+  }
+
+  const authorization = request.headers.get("Authorization") ?? "";
+  const supplied = authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length).trim()
+    : request.headers.get("X-HIDN-ADMIN-TOKEN")?.trim() ?? "";
+  if (!supplied) {
+    return false;
+  }
+
+  const [suppliedHash, expectedHash] = await Promise.all([hashText(supplied), hashText(expected)]);
+  let difference = suppliedHash.length === expectedHash.length ? 0 : 1;
+  const length = Math.max(suppliedHash.length, expectedHash.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (suppliedHash.charCodeAt(index) || 0) ^ (expectedHash.charCodeAt(index) || 0);
+  }
+
+  return difference === 0;
+}
+
+async function requireAdminToken(request: Request, env: HidnWorkerEnv): Promise<Response | undefined> {
+  if (!env.REPORT_ADMIN_TOKEN?.trim()) {
+    return jsonResponse({ error: "Report administration is not configured." }, 503);
+  }
+
+  if (!(await hasValidAdminToken(request, env))) {
+    return jsonResponse(
+      { error: "Admin authorization is required." },
+      401,
+      "no-store",
+      { "WWW-Authenticate": "Bearer" },
+    );
+  }
+
+  return undefined;
+}
+
+function serializeAdminReport(row: AdminReportRow): Record<string, unknown> {
+  return {
+    reportId: row.report_id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    targetExcerpt: row.target_excerpt,
+    reason: row.reason,
+    details: row.details,
+    reporterUserId: row.reporter_user_id,
+    reporterUsername: row.reporter_username,
+    status: row.status,
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at,
+    reviewerNote: row.reviewer_note,
+  };
+}
+
+const ADMIN_REPORT_SELECT = `
+  SELECT r.report_id, r.target_type, r.target_id, r.target_excerpt,
+         r.reason, r.details, r.reporter_user_id, u.username AS reporter_username,
+         r.status, r.created_at, r.reviewed_at, r.reviewer_note
+  FROM hidn_reports r
+  LEFT JOIN hidn_users u ON u.user_id = r.reporter_user_id`;
+
+async function listAdminReports(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorizationFailure = await requireAdminToken(request, env);
+  if (authorizationFailure) {
+    return authorizationFailure;
+  }
+
+  const url = new URL(request.url);
+  const requestedStatus = url.searchParams.get("status")?.trim().toLowerCase() ?? "";
+  if (requestedStatus && !isReportStatus(requestedStatus)) {
+    return jsonResponse({ error: "The report status filter is invalid." }, 400);
+  }
+
+  const requestedLimit = Number(url.searchParams.get("limit") ?? "100");
+  const limit = Number.isSafeInteger(requestedLimit) ? Math.min(200, Math.max(1, requestedLimit)) : 100;
+  const query = requestedStatus
+    ? `${ADMIN_REPORT_SELECT} WHERE r.status = ? ORDER BY r.created_at DESC LIMIT ?`
+    : `${ADMIN_REPORT_SELECT} ORDER BY r.created_at DESC LIMIT ?`;
+  const statement = env.ROOM_DB!.prepare(query);
+  const result = requestedStatus
+    ? await statement.bind(requestedStatus, limit).all<AdminReportRow>()
+    : await statement.bind(limit).all<AdminReportRow>();
+  const summary = await env.ROOM_DB!.prepare(
+    "SELECT status, COUNT(*) AS count FROM hidn_reports GROUP BY status ORDER BY status",
+  ).all<{ status: ReportStatus; count: number }>();
+
+  return jsonResponse({
+    reports: result.results.map(serializeAdminReport),
+    summary: summary.results.map((row) => ({ status: row.status, count: Number(row.count) })),
+    filter: requestedStatus || "all",
+    limit,
+  });
+}
+
+async function updateAdminReport(reportId: string, request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorizationFailure = await requireAdminToken(request, env);
+  if (authorizationFailure) {
+    return authorizationFailure;
+  }
+
+  const normalizedReportId = reportId.trim().toUpperCase();
+  if (!/^RPT-[A-F0-9]{24}$/.test(normalizedReportId)) {
+    return jsonResponse({ error: "The report ID is invalid." }, 400);
+  }
+
+  const body = await requestBody(request);
+  const status = typeof body.status === "string" ? body.status.trim().toLowerCase() : "";
+  const reviewerNote = typeof body.reviewerNote === "string" ? body.reviewerNote.trim() : "";
+  if (!isReportStatus(status)) {
+    return jsonResponse({ error: "Choose a valid report status." }, 400);
+  }
+  if (reviewerNote.length > REPORT_MAX_DETAILS_LENGTH) {
+    return jsonResponse({ error: "The reviewer note is too long." }, 400);
+  }
+
+  const reviewedAt = status === "open" ? null : new Date().toISOString();
+  const updateResult = await env.ROOM_DB!.prepare(
+    `UPDATE hidn_reports
+     SET status = ?, reviewed_at = ?, reviewer_note = ?
+     WHERE report_id = ?`,
+  )
+    .bind(status, reviewedAt, reviewerNote, normalizedReportId)
+    .run() as { meta?: { changes?: number } };
+  if (updateResult.meta?.changes === 0) {
+    return jsonResponse({ error: "Report not found." }, 404);
+  }
+
+  const row = await env.ROOM_DB!.prepare(`${ADMIN_REPORT_SELECT} WHERE r.report_id = ? LIMIT 1`)
+    .bind(normalizedReportId)
+    .first<AdminReportRow>();
+  if (!row) {
+    return jsonResponse({ error: "Report not found." }, 404);
+  }
+
+  return jsonResponse({ report: serializeAdminReport(row) });
+}
+
+async function moderateAdminContent(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorizationFailure = await requireAdminToken(request, env);
+  if (authorizationFailure) {
+    return authorizationFailure;
+  }
+
+  const body = await requestBody(request);
+  const targetType = typeof body.targetType === "string" ? body.targetType.trim().toLowerCase() : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId.trim() : "";
+  const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "ADMIN ACTION";
+  const reportId = typeof body.reportId === "string" ? body.reportId.trim().toUpperCase() : "";
+
+  if (!isModerationTargetType(targetType)) {
+    return jsonResponse({ error: "Only thread and reply content can be moderated." }, 400);
+  }
+  if (!targetId || targetId.length > REPORT_MAX_TARGET_ID_LENGTH) {
+    return jsonResponse({ error: "The moderation target ID is invalid." }, 400);
+  }
+  if (!isModerationAction(action)) {
+    return jsonResponse({ error: "Choose approve, hide, or reject." }, 400);
+  }
+  if (reason.length > MODERATION_MAX_REASON_LENGTH) {
+    return jsonResponse({ error: "The moderation reason is too long." }, 400);
+  }
+  if (reportId && !/^RPT-[A-F0-9]{24}$/.test(reportId)) {
+    return jsonResponse({ error: "The linked report ID is invalid." }, 400);
+  }
+
+  const now = new Date().toISOString();
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_moderation_events
+      (event_id, target_type, target_id, action, reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(createModerationEventId(), targetType, targetId, action, reason, now)
+    .run();
+
+  const moderationState = action === "approve" ? "visible" : action === "reject" ? "rejected" : "hidden";
+  const contentUpdate = await env.ROOM_DB!.prepare(
+    `UPDATE ${targetType === "thread" ? "hidn_threads" : "hidn_replies"}
+     SET moderation_state = ?, hidden_at = ?
+     WHERE ${targetType === "thread" ? "thread_id" : "reply_id"} = ?`,
+  )
+    .bind(moderationState, action === "approve" ? null : now, targetId)
+    .run() as { meta?: { changes?: number } };
+
+  let linkedReport = false;
+  if (reportId) {
+    const reportStatus = action === "approve" ? "reviewed" : "actioned";
+    const reportUpdate = await env.ROOM_DB!.prepare(
+      `UPDATE hidn_reports
+       SET status = ?, reviewed_at = ?, reviewer_note = CASE WHEN ? = '' THEN reviewer_note ELSE ? END
+       WHERE report_id = ?`,
+    )
+      .bind(reportStatus, now, reason, reason, reportId)
+      .run() as { meta?: { changes?: number } };
+    linkedReport = Number(reportUpdate.meta?.changes ?? 0) > 0;
+  }
+
+  return jsonResponse({
+    action,
+    targetType,
+    targetId,
+    persistedContentRow: Number(contentUpdate.meta?.changes ?? 0) > 0,
+    linkedReport,
+    createdAt: now,
+  });
+}
+
+async function listModerationVisibility(env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT target_type, target_id
+     FROM (
+       SELECT target_type, target_id, action,
+              ROW_NUMBER() OVER (
+                PARTITION BY target_type, target_id
+                ORDER BY created_at DESC, event_id DESC
+              ) AS row_number
+       FROM hidn_moderation_events
+     )
+     WHERE row_number = 1 AND action IN ('hide', 'reject')
+     ORDER BY target_type, target_id`,
+  ).all<ModerationVisibilityRow>();
+
+  return jsonResponse({
+    hiddenTargets: result.results.map((row) => ({ targetType: row.target_type, targetId: row.target_id })),
+  });
 }
 
 function decodeBase64(value: string): Uint8Array {
@@ -1272,6 +1674,67 @@ const worker = {
         return await logoutAccount(request, env);
       } catch {
         return jsonResponse({ error: "Account logout could not be completed." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/reports") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await submitReport(request, env);
+      } catch {
+        return jsonResponse({ error: "Report could not be submitted." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/moderation/visibility") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listModerationVisibility(env);
+      } catch {
+        return jsonResponse({ error: "Moderation visibility could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/admin/reports") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listAdminReports(request, env);
+      } catch {
+        return jsonResponse({ error: "Reports could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/admin/moderation") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await moderateAdminContent(request, env);
+      } catch {
+        return jsonResponse({ error: "Moderation action could not be recorded." }, 500);
+      }
+    }
+
+    const adminReportMatch = url.pathname.match(/^\/api\/admin\/reports\/([^/]+)$/);
+    if (adminReportMatch) {
+      if (request.method !== "PATCH") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await updateAdminReport(decodeURIComponent(adminReportMatch[1]), request, env);
+      } catch {
+        return jsonResponse({ error: "Report could not be updated." }, 500);
       }
     }
 
