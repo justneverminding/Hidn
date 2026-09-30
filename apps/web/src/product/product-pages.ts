@@ -187,7 +187,7 @@ interface HomeFileAudioSession {
 
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
-const HOME_AUDIO_DEFAULT_VOLUME = 0.1029;
+const HOME_AUDIO_DEFAULT_VOLUME = 0.02058;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
@@ -2680,27 +2680,24 @@ function renderRoomAccessChooser(): string {
     <header class="room-access-header">
       ${TerminalLabel("HIDN / ROOM ACCESS")}
       <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
-      <p class="room-access-header__copy">Choose a pseudonymous account or return with the recovery key you keep on your side.</p>
     </header>
     <div class="room-access-options">
       <article class="room-access-option">
-        <span class="room-access-option__number">01</span>
         <div>
-          <h2>CREATE AN ACCOUNT</h2>
-          <p>Choose a handle in the form HIDN- followed by letters or numbers. Your browser creates the recovery key locally.</p>
+          <h2>BEGIN WITHOUT A NAME</h2>
+          <p>Choose an anonymous handle to access the private room.</p>
         </div>
-        ${PrimaryButton({ label: "CREATE ACCOUNT →", dataAction: "room-create" })}
+        ${SecondaryButton({ label: "SET UP PRIVATE ACCESS", dataAction: "room-create" })}
       </article>
       <article class="room-access-option">
-        <span class="room-access-option__number">02</span>
         <div>
-          <h2>RETURN WITH A KEY</h2>
-          <p>Use your HIDN handle and recovery key to open the room in read-only mode.</p>
+          <h2>CONTINUE WITHOUT A NAME</h2>
+          <p>Enter your private handle and recovery key to return.</p>
         </div>
-        ${SecondaryButton({ label: "LOG IN →", dataAction: "room-login" })}
+        ${SecondaryButton({ label: "ENTER THE ROOM", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("ACCOUNT GATE", "Your HIDN handle is a pseudonym, not a public identity. Log in to read the room; profile verification can happen later from inside the room.", "LIVE")}
+    ${SystemMessage("ACCOUNT GATE", "Choose a pseudonymous account or return with the recovery key you keep on your side.", "LIVE")}
   </div>`;
 }
 
