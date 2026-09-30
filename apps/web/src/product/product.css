@@ -4328,6 +4328,40 @@
   width: 100%;
 }
 
+.room-locked-main {
+  align-items: center;
+  min-height: min(42rem, calc(100vh - 9rem));
+}
+
+.room-locked-page {
+  margin-inline: auto;
+  max-width: 48rem;
+  text-align: center;
+}
+
+.room-locked-page h1 {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+  margin: 1rem 0 1.35rem;
+}
+
+.room-locked-page h1 em {
+  color: var(--hidn-signal);
+  font-style: normal;
+}
+
+.room-locked-page p {
+  color: var(--hidn-text-muted);
+  font-size: var(--hidn-type-body-lg);
+  line-height: 1.55;
+  margin: 0 auto 1.75rem;
+  max-width: 38rem;
+}
+
 .room-access-header {
   margin-inline: auto;
   max-width: 44rem;
@@ -4590,6 +4624,40 @@
   width: 100%;
 }
 
+.room-handle-input {
+  align-items: stretch;
+  display: flex;
+}
+
+.room-handle-input__prefix {
+  align-items: center;
+  background: rgba(93, 255, 143, 0.055);
+  border: 1px solid rgba(93, 255, 143, 0.2);
+  border-right: 0;
+  color: var(--hidn-signal);
+  display: flex;
+  flex: 0 0 auto;
+  font-family: var(--hidn-font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  min-height: 2.8rem;
+  padding: 0.7rem 0 0.7rem 0.8rem;
+}
+
+.room-handle-input input {
+  min-width: 0;
+}
+
+.room-handle-input input:focus {
+  border-left-color: rgba(93, 255, 143, 0.2);
+}
+
+.room-handle-input:focus-within .room-handle-input__prefix {
+  border-color: var(--hidn-signal);
+  border-right-color: transparent;
+  box-shadow: 0 0 0 2px rgba(93, 255, 143, 0.12);
+}
+
 .room-access-field input:focus {
   border-color: var(--hidn-signal);
   box-shadow: 0 0 0 2px rgba(93, 255, 143, 0.12);
@@ -4611,6 +4679,27 @@
 .room-login-card {
   margin-top: 2rem;
   max-width: 38rem;
+}
+
+.room-account-card,
+.room-payment-request-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.room-payment-request-card .ui-button {
+  justify-self: start;
+  margin-top: 0.4rem;
+}
+
+.thread-room__composer--locked {
+  opacity: 0.72;
+}
+
+.thread-room__composer--locked textarea:disabled,
+.room-message__action:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
 }
 
 .room-access-page > .ui-system-message,
@@ -4687,6 +4776,10 @@
   .room-access-actions .ui-button {
     justify-content: center;
     width: 100%;
+  }
+
+  .room-payment-request-card .ui-button {
+    justify-self: stretch;
   }
 
   .room-access-atmosphere .home-room-card {

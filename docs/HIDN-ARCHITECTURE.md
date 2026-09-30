@@ -11,6 +11,7 @@ isolated without forcing blockchain or identity code into the consumer app.
 ```text
 apps/
   web/       public consumer product
+  payment-watcher/  separate Zcash wallet/RPC observer
   admin/     private administrative console (reserved)
   api/       backend API boundary (reserved)
 packages/
@@ -24,9 +25,12 @@ public/
 docs/        source-of-truth product, brand, privacy, and architecture docs
 ```
 
-Phase 0 and Phase 1 implement only `apps/web` plus the shared visual
-foundation. `admin`, `api`, `zk`, and `zcash` are explicit boundaries with no
-runtime product behavior.
+The public frontend and its Cloudflare Worker live in `apps/web`. The first
+account/payment boundary is implemented there with D1 migrations. The
+separate `payment-watcher` process observes a configured Zcash wallet RPC
+endpoint and sends signed events to the Worker. `admin`, `api`, `zk`, and
+`zcash` remain explicit extraction boundaries rather than public browser
+surfaces.
 
 ## Deployment boundaries
 
@@ -56,8 +60,12 @@ authentication, secrets, and access controls for it are later work.
   out of public navigation;
 - public Phase 2 routes at `/`, `/confess`, `/explore`, `/c/:id`,
   `/manifesto`, `/how-it-works`, and `/privacy`;
-- local in-memory mock data and flow state only; no persistence,
-  authentication, wallet, analytics, or confession API.
+- local in-memory mock data and flow state for confession content;
+- a Worker + D1 Room Access boundary for pseudonymous accounts, hashed
+  recovery codes, HttpOnly sessions, payment intents, and signed watcher
+  events;
+- a separate Node payment watcher that may observe a shielded address but has
+  no spending-key or refund-signing authority.
 
 The repository-level `/public` directory is configured as the Vite public
 directory so brand assets, `robots.txt`, and `sitemap.xml` have one canonical

@@ -1,0 +1,10 @@
+{
+  "name": "@hidn/payment-watcher",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "typecheck": "tsc --noEmit"
+  }
+}

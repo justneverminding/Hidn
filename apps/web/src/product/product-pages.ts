@@ -43,10 +43,18 @@ import {
 } from "./mock-data";
 import { fetchCipherScanMainnetTip } from "./cipherscan";
 import {
+  createPaymentIntent,
   createRoomSession,
+  fetchPaymentIntent,
   fetchRoomConfig,
+  loginAccount,
   loginRoomSession,
+  logoutAccount,
+  signupAccount,
   verifyRoomDemoPayment,
+  type AccountAccessLevel,
+  type AccountResponse,
+  type PaymentIntentResponse,
 } from "./room-api";
 
 export interface RenderedProductRoute {
@@ -70,6 +78,11 @@ let roomZecAmount = "CALCULATING...";
 let roomZecRateStatus = "";
 let roomBackendStatus: "local" | "connecting" | "connected" | "offline" = "local";
 let roomBackendId = "";
+let roomAccountUsername = "";
+let roomAccountAccessLevel: AccountAccessLevel = "read_only";
+let roomAccountRecoveryCode = "";
+let roomPaymentIntentId = "";
+let roomPayment: PaymentIntentResponse | undefined;
 let activeRoomChannel: RoomChannel = "general";
 let roomChannelNotice = "";
 let homeStreamTimer: number | undefined;
@@ -134,7 +147,13 @@ const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
 const HOME_AUDIO_DEFAULT_VOLUME = 0.1029;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
+const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
+
+function completeRoomHandle(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  return normalized.startsWith("HIDN-") ? normalized : `HIDN-${normalized}`;
+}
 let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
   .reverse()
   .map((confession) => ({
@@ -247,7 +266,7 @@ function renderTransmissionRow(
     : "";
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
-        <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}">♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
+        <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasFullRoomAccess() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
         <a class="room-message__action" href="${escapeHtml(options.href)}">COMMENTS ${repliesForThread(threadId).length}</a>
         <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
         <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
@@ -1928,6 +1947,21 @@ function renderRoomDirectory(): string {
 }
 
 function renderExplore(path = "/room"): string {
+  if (!hasRoomSession()) {
+    return publicFrame(
+      path,
+      `<main id="main-content" class="public-main explore-main room-locked-main">
+        <div class="room-locked-page">
+          ${TerminalLabel("HIDN / ACCESS REQUIRED")}
+          <h1 class="type-display-lg">THE ROOM STAYS<br /><em>BEHIND THE KEY.</em></h1>
+          <p>Log in with your HIDN handle and recovery code to read the private room. Full actions unlock after the payment watcher confirms the exact ZEC amount.</p>
+          ${actionLink("GO TO ROOM ACCESS →", "/room/access", "primary")}
+        </div>
+      </main>`,
+      "public-page--explore",
+    );
+  }
+
   return publicFrame(
     path,
     `<main id="main-content" class="public-main explore-main">
@@ -1961,6 +1995,7 @@ function renderExplore(path = "/room"): string {
 function renderThreadRoom(id: string, quotedText = ""): string {
   const replies = repliesForThread(id);
   const replyCount = replies.length;
+  const fullAccess = hasFullRoomAccess();
   const messages = replyCount
     ? replies
         .map(
@@ -1987,17 +2022,17 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     </header>
     ${quotedText ? `<blockquote class="thread-room__quote" data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="thread" data-share-label="ORIGINAL THREAD" data-share-category="IDENTITY" data-share-time="NOW">“${escapeHtml(quotedText)}”</blockquote>` : ""}
     <div class="thread-room__messages" aria-live="polite">${messages}</div>
-    <form class="thread-room__composer" novalidate>
+    <form class="thread-room__composer${fullAccess ? "" : " thread-room__composer--locked"}" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
         <span class="ui-field__label">QUOTE / REPLY WITHOUT A NAME</span>
-        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="Add your thought to the thread..."></textarea>
+        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="${fullAccess ? "Add your thought to the thread..." : "Full access requires a confirmed ZEC payment."}"${fullAccess ? "" : " disabled"}></textarea>
       </label>
       <div class="thread-room__composer-footer">
-        <span>NO HANDLE / NO PROFILE / NO TRAIL</span>
-        ${PrimaryButton({ label: "TRANSMIT REPLY →", dataAction: "thread-reply" })}
+        <span>${fullAccess ? "NO HANDLE / NO PROFILE / NO TRAIL" : "READ ONLY / PAYMENT REQUIRED"}</span>
+        ${PrimaryButton({ label: fullAccess ? "TRANSMIT REPLY →" : "FULL ACCESS REQUIRED", disabled: !fullAccess, dataAction: "thread-reply" })}
       </div>
     </form>
-    <p class="thread-room__note">LOCAL DEMO THREAD. A production room would stream anonymous replies from the backend without attaching a public identity.</p>
+    <p class="thread-room__note">${fullAccess ? "LOCAL DEMO THREAD. A production room would stream anonymous replies from the backend without attaching a public identity." : "This account can read the room. Create a payment intent from Room Access and wait for the signed watcher confirmation before replying."}</p>
   </section>`;
 }
 
@@ -2052,7 +2087,7 @@ function renderDetail(id: string): RenderedProductRoute {
           </div>
           ${SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
-            <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}">♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
+            <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasFullRoomAccess() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).length))}</a>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
             <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
@@ -2095,16 +2130,63 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:room:backend-id");
   sessionStorage.removeItem("hidn:room:entered");
   sessionStorage.removeItem("hidn:room:verified");
+  sessionStorage.removeItem("hidn:account:logged-in");
+  sessionStorage.removeItem("hidn:account:user-id");
+  sessionStorage.removeItem("hidn:account:username");
+  sessionStorage.removeItem("hidn:account:access-level");
+  sessionStorage.removeItem("hidn:account:payment-intent");
+  void logoutAccount().catch(() => undefined);
   roomAccessMode = "choose";
   roomDemoId = "";
   roomDemoMemo = "";
   roomLoginError = "";
   roomBackendStatus = "local";
+  roomBackendId = "";
+  roomAccountUsername = "";
+  roomAccountAccessLevel = "read_only";
+  roomAccountRecoveryCode = "";
+  roomPaymentIntentId = "";
+  roomPayment = undefined;
 }
 
-function hasVerifiedRoomSession(): boolean {
-  return sessionStorage.getItem("hidn:room:verified") === "true"
-    && Boolean(sessionStorage.getItem("hidn:room:secret"));
+function restoreRoomAccountState(): void {
+  if (sessionStorage.getItem("hidn:account:logged-in") !== "true") {
+    return;
+  }
+
+  roomBackendId = sessionStorage.getItem("hidn:account:user-id") ?? "";
+  roomAccountUsername = sessionStorage.getItem("hidn:account:username") ?? "";
+  roomAccountAccessLevel = sessionStorage.getItem("hidn:account:access-level") === "full" ? "full" : "read_only";
+  roomPaymentIntentId = sessionStorage.getItem("hidn:account:payment-intent") ?? "";
+  roomBackendStatus = roomBackendId && roomAccountUsername ? "connected" : "offline";
+  if (roomBackendStatus === "connected" && roomAccessMode === "choose") {
+    roomAccessMode = "ready";
+  }
+}
+
+function persistAccountSession(account: AccountResponse): void {
+  roomBackendId = account.userId;
+  roomAccountUsername = account.username;
+  roomAccountAccessLevel = account.accessLevel;
+  roomBackendStatus = "connected";
+  sessionStorage.setItem("hidn:account:logged-in", "true");
+  sessionStorage.setItem("hidn:account:user-id", account.userId);
+  sessionStorage.setItem("hidn:account:username", account.username);
+  sessionStorage.setItem("hidn:account:access-level", account.accessLevel);
+}
+
+function hasRoomSession(): boolean {
+  return sessionStorage.getItem("hidn:account:logged-in") === "true"
+    || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret")));
+}
+
+function hasFullRoomAccess(): boolean {
+  return sessionStorage.getItem("hidn:account:access-level") === "full"
+    || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret")));
+}
+
+function formattedZecAmount(zatoshis: number): string {
+  return `${(zatoshis / 100_000_000).toFixed(8)} ZEC`;
 }
 
 function renderRoomEntryTransition(): string {
@@ -2134,79 +2216,143 @@ function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind 
   }, 2500);
 }
 
+async function registerRoomAccount(username: string): Promise<void> {
+  try {
+    const account = await signupAccount(username);
+    persistAccountSession(account);
+    roomAccountRecoveryCode = account.recoveryCode ?? "";
+    roomPaymentIntentId = "";
+    roomPayment = undefined;
+    sessionStorage.removeItem("hidn:account:payment-intent");
+    roomLoginError = "";
+    roomAccessMode = "ready";
+  } catch (error) {
+    roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not create this account.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
+  }
+}
+
+async function syncAccountLogin(username: string, recoveryCode: string): Promise<void> {
+  try {
+    const account = await loginAccount(username, recoveryCode);
+    persistAccountSession(account);
+    roomAccountRecoveryCode = "";
+    roomPayment = undefined;
+    roomLoginError = "";
+    roomAccessMode = "ready";
+  } catch (error) {
+    roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
+  }
+}
+
+async function createRoomPaymentIntent(refundAddress: string): Promise<void> {
+  try {
+    roomBackendStatus = "connecting";
+    roomLoginError = "";
+    rerenderProductRoute();
+    const payment = await createPaymentIntent(refundAddress);
+    roomPayment = payment;
+    roomPaymentIntentId = payment.paymentIntentId;
+    sessionStorage.setItem("hidn:account:payment-intent", payment.paymentIntentId);
+    roomBackendStatus = "connected";
+    roomLoginError = "";
+  } catch (error) {
+    roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not create a payment request.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
+  }
+}
+
+async function refreshRoomPayment(): Promise<void> {
+  if (!roomPaymentIntentId) {
+    return;
+  }
+
+  try {
+    const payment = await fetchPaymentIntent(roomPaymentIntentId);
+    roomPayment = payment;
+    if (payment.status === "confirmed") {
+      roomAccountAccessLevel = "full";
+      sessionStorage.setItem("hidn:account:access-level", "full");
+    } else if (payment.status === "reorged" || payment.status === "underpaid" || payment.status === "overpaid") {
+      roomAccountAccessLevel = "read_only";
+      sessionStorage.setItem("hidn:account:access-level", "read_only");
+    }
+    roomBackendStatus = "connected";
+    roomLoginError = "";
+  } catch (error) {
+    roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The Worker could not read this payment request.";
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
+  }
+}
+
 function renderRoomAccessChooser(): string {
   return `<div class="room-access-page">
     <header class="room-access-header">
       ${TerminalLabel("HIDN / ROOM ACCESS")}
       <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
-      <p class="room-access-header__copy">No names. No profile. Choose how you want to enter the room.</p>
+      <p class="room-access-header__copy">Choose a pseudonymous account or return with the recovery code you keep on your side.</p>
     </header>
     <div class="room-access-options">
       <article class="room-access-option">
         <span class="room-access-option__number">01</span>
         <div>
-          <h2>OPEN A ROOM KEY</h2>
-          <p>Start a nameless room identity. The Worker generates a private key and stores only its verification record in D1.</p>
+          <h2>CREATE AN ACCOUNT</h2>
+          <p>Choose a handle in the form HIDN- followed by letters or numbers, then receive a one-time recovery code.</p>
         </div>
-        ${PrimaryButton({ label: "GENERATE KEY →", dataAction: "room-create" })}
+        ${PrimaryButton({ label: "CREATE ACCOUNT →", dataAction: "room-create" })}
       </article>
       <article class="room-access-option">
         <span class="room-access-option__number">02</span>
         <div>
-          <h2>RETURN WITH A KEY</h2>
-          <p>Use the private key you already hold. No email, username, or recovery account.</p>
+          <h2>RETURN WITH A CODE</h2>
+          <p>Use your HIDN handle and recovery code to open the room in read-only mode.</p>
         </div>
-        ${SecondaryButton({ label: "USE MY KEY →", dataAction: "room-login" })}
+        ${SecondaryButton({ label: "LOG IN →", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("D1 WORKER / LIVE CREDENTIALS", "Create an ID to receive a unique access code. You will need that code to log in from this or another browser.", "LIVE")}
+    ${SystemMessage("D1 WORKER / ACCOUNT GATE", "Your HIDN handle is a pseudonym, not a public identity. A confirmed ZEC payment unlocks full room actions; an unpaid account can still read.", "LIVE")}
   </div>`;
 }
 
 function renderRoomCreate(): string {
-  const memo = roomDemoMemo || "HIDN-ROOM-PENDING";
-  const verifyLabel = roomBackendStatus === "connecting"
-    ? "CREATING ACCESS CODE..."
-    : roomBackendStatus === "connected"
-      ? "VERIFY DEMO PAYMENT →"
-      : "WORKER UNAVAILABLE";
-
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / CREATE ID")}
-      <h1 class="type-display-lg room-access-header__title">FUND THE<br /><em>THRESHOLD.</em></h1>
-      <p class="room-access-header__copy">The Worker has created your D1-backed room record. Complete the demo handoff, then save the access code it returns.</p>
+      ${TerminalLabel("HIDN / CREATE ACCOUNT")}
+      <h1 class="type-display-lg room-access-header__title">CHOOSE A<br /><em>HANDLE.</em></h1>
+      <p class="room-access-header__copy">Choose HIDN- followed by letters or numbers, such as HIDN-NOIR42. The handle is a private lookup key, not an author name.</p>
     </header>
-    <div class="room-access-stepbar" aria-label="Create ID steps">
-      <span class="room-access-stepbar__step room-access-stepbar__step--current">01 / SEND</span>
-      <span class="room-access-stepbar__step">02 / MEMO</span>
-      <span class="room-access-stepbar__step">03 / ID</span>
-    </div>
-    <section class="room-payment-card" aria-labelledby="room-payment-title">
-      <div class="room-payment-card__header">
-        <span class="room-payment-card__eyebrow">DEMO DESTINATION / NOT LIVE</span>
-        <span class="room-payment-card__status"><span aria-hidden="true"></span>${escapeHtml(roomBackendStatusLabel())}</span>
-      </div>
-      <h2 id="room-payment-title">SHIELDED PAYMENT</h2>
-      <p class="room-payment-card__explainer">A Zcash payment designed to keep its transaction details away from the public chain. HIDN would use it as a one-time anti-spam gate—not as your password or identity.</p>
-      <code class="room-payment-card__address">zs1demo-room-vault-not-live</code>
-      <div class="room-payment-card__details">
-        <div><span>USD TARGET</span><strong>$1.00</strong></div>
-        <div><span>ZEC AMOUNT / LIVE RATE</span><strong data-room-zec-amount>${escapeHtml(roomZecAmount)}</strong></div>
-      </div>
-      <p class="room-payment-card__rate" data-room-rate-status>${escapeHtml(roomZecRateStatus)}</p>
-      <p class="room-payment-card__memo"><strong>MEMO REFERENCE</strong> <code>${escapeHtml(memo)}</code><br />A one-time receipt code lets the backend match a payment to this room request. It is not a secret, room ID, or recovery phrase.</p>
-      <label class="room-access-field" for="room-return-address">
-        <span>SHIELDED RETURN ADDRESS / DEMO</span>
-        <input id="room-return-address" type="text" placeholder="zs1... / not connected" autocomplete="off" spellcheck="false" />
+    <form class="room-login-card room-account-card" novalidate>
+      <label class="room-access-field" for="room-account-username">
+        <span>HIDN HANDLE / PRIVATE LOOKUP KEY</span>
+        <div class="room-handle-input">
+          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
+          <input id="room-account-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
+        </div>
       </label>
-      <p class="room-payment-card__note">In production, a wallet would send the amount and memo to the room vault, then receive a privacy-preserving credential at the return address. Never place a secret or recovery phrase in a memo.</p>
-    </section>
+      <p class="room-payment-card__note">Use HIDN- followed by 1–20 letters or numbers, for example HIDN-NOIR42. Do not use a real name or put a recovery code in a public memo.</p>
+    </form>
     ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
-    ${SystemMessage("PAYMENT DEMO / D1 LIVE", "The payment verification control is still a demo step, but the access code and login check are real Worker + D1 operations.", "LIVE")}
+    ${SystemMessage("ACCOUNT / D1 LIVE", "The Worker creates the account and stores only a SHA-256 recovery-code hash. Save the recovery code shown on the next screen.", "LIVE")}
     <div class="room-access-actions">
       ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-      ${PrimaryButton({ label: verifyLabel, disabled: roomBackendStatus !== "connected", dataAction: "room-verify-demo" })}
+      ${PrimaryButton({ label: roomBackendStatus === "connecting" ? "CREATING ACCOUNT..." : "CREATE ACCOUNT →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-account" })}
     </div>
   </div>`;
 }
@@ -2214,40 +2360,95 @@ function renderRoomCreate(): string {
 function renderRoomLogin(): string {
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / ID LOGIN")}
+      ${TerminalLabel("HIDN / ACCOUNT LOGIN")}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
-      <p class="room-access-header__copy">Enter the access code issued by the HIDN Worker. Without a verified code, the room stays closed.</p>
+      <p class="room-access-header__copy">Use your HIDN handle and recovery code. Payment is not required to read.</p>
     </header>
     ${roomLoginError ? AlertMessage("ID NEEDED", roomLoginError, "danger") : ""}
     <form class="room-login-card" novalidate>
-      <label class="room-access-field" for="room-login-id">
-        <span>ROOM ACCESS CODE</span>
-        <input id="room-login-id" type="text" placeholder="HIDN-XXXX-..." autocomplete="off" spellcheck="false" />
+      <label class="room-access-field" for="room-login-username">
+        <span>HIDN HANDLE</span>
+        <div class="room-handle-input">
+          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
+          <input id="room-login-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
+        </div>
       </label>
-      <p class="room-payment-card__note">The Worker hashes the code before checking D1. The plaintext code is never stored in the database.</p>
+      <label class="room-access-field" for="room-login-recovery-code">
+        <span>RECOVERY CODE</span>
+        <input id="room-login-recovery-code" type="text" placeholder="HIDN-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
+      </label>
+      <p class="room-payment-card__note">The Worker hashes the code before checking D1. The plaintext recovery code is never stored in the database.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-        ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-submit-login" })}
+        ${PrimaryButton({ label: "LOG IN →", dataAction: "room-submit-login" })}
       </div>
     </form>
   </div>`;
 }
 
+function roomPaymentStatusLabel(status: PaymentIntentResponse["status"]): string {
+  switch (status) {
+    case "confirmed":
+      return "ZEC CONFIRMED / FULL ACCESS";
+    case "detected":
+      return "PAYMENT DETECTED / WAITING";
+    case "underpaid":
+      return "UNDERPAID / MANUAL REVIEW";
+    case "overpaid":
+      return "OVERPAID / MANUAL REVIEW";
+    case "reorged":
+      return "REORGED / ACCESS PAUSED";
+    case "expired":
+      return "INTENT EXPIRED";
+    default:
+      return "WAITING FOR ZEC";
+  }
+}
+
 function renderRoomReady(): string {
-  const demoId = roomDemoId || "NO CODE ISSUED";
+  const isFull = roomAccountAccessLevel === "full";
+  const payment = roomPayment;
+  const accountLabel = roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / ACCESS READY")}
-      <h1 class="type-display-lg room-access-header__title">THE KEY STAYS<br /><em>WITH YOU.</em></h1>
-      <p class="room-access-header__copy">The Worker issued this code and D1 stores only its hash. Keep the plaintext code on your side and use it to log in again.</p>
+      ${TerminalLabel(isFull ? "HIDN / FULL ACCESS" : "HIDN / READ ONLY")}
+      <h1 class="type-display-lg room-access-header__title">THE ROOM IS<br /><em>${isFull ? "OPEN." : "VISIBLE."}</em></h1>
+      <p class="room-access-header__copy">${escapeHtml(accountLabel)} is active. Read-only accounts can view the room; a confirmed exact ZEC payment unlocks replies, reactions, and other full actions.</p>
     </header>
-    <div class="room-access-key">
-      <span class="room-access-key__label">D1 ACCESS CODE / SAVE THIS</span>
-      <code>${escapeHtml(demoId)}</code>
-      <span class="room-access-key__warning">The Worker generated this code. D1 stores only its hash. Use this exact code to log in again.</span>
-    </div>
-    ${SystemMessage("D1 VERIFICATION COMPLETE", "Your room access record is verified. The Zcash payment step remains a demo until a wallet watcher is connected.", "LIVE")}
+    ${roomAccountRecoveryCode ? `<div class="room-access-key">
+      <span class="room-access-key__label">RECOVERY CODE / SAVE THIS ONCE</span>
+      <code>${escapeHtml(roomAccountRecoveryCode)}</code>
+      <span class="room-access-key__warning">This is the only time HIDN shows the plaintext recovery code. D1 stores only its hash. HIDN cannot recover it for you.</span>
+    </div>` : ""}
+    ${payment ? `<section class="room-payment-card" aria-labelledby="room-payment-title">
+      <div class="room-payment-card__header">
+        <span class="room-payment-card__eyebrow">PAYMENT INTENT / MAINNET</span>
+        <span class="room-payment-card__status"><span aria-hidden="true"></span>${escapeHtml(roomPaymentStatusLabel(payment.status))}</span>
+      </div>
+      <h2 id="room-payment-title">SEND THE EXACT AMOUNT</h2>
+      <p class="room-payment-card__explainer">Use the receiving address and one-time reference below. HIDN grants full access only after the signed watcher reports the exact zatoshi amount with the required confirmations.</p>
+      <code class="room-payment-card__address">${escapeHtml(payment.receivingAddress ?? "PAYMENT ADDRESS NOT CONFIGURED")}</code>
+      <div class="room-payment-card__details">
+        <div><span>EXACT AMOUNT</span><strong>${escapeHtml(formattedZecAmount(payment.expectedAmountZat))}</strong></div>
+        <div><span>CONFIRMATIONS</span><strong>${escapeHtml(String(payment.confirmations))} / ${escapeHtml(String(payment.minimumConfirmations))}</strong></div>
+      </div>
+      <p class="room-payment-card__memo"><strong>MEMO REFERENCE</strong> <code>${escapeHtml(payment.paymentReference)}</code><br />Include this one-time reference in the wallet memo so the watcher can match the payment to your account. It is not a password.</p>
+      <p class="room-payment-card__note">Refund address stored: ${payment.refundAddressStored ? "YES / ENCRYPTED" : "NO / AUTOMATIC REFUND NOT AVAILABLE"}. Wrong amounts and missing references are held for manual review and do not unlock the account.</p>
+      ${PrimaryButton({ label: "CHECK PAYMENT STATUS →", dataAction: "room-check-payment" })}
+    </section>` : `<form class="room-login-card room-payment-request-card" novalidate>
+      <label class="room-access-field" for="room-refund-address">
+        <span>REFUND ADDRESS / OPTIONAL BUT RECOMMENDED</span>
+        <input id="room-refund-address" type="text" placeholder="zs1..." autocomplete="off" spellcheck="false" maxlength="240" />
+      </label>
+      <p class="room-payment-card__note">If a payment is underpaid, overpaid, or cannot be matched, a refund address lets an authorized payout process contact you. It is encrypted before D1 storage. No automatic refund is promised until a payout signer is configured.</p>
+      ${PrimaryButton({ label: roomBackendStatus === "connecting" ? "CREATING PAYMENT REQUEST..." : "CREATE PAYMENT REQUEST →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-payment-intent" })}
+    </form>`}
+    ${SystemMessage(
+      isFull ? "FULL ACCESS / ZEC CONFIRMED" : "READ-ONLY ACCESS / PAYMENT REQUIRED",
+      isFull ? "The watcher has reported the exact amount and confirmation threshold. Account actions can now be enabled." : "You can read the room now. Create a payment request to receive a one-time memo reference for full access.",
+      isFull ? "LIVE" : "DEMO",
+    )}
     <div class="room-access-actions">
       ${GhostButton({ label: "START OVER", dataAction: "room-back" })}
       ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-enter" })}
@@ -2256,6 +2457,7 @@ function renderRoomReady(): string {
 }
 
 function renderRoomAccess(): RenderedProductRoute {
+  restoreRoomAccountState();
   const content =
     roomAccessMode === "create"
       ? renderRoomCreate()
@@ -2549,6 +2751,10 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
 function bindRoomLikeInteractions(root: ParentNode): void {
   root.querySelectorAll<HTMLButtonElement>('[data-action="room-like"]').forEach((button) => {
     button.addEventListener("click", () => {
+      if (!hasFullRoomAccess()) {
+        return;
+      }
+
       const threadId = button.dataset.threadId;
       if (!threadId) {
         return;
@@ -2653,6 +2859,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (isRoomAccessPath && roomAccessMode === "create") {
     void refreshRoomConfig(root);
   }
+  if (isRoomAccessPath && roomPaymentIntentId && !roomPayment) {
+    void refreshRoomPayment();
+  }
   root.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
     if (link.matches("[data-room-logout]") || link.textContent?.trim() === "LOG OUT" || link.textContent?.trim() === "LEAVE ROOM") {
       link.addEventListener("click", clearRoomSession);
@@ -2662,7 +2871,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   root.querySelectorAll<HTMLAnchorElement>("[data-room-enter]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      const returning = hasVerifiedRoomSession();
+      const returning = hasRoomSession();
       startRoomEntryTransition(returning ? "/room" : "/room/access", returning ? "return" : "first");
     });
   });
@@ -2756,15 +2965,9 @@ export function bindProductRoute(root: ParentNode = document): void {
         }
         case "room-create":
           roomAccessMode = "create";
-          roomDemoId = "";
-          roomDemoMemo = `HIDN-ROOM-${createRoomDemoId().slice(-6)}`;
           roomLoginError = "";
-          roomBackendId = "";
-          roomBackendStatus = "connecting";
-          sessionStorage.removeItem("hidn:room:secret");
-          sessionStorage.removeItem("hidn:room:verified");
+          roomBackendStatus = "local";
           rerenderProductRoute();
-          void registerRoomBackend();
           break;
         case "room-login":
           roomAccessMode = "login";
@@ -2772,13 +2975,25 @@ export function bindProductRoute(root: ParentNode = document): void {
           rerenderProductRoute();
           break;
         case "room-back":
+          clearRoomSession();
           roomAccessMode = "choose";
-          roomDemoId = "";
-          roomDemoMemo = "";
-          roomLoginError = "";
-          roomBackendStatus = "local";
           rerenderProductRoute();
           break;
+        case "room-create-account": {
+          const input = root.querySelector<HTMLInputElement>("#room-account-username");
+          const handle = completeRoomHandle(input?.value ?? "");
+          if (!ROOM_HANDLE_PATTERN.test(handle)) {
+            roomLoginError = "Choose a handle in the format HIDN-NOIR42: HIDN- followed by letters or numbers only.";
+            rerenderProductRoute();
+            break;
+          }
+
+          roomBackendStatus = "connecting";
+          roomLoginError = "";
+          rerenderProductRoute();
+          void registerRoomAccount(handle);
+          break;
+        }
         case "room-verify-demo":
           if (roomBackendStatus !== "connected" || !roomBackendId || !roomDemoId) {
             roomLoginError = "Wait for the Worker to issue your access code before verifying the demo payment.";
@@ -2792,21 +3007,34 @@ export function bindProductRoute(root: ParentNode = document): void {
           void verifyRoomBackend();
           break;
         case "room-submit-login": {
-          const input = root.querySelector<HTMLInputElement>("#room-login-id");
-          const value = input?.value.trim() ?? "";
-          if (!value) {
-            roomLoginError = "Enter the ID you keep on your side before continuing.";
+          const usernameInput = root.querySelector<HTMLInputElement>("#room-login-username");
+          const recoveryInput = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
+          const username = completeRoomHandle(usernameInput?.value ?? "");
+          const recoveryCode = recoveryInput?.value.trim() ?? "";
+          if (!ROOM_HANDLE_PATTERN.test(username) || !recoveryCode) {
+            roomLoginError = "Enter a HIDN handle and your recovery code before continuing.";
             rerenderProductRoute();
             break;
           }
 
-          roomDemoId = value;
           roomLoginError = "";
           roomBackendStatus = "connecting";
           rerenderProductRoute();
-          void syncRoomLogin(value);
+          void syncAccountLogin(username, recoveryCode);
           break;
         }
+        case "room-create-payment-intent": {
+          const input = root.querySelector<HTMLInputElement>("#room-refund-address");
+          const refundAddress = input?.value.trim() ?? "";
+          void createRoomPaymentIntent(refundAddress);
+          break;
+        }
+        case "room-check-payment":
+          roomBackendStatus = "connecting";
+          roomLoginError = "";
+          rerenderProductRoute();
+          void refreshRoomPayment();
+          break;
         case "room-enter":
           startRoomEntryTransition("/room", "return");
           break;
@@ -2815,6 +3043,10 @@ export function bindProductRoute(root: ParentNode = document): void {
           rerenderProductRoute();
           break;
         case "thread-reply": {
+          if (!hasFullRoomAccess()) {
+            break;
+          }
+
           const threadRoot = button.closest<HTMLElement>("[data-thread-root]");
           const input = threadRoot?.querySelector<HTMLTextAreaElement>("[data-thread-input]");
           const value = input?.value.trim() ?? "";
