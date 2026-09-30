@@ -187,7 +187,7 @@ interface HomeFileAudioSession {
 
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
-const HOME_AUDIO_DEFAULT_VOLUME = 0.02058;
+const HOME_AUDIO_DEFAULT_VOLUME = 0.01029;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;

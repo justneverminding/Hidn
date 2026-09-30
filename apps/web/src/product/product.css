@@ -4450,7 +4450,7 @@
 }
 
 .room-access-option h2 {
-  color: var(--hidn-signal);
+  color: var(--hidn-broadcast-amber);
   font-size: var(--hidn-type-mono);
   font-weight: 400;
   letter-spacing: 0.1em;
