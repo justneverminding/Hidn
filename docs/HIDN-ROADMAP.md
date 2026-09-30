@@ -129,6 +129,9 @@ Delivered in the current checkout:
 
 - D1 tables for pseudonymous accounts, hashed recovery codes, HttpOnly
   sessions, payment intents, payment events, and unmatched payments;
+- browser-generated secp256k1 Schnorr proof-of-knowledge credentials for new
+  accounts, with D1-stored public commitments and five-minute single-use login
+  challenges;
 - read-only account access before payment and a Worker-controlled full-access
   flag after exact amount plus confirmation checks;
 - encrypted refund-address storage when `REFUND_ENCRYPTION_KEY` is configured;
@@ -139,7 +142,7 @@ Delivered in the current checkout:
 
 Still required before calling this a live mainnet payment release:
 
-- apply the D1 migration remotely;
+- apply the D1 migrations, including the browser-proof migration, remotely;
 - configure and rotate the Worker secrets;
 - deploy and test the watcher against a dedicated watch-only wallet/RPC node;
 - decide whether to use one dedicated receiving address per intent or accept
@@ -147,6 +150,11 @@ Still required before calling this a live mainnet payment release:
 - add the separately controlled refund/payout signer and manual-review policy;
 - replace the browser-local confession content actions with authenticated
   server routes before treating replies and reactions as production data.
+
+The browser-proof account path is a credential foundation, not completion of
+the later anonymous-posting protocol. Private profile history, rotating public
+signals, anonymous nullifiers, and operator-blind retrieval still require a
+separate protocol review and implementation milestone.
 
 ## Later milestones
 

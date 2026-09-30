@@ -43,6 +43,13 @@ import {
 } from "./mock-data";
 import { fetchCipherScanMainnetTip } from "./cipherscan";
 import {
+  buildZkChallengeMessage,
+  credentialFromRecoveryCode,
+  createZkProof,
+  generateZkCredential,
+  publicKeyToHex,
+} from "@hidn/zk";
+import {
   createPaymentIntent,
   createRoomSession,
   fetchPaymentIntent,
@@ -50,7 +57,9 @@ import {
   loginAccount,
   loginRoomSession,
   logoutAccount,
-  signupAccount,
+  requestZkChallenge,
+  signupZkAccount,
+  verifyZkLogin,
   verifyRoomDemoPayment,
   type AccountAccessLevel,
   type AccountResponse,
@@ -83,7 +92,9 @@ let roomAccountAccessLevel: AccountAccessLevel = "read_only";
 let roomAccountRecoveryCode = "";
 let roomPaymentIntentId = "";
 let roomPayment: PaymentIntentResponse | undefined;
+let roomVerificationRequested = false;
 let activeRoomChannel: RoomChannel = "general";
+let roomProfileOpen = false;
 let roomChannelNotice = "";
 let homeStreamTimer: number | undefined;
 let homeReceivingTimer: number | undefined;
@@ -1546,6 +1557,13 @@ function publicNavigation(path: string): string {
 }
 
 function renderRoomMenu(): string {
+  const profileName = roomAccountUsername || "HIDN-LOCAL";
+  const profileVerified = roomAccountAccessLevel === "full";
+  const profileStatus = profileVerified ? "VERIFIED / FULL ACCESS" : "NOT VERIFIED / READ ONLY";
+  const profileCopy = profileVerified
+    ? "The payment watcher confirmed the exact ZEC amount. Full room actions are available to this profile."
+    : "This profile can read the room. Exact ZEC payment is required before replies, reactions, and other full actions unlock.";
+
   return `<div class="room-menu" data-room-menu>
     <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
       <span class="room-menu__icon" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -1555,6 +1573,22 @@ function renderRoomMenu(): string {
       <div class="room-menu__panel-head">
         <span>PRIVATE ROOM / INDEX</span>
         <span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>
+      </div>
+      <button class="room-menu__profile" type="button" data-action="room-profile-toggle" aria-expanded="${roomProfileOpen}" aria-controls="room-profile-status">
+        <span class="room-menu__profile-mark" aria-hidden="true">◎</span>
+        <span class="room-menu__profile-copy">
+          <strong>PROFILE</strong>
+          <small>${escapeHtml(profileName)}</small>
+        </span>
+        <span class="room-menu__profile-state">${escapeHtml(profileVerified ? "VERIFIED" : "NOT VERIFIED")}</span>
+      </button>
+      <div class="room-menu__profile-panel" id="room-profile-status" role="status"${roomProfileOpen ? "" : " hidden"}>
+        <div class="room-menu__profile-panel-header">
+          <span>PROFILE STATUS</span>
+          <strong>${escapeHtml(profileStatus)}</strong>
+        </div>
+        <p>${escapeHtml(profileCopy)}</p>
+        ${profileVerified ? "" : SecondaryButton({ label: "VERIFY PROFILE →", dataAction: "room-open-verification" })}
       </div>
       <nav aria-label="Private room channels">
         <a href="/how-it-works"><span>01</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
@@ -2135,8 +2169,10 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:account:username");
   sessionStorage.removeItem("hidn:account:access-level");
   sessionStorage.removeItem("hidn:account:payment-intent");
+  sessionStorage.removeItem("hidn:account:verification-requested");
   void logoutAccount().catch(() => undefined);
   roomAccessMode = "choose";
+  roomProfileOpen = false;
   roomDemoId = "";
   roomDemoMemo = "";
   roomLoginError = "";
@@ -2147,6 +2183,7 @@ function clearRoomSession(): void {
   roomAccountRecoveryCode = "";
   roomPaymentIntentId = "";
   roomPayment = undefined;
+  roomVerificationRequested = false;
 }
 
 function restoreRoomAccountState(): void {
@@ -2158,6 +2195,7 @@ function restoreRoomAccountState(): void {
   roomAccountUsername = sessionStorage.getItem("hidn:account:username") ?? "";
   roomAccountAccessLevel = sessionStorage.getItem("hidn:account:access-level") === "full" ? "full" : "read_only";
   roomPaymentIntentId = sessionStorage.getItem("hidn:account:payment-intent") ?? "";
+  roomVerificationRequested = sessionStorage.getItem("hidn:account:verification-requested") === "true" || Boolean(roomPaymentIntentId);
   roomBackendStatus = roomBackendId && roomAccountUsername ? "connected" : "offline";
   if (roomBackendStatus === "connected" && roomAccessMode === "choose") {
     roomAccessMode = "ready";
@@ -2218,12 +2256,15 @@ function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind 
 
 async function registerRoomAccount(username: string): Promise<void> {
   try {
-    const account = await signupAccount(username);
+    const credential = generateZkCredential();
+    const account = await signupZkAccount(username, publicKeyToHex(credential.publicKey));
     persistAccountSession(account);
-    roomAccountRecoveryCode = account.recoveryCode ?? "";
+    roomAccountRecoveryCode = credential.recoveryCode;
     roomPaymentIntentId = "";
     roomPayment = undefined;
     sessionStorage.removeItem("hidn:account:payment-intent");
+    roomVerificationRequested = false;
+    sessionStorage.removeItem("hidn:account:verification-requested");
     roomLoginError = "";
     roomAccessMode = "ready";
   } catch (error) {
@@ -2238,10 +2279,32 @@ async function registerRoomAccount(username: string): Promise<void> {
 
 async function syncAccountLogin(username: string, recoveryCode: string): Promise<void> {
   try {
-    const account = await loginAccount(username, recoveryCode);
+    let account: AccountResponse;
+    try {
+      const credential = credentialFromRecoveryCode(recoveryCode);
+      const challenge = await requestZkChallenge(username);
+      const message = buildZkChallengeMessage(username, challenge.challengeId, challenge.challenge);
+      const proof = createZkProof(credential.secretKey, message);
+      account = await verifyZkLogin({
+        username,
+        challengeId: challenge.challengeId,
+        challenge: challenge.challenge,
+        proof,
+      });
+    } catch (error) {
+      // Keep the pre-milestone recovery-code accounts usable while their
+      // records are migrated. New accounts always take the proof path above.
+      if (recoveryCode.replace(/[\s-]/g, "").length >= 64) {
+        throw error;
+      }
+
+      account = await loginAccount(username, recoveryCode);
+    }
     persistAccountSession(account);
     roomAccountRecoveryCode = "";
     roomPayment = undefined;
+    roomVerificationRequested = false;
+    sessionStorage.removeItem("hidn:account:verification-requested");
     roomLoginError = "";
     roomAccessMode = "ready";
   } catch (error) {
@@ -2257,6 +2320,8 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
 async function createRoomPaymentIntent(refundAddress: string): Promise<void> {
   try {
     roomBackendStatus = "connecting";
+    roomVerificationRequested = true;
+    sessionStorage.setItem("hidn:account:verification-requested", "true");
     roomLoginError = "";
     rerenderProductRoute();
     const payment = await createPaymentIntent(refundAddress);
@@ -2307,27 +2372,27 @@ function renderRoomAccessChooser(): string {
     <header class="room-access-header">
       ${TerminalLabel("HIDN / ROOM ACCESS")}
       <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
-      <p class="room-access-header__copy">Choose a pseudonymous account or return with the recovery code you keep on your side.</p>
+      <p class="room-access-header__copy">Choose a pseudonymous account or return with the recovery key you keep on your side.</p>
     </header>
     <div class="room-access-options">
       <article class="room-access-option">
         <span class="room-access-option__number">01</span>
         <div>
           <h2>CREATE AN ACCOUNT</h2>
-          <p>Choose a handle in the form HIDN- followed by letters or numbers, then receive a one-time recovery code.</p>
+          <p>Choose a handle in the form HIDN- followed by letters or numbers. Your browser creates the recovery key locally.</p>
         </div>
         ${PrimaryButton({ label: "CREATE ACCOUNT →", dataAction: "room-create" })}
       </article>
       <article class="room-access-option">
         <span class="room-access-option__number">02</span>
         <div>
-          <h2>RETURN WITH A CODE</h2>
-          <p>Use your HIDN handle and recovery code to open the room in read-only mode.</p>
+          <h2>RETURN WITH A KEY</h2>
+          <p>Use your HIDN handle and recovery key to open the room in read-only mode.</p>
         </div>
         ${SecondaryButton({ label: "LOG IN →", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("D1 WORKER / ACCOUNT GATE", "Your HIDN handle is a pseudonym, not a public identity. A confirmed ZEC payment unlocks full room actions; an unpaid account can still read.", "LIVE")}
+    ${SystemMessage("ACCOUNT GATE", "Your HIDN handle is a pseudonym, not a public identity. Log in to read the room; profile verification can happen later from inside the room.", "LIVE")}
   </div>`;
 }
 
@@ -2346,10 +2411,9 @@ function renderRoomCreate(): string {
           <input id="room-account-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
         </div>
       </label>
-      <p class="room-payment-card__note">Use HIDN- followed by 1–20 letters or numbers, for example HIDN-NOIR42. Do not use a real name or put a recovery code in a public memo.</p>
+      <p class="room-payment-card__note">The browser creates a private recovery key and sends only its public commitment to D1. Save the key when it appears; do not use a real name.</p>
     </form>
     ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
-    ${SystemMessage("ACCOUNT / D1 LIVE", "The Worker creates the account and stores only a SHA-256 recovery-code hash. Save the recovery code shown on the next screen.", "LIVE")}
     <div class="room-access-actions">
       ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
       ${PrimaryButton({ label: roomBackendStatus === "connecting" ? "CREATING ACCOUNT..." : "CREATE ACCOUNT →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-account" })}
@@ -2362,7 +2426,7 @@ function renderRoomLogin(): string {
     <header class="room-access-header room-access-header--compact">
       ${TerminalLabel("HIDN / ACCOUNT LOGIN")}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
-      <p class="room-access-header__copy">Use your HIDN handle and recovery code. Payment is not required to read.</p>
+      <p class="room-access-header__copy">Use your HIDN handle and recovery key. The browser proves you hold it without sending the key to HIDN.</p>
     </header>
     ${roomLoginError ? AlertMessage("ID NEEDED", roomLoginError, "danger") : ""}
     <form class="room-login-card" novalidate>
@@ -2374,10 +2438,10 @@ function renderRoomLogin(): string {
         </div>
       </label>
       <label class="room-access-field" for="room-login-recovery-code">
-        <span>RECOVERY CODE</span>
+        <span>RECOVERY KEY</span>
         <input id="room-login-recovery-code" type="text" placeholder="HIDN-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
       </label>
-      <p class="room-payment-card__note">The Worker hashes the code before checking D1. The plaintext recovery code is never stored in the database.</p>
+      <p class="room-payment-card__note">The browser uses the key to answer a one-time Schnorr proof challenge. The recovery key is never sent to the Worker.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
         ${PrimaryButton({ label: "LOG IN →", dataAction: "room-submit-login" })}
@@ -2409,19 +2473,23 @@ function renderRoomReady(): string {
   const isFull = roomAccountAccessLevel === "full";
   const payment = roomPayment;
   const accountLabel = roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
+  const showVerification = roomVerificationRequested && !isFull;
+  const accountCopy = isFull
+    ? `${accountLabel} is active with full room access.`
+    : `${accountLabel} is active. Enter the room to view your channels. Profile verification is available later from the Channels menu.`;
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
       ${TerminalLabel(isFull ? "HIDN / FULL ACCESS" : "HIDN / READ ONLY")}
       <h1 class="type-display-lg room-access-header__title">THE ROOM IS<br /><em>${isFull ? "OPEN." : "VISIBLE."}</em></h1>
-      <p class="room-access-header__copy">${escapeHtml(accountLabel)} is active. Read-only accounts can view the room; a confirmed exact ZEC payment unlocks replies, reactions, and other full actions.</p>
+      <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
     </header>
     ${roomAccountRecoveryCode ? `<div class="room-access-key">
-      <span class="room-access-key__label">RECOVERY CODE / SAVE THIS ONCE</span>
+      <span class="room-access-key__label">RECOVERY KEY / SAVE THIS ONCE</span>
       <code>${escapeHtml(roomAccountRecoveryCode)}</code>
-      <span class="room-access-key__warning">This is the only time HIDN shows the plaintext recovery code. D1 stores only its hash. HIDN cannot recover it for you.</span>
+      <span class="room-access-key__warning">This is the only time HIDN shows the recovery key. D1 stores only a public commitment. HIDN cannot recover the key for you.</span>
     </div>` : ""}
-    ${payment ? `<section class="room-payment-card" aria-labelledby="room-payment-title">
+    ${showVerification && payment ? `<section class="room-payment-card" aria-labelledby="room-payment-title">
       <div class="room-payment-card__header">
         <span class="room-payment-card__eyebrow">PAYMENT INTENT / MAINNET</span>
         <span class="room-payment-card__status"><span aria-hidden="true"></span>${escapeHtml(roomPaymentStatusLabel(payment.status))}</span>
@@ -2436,19 +2504,14 @@ function renderRoomReady(): string {
       <p class="room-payment-card__memo"><strong>MEMO REFERENCE</strong> <code>${escapeHtml(payment.paymentReference)}</code><br />Include this one-time reference in the wallet memo so the watcher can match the payment to your account. It is not a password.</p>
       <p class="room-payment-card__note">Refund address stored: ${payment.refundAddressStored ? "YES / ENCRYPTED" : "NO / AUTOMATIC REFUND NOT AVAILABLE"}. Wrong amounts and missing references are held for manual review and do not unlock the account.</p>
       ${PrimaryButton({ label: "CHECK PAYMENT STATUS →", dataAction: "room-check-payment" })}
-    </section>` : `<form class="room-login-card room-payment-request-card" novalidate>
+    </section>` : showVerification ? `<form class="room-login-card room-payment-request-card" novalidate>
       <label class="room-access-field" for="room-refund-address">
         <span>REFUND ADDRESS / OPTIONAL BUT RECOMMENDED</span>
         <input id="room-refund-address" type="text" placeholder="zs1..." autocomplete="off" spellcheck="false" maxlength="240" />
       </label>
       <p class="room-payment-card__note">If a payment is underpaid, overpaid, or cannot be matched, a refund address lets an authorized payout process contact you. It is encrypted before D1 storage. No automatic refund is promised until a payout signer is configured.</p>
       ${PrimaryButton({ label: roomBackendStatus === "connecting" ? "CREATING PAYMENT REQUEST..." : "CREATE PAYMENT REQUEST →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-payment-intent" })}
-    </form>`}
-    ${SystemMessage(
-      isFull ? "FULL ACCESS / ZEC CONFIRMED" : "READ-ONLY ACCESS / PAYMENT REQUIRED",
-      isFull ? "The watcher has reported the exact amount and confirmation threshold. Account actions can now be enabled." : "You can read the room now. Create a payment request to receive a one-time memo reference for full access.",
-      isFull ? "LIVE" : "DEMO",
-    )}
+    </form>` : ""}
     <div class="room-access-actions">
       ${GhostButton({ label: "START OVER", dataAction: "room-back" })}
       ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-enter" })}
@@ -2963,6 +3026,21 @@ export function bindProductRoute(root: ParentNode = document): void {
           menu?.classList.toggle("room-menu--open", !isOpen);
           break;
         }
+        case "room-profile-toggle":
+          roomProfileOpen = !roomProfileOpen;
+          button.setAttribute("aria-expanded", String(roomProfileOpen));
+          root.querySelector<HTMLElement>("#room-profile-status")?.toggleAttribute("hidden", !roomProfileOpen);
+          break;
+        case "room-open-verification":
+          if (roomAccountAccessLevel === "full") {
+            break;
+          }
+
+          roomVerificationRequested = true;
+          roomAccessMode = "ready";
+          sessionStorage.setItem("hidn:account:verification-requested", "true");
+          navigateProductRoute("/room/access");
+          break;
         case "room-create":
           roomAccessMode = "create";
           roomLoginError = "";
@@ -3012,7 +3090,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           const username = completeRoomHandle(usernameInput?.value ?? "");
           const recoveryCode = recoveryInput?.value.trim() ?? "";
           if (!ROOM_HANDLE_PATTERN.test(username) || !recoveryCode) {
-            roomLoginError = "Enter a HIDN handle and your recovery code before continuing.";
+            roomLoginError = "Enter a HIDN handle and your recovery key before continuing.";
             rerenderProductRoute();
             break;
           }

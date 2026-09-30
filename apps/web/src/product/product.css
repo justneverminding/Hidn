@@ -5175,6 +5175,109 @@
   color: var(--hidn-signal);
 }
 
+.room-menu__profile {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--hidn-border);
+  color: var(--hidn-text-muted);
+  cursor: pointer;
+  display: grid;
+  font-family: var(--hidn-font-mono);
+  gap: 0.55rem;
+  grid-template-columns: 1.2rem minmax(0, 1fr) auto;
+  letter-spacing: 0.1em;
+  min-height: 2.3rem;
+  padding: 0.45rem 0.25rem;
+  text-align: left;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.room-menu__profile:hover,
+.room-menu__profile[aria-expanded="true"] {
+  background: rgba(93, 255, 143, 0.07);
+  color: var(--hidn-signal);
+}
+
+.room-menu__profile-mark,
+.room-menu__profile-state {
+  color: var(--hidn-broadcast-amber);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+}
+
+.room-menu__profile-mark {
+  color: var(--hidn-signal);
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.room-menu__profile-copy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.room-menu__profile-copy strong {
+  color: currentColor;
+  font-size: 0.58rem;
+  font-weight: 400;
+}
+
+.room-menu__profile-copy small {
+  color: var(--hidn-text-dim);
+  font-size: 0.5rem;
+}
+
+.room-menu__profile-panel {
+  background: rgba(93, 255, 143, 0.035);
+  border-bottom: 1px solid var(--hidn-border);
+  padding: 0.7rem 0.25rem 0.8rem 1.95rem;
+}
+
+.room-menu__profile-panel[hidden] {
+  display: none;
+}
+
+.room-menu__profile-panel-header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.room-menu__profile-panel-header span,
+.room-menu__profile-panel-header strong {
+  font-family: var(--hidn-font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.room-menu__profile-panel-header span {
+  color: var(--hidn-text-dim);
+}
+
+.room-menu__profile-panel-header strong {
+  color: var(--hidn-broadcast-amber);
+  font-weight: 400;
+  text-align: right;
+}
+
+.room-menu__profile-panel p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.52rem;
+  line-height: 1.5;
+  margin: 0.5rem 0 0;
+}
+
+.room-menu__profile-panel .ui-button {
+  justify-content: center;
+  margin-top: 0.7rem;
+  width: 100%;
+}
+
 .room-menu__leave {
   border-bottom: 0;
   color: var(--hidn-broadcast-amber);

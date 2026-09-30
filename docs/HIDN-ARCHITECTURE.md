@@ -18,7 +18,7 @@ packages/
   ui/        shared tokens and visual effects
   shared/    product vocabulary and cross-surface types
   privacy/   privacy protocol boundary (reserved implementation)
-  zk/        zero-knowledge boundary (reserved)
+  zk/        browser proof-of-knowledge boundary and future ZK protocols
   zcash/     Zcash integration boundary (reserved)
 public/
   brand/     supplied canonical brand assets
@@ -61,9 +61,9 @@ authentication, secrets, and access controls for it are later work.
 - public Phase 2 routes at `/`, `/confess`, `/explore`, `/c/:id`,
   `/manifesto`, `/how-it-works`, and `/privacy`;
 - local in-memory mock data and flow state for confession content;
-- a Worker + D1 Room Access boundary for pseudonymous accounts, hashed
-  recovery codes, HttpOnly sessions, payment intents, and signed watcher
-  events;
+  - a Worker + D1 Room Access boundary for pseudonymous accounts, browser-held
+  Schnorr proof credentials, legacy hashed recovery codes, HttpOnly sessions,
+  payment intents, and signed watcher events;
 - a separate Node payment watcher that may observe a shielded address but has
   no spending-key or refund-signing authority.
 
@@ -101,6 +101,9 @@ path, retention period, and deletion behavior before shipping.
 The web shell must not import a general-purpose identity helper. Privacy,
 proof, and Zcash logic belong behind their named package boundaries so that
 the consumer surface can remain understandable and wallet-free by default.
+The account milestone uses `@hidn/zk` for a browser-generated Schnorr
+proof-of-knowledge credential; it is intentionally linked to the selected HIDN
+handle and is not yet an operator-blind anonymous-posting protocol.
 
 ## Observability boundary
 

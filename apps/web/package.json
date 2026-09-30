@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@hidn/ui": "file:../../packages/ui"
+    "@hidn/ui": "file:../../packages/ui",
+    "@hidn/zk": "file:../../packages/zk"
   }
 }
-

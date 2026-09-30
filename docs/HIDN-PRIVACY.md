@@ -47,9 +47,17 @@ metadata. Product copy must name concrete behavior and known limitations.
 
 ## ZK and Zcash boundary
 
-Zero-knowledge proofs and Zcash are future technical components. Phase 0 does
-not implement them and must not imply that a proof has been verified, that a
-Zcash network is online, or that a wallet is required for basic confession.
+The account milestone now uses a browser-generated Schnorr
+proof-of-knowledge credential for HIDN room login. The Worker stores the
+credential's public commitment and verifies a one-time challenge response; it
+does not receive the recovery secret. This proves control of the credential,
+but it does not provide an anonymous group-membership proof, hide transport
+metadata, or make a D1-linked profile history invisible to the operator.
+
+The broader zero-knowledge and Zcash protocol remain future technical
+components. HIDN must not imply that a proof has been verified for an
+anonymous post, that a Zcash network is online, or that a wallet is required
+for basic confession.
 
 Future ZEC features may include shielded tips, optional value attachment, or
 anonymous entitlements. Those flows must be opt-in, separately explained,
@@ -75,4 +83,3 @@ metadata policy (`anonymous-confession` page kind).
 `robots.txt` is a crawler hint, not a privacy control. Dynamic page metadata
 and server-side response headers will need to agree when the public product is
 implemented. No crawler tracking or analytics system is built in Phase 0.
-

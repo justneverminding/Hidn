@@ -1,3 +1,9 @@
+import {
+  buildZkChallengeMessage,
+  isValidZkPublicKey,
+  verifyZkProof,
+} from "@hidn/zk";
+
 const CIPHERSCAN_RECENT_BLOCKS_URL =
   "https://api.mainnet.cipherscan.app/api/blocks?limit=1";
 const COINGECKO_ZEC_PRICE_URL =
@@ -6,9 +12,11 @@ const ROOM_USD_TARGET_CENTS = 100;
 const ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ACCOUNT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PAYMENT_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
+const ZK_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 type AccessLevel = "read_only" | "full";
+type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
 type PaymentStatus =
   | "pending"
@@ -146,6 +154,10 @@ function createUserId(): string {
 
 function createSessionId(): string {
   return `SES-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createZkChallengeId(): string {
+  return `CHL-${createRandomHex(16).toUpperCase()}`;
 }
 
 function createPaymentIntentId(): string {
@@ -344,6 +356,7 @@ async function signupAccount(request: Request, env: HidnWorkerEnv): Promise<Resp
         recoveryCode,
         accessLevel: "read_only" satisfies AccessLevel,
         paymentStatus: "not_started",
+        authMethod: "recovery_code" satisfies AuthMethod,
       },
       201,
       "no-store",
@@ -397,6 +410,7 @@ async function loginAccount(request: Request, env: HidnWorkerEnv): Promise<Respo
       username: user.username,
       accessLevel: user.access_level,
       paymentStatus: user.access_level === "full" ? "confirmed" : "pending",
+      authMethod: "recovery_code" satisfies AuthMethod,
     },
     200,
     "no-store",
@@ -416,6 +430,204 @@ async function getAccountSession(request: Request, env: HidnWorkerEnv): Promise<
   }
 
   return jsonResponse({ ...user, paymentStatus: user.accessLevel === "full" ? "confirmed" : "pending" });
+}
+
+async function signupZkAccount(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
+  const identityCommitment = typeof body.identityCommitment === "string"
+    ? body.identityCommitment.trim().toLowerCase()
+    : "";
+  if (!isValidUsername(username)) {
+    return jsonResponse(
+      { error: "Handle must start with HIDN- and contain letters or numbers after the prefix, for example HIDN-NOIR42." },
+      400,
+    );
+  }
+  if (!isValidZkPublicKey(identityCommitment)) {
+    return jsonResponse({ error: "The browser credential commitment is invalid." }, 400);
+  }
+
+  const now = new Date().toISOString();
+  try {
+    const userId = createUserId();
+    await env.ROOM_DB!.prepare(
+      `INSERT INTO hidn_users
+        (user_id, username, username_normalized, recovery_code_hash,
+         auth_method, identity_commitment, access_level, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        userId,
+        username,
+        username,
+        await hashAccessCode(createAccessCode()),
+        "schnorr",
+        identityCommitment,
+        "read_only",
+        now,
+      )
+      .run();
+
+    const session = await issueAccountSession(userId, request, env);
+    return jsonResponse(
+      {
+        userId,
+        username,
+        accessLevel: "read_only" satisfies AccessLevel,
+        paymentStatus: "not_started",
+        authMethod: "schnorr" satisfies AuthMethod,
+      },
+      201,
+      "no-store",
+      { "Set-Cookie": session.cookie },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (message.includes("unique") || message.includes("constraint")) {
+      return jsonResponse({ error: "That handle or browser credential is already in use." }, 409);
+    }
+
+    throw error;
+  }
+}
+
+async function createZkChallenge(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
+  if (!isValidUsername(username)) {
+    return jsonResponse({ error: "A valid HIDN handle is required." }, 400);
+  }
+
+  const user = await env.ROOM_DB!.prepare(
+    `SELECT user_id, auth_method, identity_commitment
+     FROM hidn_users
+     WHERE username_normalized = ?
+     LIMIT 1`,
+  )
+    .bind(username)
+    .first<{ user_id: string; auth_method: AuthMethod; identity_commitment: string | null }>();
+  if (!user || user.auth_method !== "schnorr" || !user.identity_commitment) {
+    return jsonResponse({ error: "That HIDN account does not use the browser proof flow." }, 401);
+  }
+
+  const challengeId = createZkChallengeId();
+  const challenge = createRandomHex(32);
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + ZK_CHALLENGE_TTL_MS);
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_auth_challenges
+      (challenge_id, user_id, challenge_hash, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      challengeId,
+      user.user_id,
+      await hashText(challenge),
+      createdAt.toISOString(),
+      expiresAt.toISOString(),
+    )
+    .run();
+
+  return jsonResponse({
+    protocol: "hidn-schnorr-v1",
+    challengeId,
+    challenge,
+    expiresAt: expiresAt.toISOString(),
+  });
+}
+
+async function verifyZkLogin(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
+  const challengeId = typeof body.challengeId === "string" ? body.challengeId.trim() : "";
+  const challenge = typeof body.challenge === "string" ? body.challenge.trim() : "";
+  const proof = typeof body.proof === "string" ? body.proof.trim().toLowerCase() : "";
+  if (!isValidUsername(username) || !challengeId || !challenge || !proof) {
+    return jsonResponse({ error: "A HIDN handle and proof challenge are required." }, 400);
+  }
+
+  const row = await env.ROOM_DB!.prepare(
+    `SELECT c.challenge_id, c.challenge_hash, c.expires_at, c.consumed_at,
+            u.user_id, u.username, u.access_level, u.auth_method, u.identity_commitment
+     FROM hidn_auth_challenges c
+     JOIN hidn_users u ON u.user_id = c.user_id
+     WHERE c.challenge_id = ? AND u.username_normalized = ?
+     LIMIT 1`,
+  )
+    .bind(challengeId, username)
+    .first<{
+      challenge_id: string;
+      challenge_hash: string;
+      expires_at: string;
+      consumed_at: string | null;
+      user_id: string;
+      username: string;
+      access_level: AccessLevel;
+      auth_method: AuthMethod;
+      identity_commitment: string | null;
+    }>();
+
+  if (
+    !row ||
+    row.auth_method !== "schnorr" ||
+    !row.identity_commitment ||
+    row.consumed_at ||
+    Date.parse(row.expires_at) <= Date.now() ||
+    (await hashText(challenge)) !== row.challenge_hash
+  ) {
+    return jsonResponse({ error: "The proof challenge is invalid or expired." }, 401);
+  }
+
+  const message = buildZkChallengeMessage(username, challengeId, challenge);
+  if (!verifyZkProof(row.identity_commitment, proof, message)) {
+    return jsonResponse({ error: "The browser proof could not be verified." }, 401);
+  }
+
+  const consumedAt = new Date().toISOString();
+  const consumeResult = await env.ROOM_DB!.prepare(
+    `UPDATE hidn_auth_challenges
+     SET consumed_at = ?
+     WHERE challenge_id = ? AND consumed_at IS NULL`,
+  )
+    .bind(consumedAt, challengeId)
+    .run() as { meta?: { changes?: number } };
+  if (consumeResult.meta?.changes === 0) {
+    return jsonResponse({ error: "The proof challenge has already been used." }, 401);
+  }
+
+  await env.ROOM_DB!.prepare("UPDATE hidn_users SET last_login_at = ? WHERE user_id = ?")
+    .bind(consumedAt, row.user_id)
+    .run();
+  const session = await issueAccountSession(row.user_id, request, env);
+
+  return jsonResponse(
+    {
+      userId: row.user_id,
+      username: row.username,
+      accessLevel: row.access_level,
+      paymentStatus: row.access_level === "full" ? "confirmed" : "pending",
+      authMethod: "schnorr" satisfies AuthMethod,
+    },
+    200,
+    "no-store",
+    { "Set-Cookie": session.cookie },
+  );
 }
 
 async function logoutAccount(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -1000,6 +1212,42 @@ const worker = {
         return await loginAccount(request, env);
       } catch {
         return jsonResponse({ error: "Account login could not be completed." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/zk/signup") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await signupZkAccount(request, env);
+      } catch {
+        return jsonResponse({ error: "Proof-based account could not be created." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/zk/challenge") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await createZkChallenge(request, env);
+      } catch {
+        return jsonResponse({ error: "Proof challenge could not be created." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/zk/verify") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await verifyZkLogin(request, env);
+      } catch {
+        return jsonResponse({ error: "Browser proof could not be verified." }, 500);
       }
     }
 

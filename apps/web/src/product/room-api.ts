@@ -12,13 +12,22 @@ export interface RoomSessionResponse {
 }
 
 export type AccountAccessLevel = "read_only" | "full";
+export type AccountAuthMethod = "recovery_code" | "schnorr";
 
 export interface AccountResponse {
   userId: string;
   username: string;
   accessLevel: AccountAccessLevel;
   paymentStatus: "not_started" | "pending" | "confirmed";
+  authMethod?: AccountAuthMethod;
   recoveryCode?: string;
+}
+
+export interface ZkChallengeResponse {
+  protocol: "hidn-schnorr-v1";
+  challengeId: string;
+  challenge: string;
+  expiresAt: string;
 }
 
 export interface PaymentIntentResponse {
@@ -91,7 +100,11 @@ async function roomRequest<T>(path: string, body: Record<string, unknown>): Prom
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
-    const message = typeof payload?.error === "string" ? payload.error : `Room backend returned HTTP ${response.status}.`;
+    const message = typeof payload?.error === "string"
+      ? payload.error
+      : response.status === 405 && path.startsWith("/api/account/zk/")
+        ? "The deployed Room Worker is older than this local frontend. Apply D1 migration 0004 and deploy the updated Worker before creating a proof account."
+        : `Room backend returned HTTP ${response.status}.`;
     throw new Error(message);
   }
 
@@ -106,8 +119,25 @@ export function signupAccount(username: string): Promise<AccountResponse> {
   return accountRequest<AccountResponse>("/api/account/signup", { username });
 }
 
+export function signupZkAccount(username: string, identityCommitment: string): Promise<AccountResponse> {
+  return accountRequest<AccountResponse>("/api/account/zk/signup", { username, identityCommitment });
+}
+
 export function loginAccount(username: string, recoveryCode: string): Promise<AccountResponse> {
   return accountRequest<AccountResponse>("/api/account/login", { username, recoveryCode });
+}
+
+export function requestZkChallenge(username: string): Promise<ZkChallengeResponse> {
+  return accountRequest<ZkChallengeResponse>("/api/account/zk/challenge", { username });
+}
+
+export function verifyZkLogin(input: {
+  username: string;
+  challengeId: string;
+  challenge: string;
+  proof: string;
+}): Promise<AccountResponse> {
+  return accountRequest<AccountResponse>("/api/account/zk/verify", input);
 }
 
 export async function fetchAccountSession(): Promise<AccountResponse> {
