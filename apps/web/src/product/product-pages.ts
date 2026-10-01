@@ -2614,7 +2614,7 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
     roomVerificationRequested = false;
     sessionStorage.removeItem("hidn:account:verification-requested");
     roomLoginError = "";
-    roomAccessMode = "ready";
+    startRoomEntryTransition("/room", "return");
   } catch (error) {
     roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
