@@ -2273,7 +2273,7 @@ function renderExplore(path = "/room"): string {
           ${TerminalLabel("HIDN / ACCESS REQUIRED")}
           <h1 class="type-display-lg">THE ROOM STAYS<br /><em>BEHIND THE KEY.</em></h1>
           <p>Log in with your HIDN handle and recovery code to read the private room. Full actions unlock after the payment watcher confirms the exact ZEC amount.</p>
-          ${actionLink("GO TO ROOM ACCESS →", "/room/access", "primary")}
+          ${actionLink("ENTER THE ROOM", "/room/access", "primary")}
         </div>
       </main>`,
       "public-page--explore",
