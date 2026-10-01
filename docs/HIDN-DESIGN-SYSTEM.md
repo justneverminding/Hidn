@@ -21,6 +21,11 @@ The proof, posting, and feed behavior in this phase is local mock behavior.
 The interface must not imply that a real proof, credential, nullifier, wallet,
 network, or persistent confession record exists.
 
+The research translation companion is
+`docs/HIDN-ANONYMOUS-NOIR-REFERENCE-BRIEF.md`. It documents how external
+visual references inform HIDN without replacing the approved brand source of
+truth or authorizing third-party asset reuse.
+
 ## Source locations
 
 - `packages/ui/src/tokens.css` — semantic colors, type scale, spacing, layout,
