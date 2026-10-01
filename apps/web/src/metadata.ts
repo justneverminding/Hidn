@@ -3,7 +3,6 @@ export type HidnPageKind =
   | "public-home"
   | "public-page"
   | "explore"
-  | "confession-flow"
   | "private-room"
   | "design-system"
   | "anonymous-confession"
@@ -45,13 +44,6 @@ export const EXPLORE_METADATA: HidnMetadata = {
   imagePath: "/brand/references/hidn-brand-reference-02.png",
 };
 
-export const CONFESS_METADATA: HidnMetadata = {
-  kind: "confession-flow",
-  title: "HIDN — Confess",
-  description: "Write what you cannot say publicly without creating an account or public identity.",
-  canonicalPath: "/confess",
-};
-
 export const ROOM_METADATA: HidnMetadata = {
   kind: "private-room",
   title: "HIDN — Enter the Private Room",
@@ -73,7 +65,6 @@ export const SYSTEM_METADATA: HidnMetadata = {
  */
 export function robotsForPage(kind: HidnPageKind): string {
   if (
-    kind === "confession-flow" ||
     kind === "private-room" ||
     kind === "anonymous-confession" ||
     kind === "design-system" ||

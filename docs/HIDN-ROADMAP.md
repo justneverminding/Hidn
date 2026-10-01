@@ -49,22 +49,22 @@ No Phase 2 product logic was added.
 Delivered as a frontend-only, local mock experience:
 
 - public homepage at `/` using the approved reference artwork unchanged;
-- `/confess` flow with `01 PROVE`, `02 CONFESS`, and `03 PREVIEW` states;
-- explicit mock proof states with no cryptographic, credential, nullifier,
-  wallet, network, or backend behavior;
-- local in-memory confession preview, simulated posting, success state, and
-  individual `/c/:id` detail route;
+- identityless `/room`/`/explore` messaging and an individual `/c/:id` detail
+  route;
+- the dedicated `/confess` flow, mock proof states, and simulated posting are
+  removed from the current build; reviewed proofed posting remains deferred;
 - identityless `/explore` feed with latest, random, and felt views;
 - lightweight `/manifesto`, `/how-it-works`, and `/privacy` pages;
 - responsive public navigation, footer, editorial composition, accessibility
   labels, reduced-motion behavior, and page-level metadata;
-- individual confession and confession-flow routes marked non-indexable;
+- individual anonymous confession routes marked non-indexable; no dedicated
+  confession-flow route is shipped;
 - no account, username, profile, persistent history, analytics, admin surface,
   or wallet call-to-action.
 
-The mock confession list and posting flow are reset with a page reload. No
-backend, database, real proof, moderation, wallet, or persistence work is
-included in this phase.
+The mock message list and browser-local content actions reset with a page
+reload. No backend, database, real proof, moderation, wallet, or persistence
+work is included in this phase.
 
 ## Phase 2.5 — Homepage clarity pass
 
@@ -96,8 +96,8 @@ Delivered as a browser-only public frontend experience:
 - simulated activity explicitly labelled with no fake live-user, typing, or
   network metrics;
 - `/explore` converted from a card directory into filterable message rows;
-- `/confess` prove, compose, preview, and success states aligned to the same
-  private-channel conversation language;
+- homepage and room messaging surfaces aligned to the same private-channel
+  conversation language;
 - reduced-motion behavior disables automatic stream movement and decorative
   motion while preserving full usability.
 

@@ -58,9 +58,9 @@ authentication, secrets, and access controls for it are later work.
   fallback;
 - an internal `/system` visual design-system preview marked noindex and kept
   out of public navigation;
-- public Phase 2 routes at `/`, `/confess`, `/explore`, `/c/:id`,
+- public Phase 2 routes at `/`, `/room`, `/explore`, `/c/:id`,
   `/manifesto`, `/how-it-works`, and `/privacy`;
-- local in-memory mock data and flow state for confession content;
+- local in-memory mock data for message content and room interactions;
   - a Worker + D1 Room Access boundary for pseudonymous accounts, browser-held
   Schnorr proof credentials, legacy hashed recovery codes, HttpOnly sessions,
   payment intents, and signed watcher events;
@@ -77,7 +77,6 @@ The metadata module separates page kind from content. Its current policy is:
 
 - shell, public-home, public-page, and explore pages: `index, follow` by
   default;
-- the Phase 2 confession flow: `noindex, nofollow, noarchive, nosnippet`;
 - the internal design-system preview: `noindex, nofollow, noarchive,
   nosnippet`;
 - individual anonymous confession pages: `noindex, nofollow, noarchive,
@@ -85,9 +84,8 @@ The metadata module separates page kind from content. Its current policy is:
 - admin and API surfaces: non-indexable.
 
 When dynamic routes exist, the same rule must be emitted server-side in HTTP
-headers or rendered HTML. The Phase 2 mock route applies the policy in the
-client metadata layer; a future server must repeat it in HTTP headers or
-rendered HTML. A sitemap should contain only intentionally public, canonical
+headers or rendered HTML. A future server must repeat the reviewed metadata
+policy in HTTP headers or rendered HTML. A sitemap should contain only intentionally public, canonical
 URLs. Structured data should describe public product surfaces only; it must
 never serialize confession content or sender-identifying material.
 

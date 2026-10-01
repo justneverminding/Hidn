@@ -10,36 +10,27 @@ import {
   PrimaryButton,
   PrivacyBadge,
   SecondaryButton,
-  SelectControl,
   StatusIndicator,
   SystemMessage,
-  TextArea,
   TerminalLabel,
   TransmissionDivider,
-  VisibilityToggle,
   bindComponentInteractions,
   escapeHtml,
 } from "@hidn/ui";
 import {
-  CONFESS_METADATA,
   EXPLORE_METADATA,
   HOME_METADATA,
   ROOM_METADATA,
   type HidnMetadata,
 } from "../metadata";
 import {
-  createMockConfession,
   getMockConfession,
   isMockCategory,
   MOCK_INCOMING_TRANSMISSIONS,
   MOCK_CONFESSIONS,
-  mockFlow,
-  type FlowStep,
   type MockCategory,
   type MockConfession,
   type MockIncomingTransmission,
-  type ProofState,
-  resetMockFlow,
 } from "./mock-data";
 import { fetchCipherScanMainnetTip } from "./cipherscan";
 import {
@@ -88,7 +79,6 @@ type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 
 let activeFeedTab: FeedTab = "latest";
-let proofRunActive = false;
 let roomAccessMode: RoomAccessMode = "choose";
 let roomDemoId = "";
 let roomDemoMemo = "";
@@ -237,20 +227,6 @@ const roomThreadReplies = new Map<string, AnonymousReply[]>([
 ]);
 const roomLikeCounts = new Map<string, number>();
 const roomLikedIds = new Set<string>();
-
-const categoryOptions: Array<{ value: MockCategory; label: string }> = [
-  { value: "REGRET", label: "Regret" },
-  { value: "CAREER", label: "Career" },
-  { value: "RELATIONSHIPS", label: "Relationships" },
-  { value: "FEAR", label: "Fear" },
-  { value: "LONELINESS", label: "Loneliness" },
-  { value: "AMBITION", label: "Ambition" },
-  { value: "FAMILY", label: "Family" },
-  { value: "MONEY", label: "Money" },
-  { value: "IDENTITY", label: "Identity" },
-  { value: "UNCERTAINTY", label: "Uncertainty" },
-  { value: "JOY", label: "Joy" },
-];
 
 function formatTransmissionTime(value: string): string {
   if (/^\d{2}:\d{2}$/.test(value)) {
@@ -485,14 +461,6 @@ function renderHomeRoomCards(limit?: number): string {
 
 function renderPointerSpotlight(): string {
   return `<div class="hidn-pointer-spotlight" aria-hidden="true"></div>`;
-}
-
-function renderPreviewTransmission(): string {
-  return renderTransmissionRow({
-    text: mockFlow.thought,
-    time: "NOW",
-    category: mockFlow.category,
-  });
 }
 
 function setHomeReceivingStatus(root: ParentNode, state: "ambient" | "receiving" | "static"): void {
@@ -1802,7 +1770,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/confess" || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const footerLinks = isAdminPage
     ? []
@@ -1834,183 +1802,6 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
       identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
     })}
   </div>`;
-}
-
-function flowStepper(currentStep: FlowStep): string {
-  const steps: Array<{ key: FlowStep; number: string; label: string }> = [
-    { key: "prove", number: "01", label: "PROVE" },
-    { key: "confess", number: "02", label: "CONFESS" },
-    { key: "preview", number: "03", label: "PREVIEW" },
-  ];
-  const currentIndex = steps.findIndex((step) => step.key === currentStep);
-
-  return `<ol class="flow-stepper" aria-label="Confession steps">
-    ${steps
-      .map((step, index) => {
-        const state =
-          index < currentIndex || currentStep === "success"
-            ? "complete"
-            : index === currentIndex
-              ? "current"
-              : "upcoming";
-        return `<li class="flow-step flow-step--${state}">
-          <span class="flow-step__number">${step.number}</span>
-          <span class="flow-step__label">${step.label}</span>
-        </li>`;
-      })
-      .join("")}
-  </ol>`;
-}
-
-function proofStateCopy(state: ProofState): { label: string; copy: string } {
-  switch (state) {
-    case "preparing":
-      return { label: "PREPARING PRIVATE CHECK...", copy: "Setting up the local demo sequence." };
-    case "generating":
-      return { label: "GENERATING PROOF...", copy: "Simulating a short proof handoff." };
-    case "verifying":
-      return { label: "VERIFYING...", copy: "Checking the mock result locally." };
-    case "verified":
-      return { label: "✓ VERIFIED / MOCK", copy: "The visual sequence is complete. No cryptographic proof was created." };
-    default:
-      return { label: "READY TO BEGIN", copy: "A short local demonstration of the future flow." };
-  }
-}
-
-function renderProofStep(): string {
-  const stateCopy = proofStateCopy(mockFlow.proofState);
-
-  return `<section class="flow-panel flow-proof" aria-labelledby="flow-title">
-    <div class="flow-panel__eyebrow">
-      ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
-      ${StatusIndicator("MOCK / LOCAL ONLY", "warning")}
-    </div>
-    <h1 id="flow-title" class="type-display-lg">PRIVATE CHECK</h1>
-    <p class="flow-panel__lead">Proving you can participate without revealing who you are.</p>
-    <div class="flow-status" role="status" aria-live="polite">
-      <span class="flow-status__line">${escapeHtml(stateCopy.label)}</span>
-      <span class="flow-status__copy">${escapeHtml(stateCopy.copy)}</span>
-    </div>
-    <div class="flow-proof__action">
-      ${
-        mockFlow.proofState === "idle"
-          ? PrimaryButton({ label: "PROVE PRIVATELY →", dataAction: "proof-start" })
-          : mockFlow.proofState === "verified"
-            ? PrimaryButton({ label: "CONTINUE TO CONFESSION →", dataAction: "proof-continue" })
-          : PrimaryButton({ label: "WORKING...", disabled: true })
-      }
-    </div>
-    <p class="flow-mock-note">SIMULATED / NO CRYPTOGRAPHIC PROOF CREATED.</p>
-  </section>`;
-}
-
-function renderConfessStep(): string {
-  return `<section class="flow-panel flow-confess" aria-labelledby="flow-title">
-    <div class="flow-panel__eyebrow">
-      ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
-      ${PrivacyBadge("NO ACCOUNT")}
-    </div>
-    <h1 id="flow-title" class="type-display-lg">WRITE THE THOUGHT</h1>
-    <p class="flow-panel__lead">No name. No profile. Just the message.</p>
-    ${mockFlow.error ? AlertMessage("MESSAGE NEEDED", mockFlow.error, "danger") : ""}
-    <form class="flow-form" id="confession-form" novalidate>
-      ${TextArea({
-        id: "confession-thought",
-        label: "Message",
-        value: mockFlow.thought,
-        placeholder: "What's on your mind?",
-        hint: "This local demo keeps the draft in memory only.",
-        rows: 8,
-        required: true,
-      })}
-      <div class="flow-form__controls">
-        ${SelectControl({
-          id: "confession-category",
-          label: "Category",
-          value: mockFlow.category,
-          options: categoryOptions,
-          hint: "A broad label, not a profile.",
-        })}
-        <div class="flow-visibility">
-          <span class="ui-field__label">Visibility</span>
-          ${VisibilityToggle("MINIMAL VISIBILITY")}
-          <p>Thought, category, reaction count, and relative time only.</p>
-        </div>
-      </div>
-      <div class="flow-form__footer">
-        <p class="flow-form__reassurance">NO ACCOUNT · NO USERNAME · NO HISTORY</p>
-        ${PrimaryButton({ label: "CONTINUE →", dataAction: "confess-continue" })}
-      </div>
-    </form>
-  </section>`;
-}
-
-function renderPreviewStep(): string {
-  return `<section class="flow-panel flow-preview" aria-labelledby="flow-title">
-    <div class="flow-panel__eyebrow">
-      ${TerminalLabel("HIDN / PRIVATE CHANNEL")}
-      ${PrivacyBadge("IDENTITYLESS")}
-    </div>
-    <h1 id="flow-title" class="type-display-lg">PREVIEW THE MESSAGE</h1>
-    <p class="flow-panel__lead">This is exactly how it will appear. No identity. No history.</p>
-    <div class="flow-preview__message">
-      ${renderPreviewTransmission()}
-    </div>
-    <dl class="flow-summary" aria-label="Privacy summary">
-      <div><dt>IDENTITY</dt><dd>HIDN</dd></div>
-      <div><dt>USERNAME</dt><dd>NONE</dd></div>
-      <div><dt>PROFILE</dt><dd>NONE</dd></div>
-      <div><dt>HISTORY</dt><dd>NONE</dd></div>
-    </dl>
-    ${SystemMessage("FINAL CHECK / MOCK ONLY", "Posting here adds a local in-memory demo confession. No backend or persistent record is connected.", "DEMO")}
-    <div class="flow-actions">
-      ${SecondaryButton({ label: "EDIT", dataAction: "confession-edit" })}
-      ${PrimaryButton({ label: "POST CONFESSION →", dataAction: "confession-post" })}
-    </div>
-  </section>`;
-}
-
-function renderSuccessStep(): string {
-  const confessionId = mockFlow.createdId ?? "";
-  return `<section class="flow-success" aria-labelledby="flow-title">
-    <div class="flow-success__copy">
-      ${TerminalLabel("TRANSMISSION COMPLETE")}
-      ${StatusIndicator("LOCAL MOCK / RECEIVED", "warning")}
-      <h1 id="flow-title" class="type-display-lg">CONFESSION POSTED</h1>
-      <p class="flow-panel__lead">The message stays. You don't.</p>
-      <p class="flow-success__note">This demo keeps the new confession in memory for this browser session only. No identity, account, or history was created.</p>
-      <div class="flow-actions">
-        ${actionLink("VIEW →", confessionId ? `/c/${confessionId}` : "/room", "primary")}
-        ${GhostButton({ label: "LEAVE →", dataAction: "leave-hidn" })}
-      </div>
-    </div>
-  </section>`;
-}
-
-function renderConfess(): string {
-  const content =
-    mockFlow.step === "success"
-      ? renderSuccessStep()
-      : mockFlow.step === "confess"
-        ? renderConfessStep()
-        : mockFlow.step === "preview"
-          ? renderPreviewStep()
-          : renderProofStep();
-
-  return publicFrame(
-    "/confess",
-    `<main id="main-content" class="public-main flow-main">
-      <div class="hidn-container flow-page">
-        <header class="flow-header">
-          ${TerminalLabel("HIDN / PRIVATE TRANSMISSION")}
-          <p>PRIVATE CHANNEL / LOCAL MOCK</p>
-        </header>
-        ${flowStepper(mockFlow.step)}
-        ${content}
-      </div>
-    </main>`,
-    "public-page--flow",
-  );
 }
 
 function roomChannelOption(key: RoomChannel): (typeof roomChannelOptions)[number] {
@@ -3026,10 +2817,6 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderAdminReports();
   }
 
-  if (normalizedPath === "/confess") {
-    return { metadata: CONFESS_METADATA, html: renderConfess() };
-  }
-
   if (normalizedPath === "/explore") {
     window.history.replaceState({}, "", "/room");
     return { metadata: EXPLORE_METADATA, html: renderExplore("/room") };
@@ -3060,60 +2847,6 @@ function rerenderProductRoute(): void {
 function navigateProductRoute(path: string): void {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-}
-
-async function runMockProof(): Promise<void> {
-  if (proofRunActive || mockFlow.proofState !== "idle") {
-    return;
-  }
-
-  proofRunActive = true;
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const states: Array<{ state: ProofState; wait: number }> = [
-    { state: "preparing", wait: 250 },
-    { state: "generating", wait: 300 },
-    { state: "verifying", wait: 300 },
-    { state: "verified", wait: 0 },
-  ];
-
-  for (const item of states) {
-    if (normalizePath(window.location.pathname) !== "/confess" || mockFlow.step !== "prove") {
-      proofRunActive = false;
-      return;
-    }
-
-    mockFlow.proofState = item.state;
-    rerenderProductRoute();
-    await delay(reducedMotion ? Math.min(item.wait, 30) : item.wait);
-  }
-
-  proofRunActive = false;
-}
-
-function startHomeConfession(root: ParentNode): void {
-  const textarea = root.querySelector<HTMLTextAreaElement>("#home-confession-thought");
-  const error = root.querySelector<HTMLElement>("[data-home-error]");
-  const thought = textarea?.value.trim() ?? "";
-
-  if (!thought) {
-    if (error) {
-      error.hidden = false;
-      error.textContent = "Write a thought before transmitting.";
-    }
-    textarea?.focus();
-    return;
-  }
-
-  mockFlow.thought = thought;
-  mockFlow.error = "";
-  mockFlow.step = "prove";
-  mockFlow.proofState = "idle";
-  mockFlow.createdId = undefined;
-  navigateProductRoute("/confess");
 }
 
 function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
@@ -3675,61 +3408,10 @@ export function bindProductRoute(root: ParentNode = document): void {
         case "thread-x-share":
           void shareThreadImage(root, button.dataset.threadId ?? "", "x", replyIndexFromButton(button));
           break;
-        case "proof-start":
-          void runMockProof();
-          break;
-        case "proof-continue":
-          mockFlow.step = "confess";
-          mockFlow.error = "";
-          rerenderProductRoute();
-          break;
-        case "confess-continue": {
-          const textarea = root.querySelector<HTMLTextAreaElement>("#confession-thought");
-          mockFlow.thought = textarea?.value ?? "";
-          if (!mockFlow.thought.trim()) {
-            mockFlow.error = "Write a thought before continuing. The demo does not publish empty transmissions.";
-            rerenderProductRoute();
-            break;
-          }
-
-          mockFlow.error = "";
-          mockFlow.step = "preview";
-          rerenderProductRoute();
-          break;
-        }
-        case "confession-edit":
-          mockFlow.step = "confess";
-          mockFlow.error = "";
-          rerenderProductRoute();
-          break;
-        case "confession-post":
-          if (mockFlow.thought.trim()) {
-            createMockConfession();
-            mockFlow.step = "success";
-            rerenderProductRoute();
-          }
-          break;
-        case "leave-hidn":
-          resetMockFlow();
-          navigateProductRoute("/");
-          break;
         default:
           break;
       }
     });
-  });
-
-  root.querySelector<HTMLTextAreaElement>("#confession-thought")?.addEventListener("input", (event) => {
-    const textarea = event.currentTarget as HTMLTextAreaElement;
-    mockFlow.thought = textarea.value;
-    mockFlow.error = "";
-  });
-
-  root.querySelector<HTMLSelectElement>("#confession-category")?.addEventListener("change", (event) => {
-    const select = event.currentTarget as HTMLSelectElement;
-    if (isMockCategory(select.value)) {
-      mockFlow.category = select.value;
-    }
   });
 
   root.querySelectorAll<HTMLButtonElement>("[data-feed-tab]").forEach((button) => {

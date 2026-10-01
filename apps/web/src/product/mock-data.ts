@@ -131,29 +131,6 @@ export const MOCK_CONFESSIONS: MockConfession[] = [
   },
 ];
 
-export type FlowStep = "prove" | "confess" | "preview" | "success";
-export type ProofState = "idle" | "preparing" | "generating" | "verifying" | "verified";
-
-export interface MockFlowState {
-  step: FlowStep;
-  proofState: ProofState;
-  thought: string;
-  category: MockCategory;
-  visibility: "public";
-  error: string;
-  createdId: string | undefined;
-}
-
-export const mockFlow: MockFlowState = {
-  step: "prove",
-  proofState: "idle",
-  thought: "",
-  category: "REGRET",
-  visibility: "public",
-  error: "",
-  createdId: undefined,
-};
-
 export function isMockCategory(value: string): value is MockCategory {
   return [
     "REGRET",
@@ -172,31 +149,4 @@ export function isMockCategory(value: string): value is MockCategory {
 
 export function getMockConfession(id: string): MockConfession | undefined {
   return MOCK_CONFESSIONS.find((confession) => confession.id === id);
-}
-
-export function resetMockFlow(): void {
-  mockFlow.step = "prove";
-  mockFlow.proofState = "idle";
-  mockFlow.thought = "";
-  mockFlow.category = "REGRET";
-  mockFlow.visibility = "public";
-  mockFlow.error = "";
-  mockFlow.createdId = undefined;
-}
-
-export function createMockConfession(): MockConfession {
-  const id = `local-${Date.now().toString(36)}`;
-  const confession: MockConfession = {
-    id,
-    reference: "// NEW",
-    text: mockFlow.thought.trim(),
-    category: mockFlow.category,
-    relativeTime: "JUST NOW",
-    reactions: 0,
-    time: new Date().toISOString(),
-  };
-
-  MOCK_CONFESSIONS.unshift(confession);
-  mockFlow.createdId = id;
-  return confession;
 }

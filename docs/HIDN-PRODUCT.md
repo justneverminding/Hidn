@@ -58,10 +58,10 @@ identity-bearing surface.
 ## Phase 2 product boundary
 
 Phase 2 adds the public product experience as a browser-only demonstration:
-homepage, confession flow, mock proof states, preview, success state, explore
-feed, anonymous detail route, and lightweight manifesto/how-it-works/privacy
-pages. The mock data and flow state live in memory only and are reset on page
-reload.
+homepage, identityless room/explore feed, anonymous detail route, and
+lightweight manifesto/how-it-works/privacy pages. The dedicated `/confess`
+page and its mock proof/posting flow are not shipped in the current build;
+the reviewed proofed posting path remains deferred.
 
 Phase 2 does not create a backend, database, real proof, credential,
 nullifier, Merkle tree, wallet request, Zcash transaction, moderation system,

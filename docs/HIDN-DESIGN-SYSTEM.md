@@ -12,9 +12,10 @@ analytics, or backend behavior.
 
 ## Phase 2 composition boundary
 
-Phase 2 composes the system into the public homepage, confession flow,
-identityless explore feed, anonymous detail route, and lightweight supporting
-pages. Product styling belongs in `apps/web/src/product/product.css` and
+Phase 2 composes the system into the public homepage, identityless room/feed,
+anonymous detail route, and lightweight supporting pages. The dedicated
+`/confess` flow is not part of the current public build. Product styling belongs
+in `apps/web/src/product/product.css` and
 reuses the shared components rather than introducing a new visual language.
 
 The proof, posting, and feed behavior in this phase is local mock behavior.

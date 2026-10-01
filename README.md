@@ -6,7 +6,7 @@ thoughts you cannot or do not want to say publicly.
 This repository contains completed Phase 0 foundation work, the Phase 1 visual
 design system, and the Phase 2 public frontend experience: source-of-truth
 documentation, a TypeScript web app, shared tokens, reusable visual
-components, local mock confession flow, metadata foundations, and reserved
+components, browser-local message content, metadata foundations, and reserved
 future application/package boundaries. It also contains the first server-backed
 Room Access boundary: Cloudflare Worker + D1 account sessions, payment intents,
 and a separate Zcash watcher process.
@@ -25,8 +25,9 @@ npm run typecheck
 npm run build
 ```
 
-The public experience is available at `/`, `/confess`, and `/explore` while the
-local dev server is running. Supporting pages are available at `/manifesto`,
+The public experience is available at `/`, `/room`, and `/explore` while the
+local dev server is running. The dedicated `/confess` page is not shipped in
+the current build; the future proofed posting flow remains deferred. Supporting pages are available at `/manifesto`,
 `/how-it-works`, and `/privacy`. The individual `/c/:id` route is a local
 mock detail surface and is noindex. The internal design-system preview is
 available at `/system`; it is also noindex and is not linked from the public
