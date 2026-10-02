@@ -433,7 +433,7 @@ function renderTransmissionRow(
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasFullRoomAccess() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
-        <a class="room-message__action" href="${escapeHtml(options.href)}">COMMENTS ${repliesForThread(threadId).length}</a>
+        <a class="room-message__action" href="${escapeHtml(options.href)}">REPLIES ${repliesForThread(threadId).length}</a>
         <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
         <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
         <a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>
@@ -1051,157 +1051,6 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
   } catch {
     return undefined;
   }
-}
-
-function createHomeEntryNoiseBuffer(context: AudioContext, duration: number): AudioBuffer {
-  const frameCount = Math.floor(context.sampleRate * duration);
-  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
-  const channel = buffer.getChannelData(0);
-
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    const progress = frame / frameCount;
-    const fade = Math.pow(1 - progress, 1.8);
-    channel[frame] = ((Math.random() * 2) - 1) * fade;
-  }
-
-  return buffer;
-}
-
-function playHomeRoomEntryCue(): void {
-  if (hasHomeAudioPreference() && !readHomeAudioPreference()) {
-    return;
-  }
-
-  const AudioContextConstructor = window.AudioContext
-    ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextConstructor) {
-    return;
-  }
-
-  let context: AudioContext;
-  try {
-    context = new AudioContextConstructor();
-  } catch {
-    return;
-  }
-
-  const play = (): void => {
-    if (context.state !== "running") {
-      void context.close();
-      return;
-    }
-
-    const now = context.currentTime;
-    const master = context.createGain();
-    const dryGain = context.createGain();
-    const echoDelay = context.createDelay(0.8);
-    const echoFeedback = context.createGain();
-    const echoGain = context.createGain();
-    const voiceTone = context.createBiquadFilter();
-    const undertone = context.createBiquadFilter();
-    const breathTone = context.createBiquadFilter();
-    const voiceEnvelope = context.createGain();
-    const undertoneGain = context.createGain();
-    const breathGain = context.createGain();
-    const screamTone = context.createBiquadFilter();
-    const screamEnvelope = context.createGain();
-    const voice = context.createOscillator();
-    const lowVoice = context.createOscillator();
-    const scream = context.createOscillator();
-    const breath = context.createBufferSource();
-
-    master.gain.setValueAtTime(0.0001, now);
-    master.gain.linearRampToValueAtTime(1.5, now + 0.045);
-    master.gain.exponentialRampToValueAtTime(0.0001, now + 3.1);
-
-    dryGain.gain.value = 0.9;
-    echoDelay.delayTime.value = 0.34;
-    echoFeedback.gain.value = 0.24;
-    echoGain.gain.value = 0.46;
-
-    voiceTone.type = "bandpass";
-    voiceTone.frequency.value = 700;
-    voiceTone.Q.value = 1.1;
-    undertone.type = "lowpass";
-    undertone.frequency.value = 360;
-    undertone.Q.value = 0.6;
-    breathTone.type = "bandpass";
-    breathTone.frequency.value = 1250;
-    breathTone.Q.value = 0.7;
-
-    voiceEnvelope.gain.setValueAtTime(0.0001, now);
-    voiceEnvelope.gain.linearRampToValueAtTime(0.48, now + 0.07);
-    voiceEnvelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.82);
-    undertoneGain.gain.setValueAtTime(0.0001, now);
-    undertoneGain.gain.linearRampToValueAtTime(0.17, now + 0.12);
-    undertoneGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.9);
-    breathGain.gain.setValueAtTime(0.0001, now);
-    breathGain.gain.linearRampToValueAtTime(0.055, now + 0.08);
-    breathGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.15);
-
-    screamTone.type = "bandpass";
-    screamTone.frequency.value = 980;
-    screamTone.Q.value = 1.45;
-    screamEnvelope.gain.setValueAtTime(0.0001, now);
-    screamEnvelope.gain.linearRampToValueAtTime(0.22, now + 0.11);
-    screamEnvelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.68);
-
-    voice.type = "triangle";
-    voice.frequency.setValueAtTime(176, now);
-    voice.frequency.exponentialRampToValueAtTime(412, now + 0.68);
-    voice.frequency.exponentialRampToValueAtTime(232, now + 1.5);
-    lowVoice.type = "sine";
-    lowVoice.frequency.setValueAtTime(88, now);
-    lowVoice.frequency.exponentialRampToValueAtTime(142, now + 0.72);
-    lowVoice.frequency.exponentialRampToValueAtTime(78, now + 1.65);
-    scream.type = "sawtooth";
-    scream.frequency.setValueAtTime(286, now + 0.05);
-    scream.frequency.exponentialRampToValueAtTime(720, now + 0.7);
-    scream.frequency.exponentialRampToValueAtTime(360, now + 1.48);
-    breath.buffer = createHomeEntryNoiseBuffer(context, 1.2);
-
-    voice.connect(voiceEnvelope);
-    voiceEnvelope.connect(voiceTone);
-    voiceTone.connect(dryGain);
-    voiceTone.connect(echoDelay);
-    lowVoice.connect(undertoneGain);
-    undertoneGain.connect(undertone);
-    undertone.connect(dryGain);
-    scream.connect(screamEnvelope);
-    screamEnvelope.connect(screamTone);
-    screamTone.connect(dryGain);
-    screamTone.connect(echoDelay);
-    breath.connect(breathGain);
-    breathGain.connect(breathTone);
-    breathTone.connect(dryGain);
-    dryGain.connect(master);
-    echoDelay.connect(echoFeedback);
-    echoFeedback.connect(echoDelay);
-    echoDelay.connect(echoGain);
-    echoGain.connect(master);
-    master.connect(context.destination);
-
-    voice.start(now);
-    lowVoice.start(now);
-    scream.start(now);
-    breath.start(now);
-    voice.stop(now + 1.82);
-    lowVoice.stop(now + 1.95);
-    scream.stop(now + 1.78);
-    breath.stop(now + 1.22);
-    window.setTimeout(() => {
-      void context.close();
-    }, 3500);
-  };
-
-  if (context.state === "suspended") {
-    void context.resume().then(play).catch(() => {
-      void context.close();
-    });
-    return;
-  }
-
-  play();
 }
 
 function setHomeAudioState(root: ParentNode, enabled: boolean): void {
@@ -2307,6 +2156,11 @@ function publicWindowTitle(path: string): string {
     return "THE_ROOM";
   }
 
+  const roomChannel = roomChannelFromPath(normalizedPath);
+  if (roomChannel) {
+    return `ROOM_${roomChannel.toUpperCase()}`;
+  }
+
   if (normalizedPath === "/") {
     return "PRIVATE_ROOM";
   }
@@ -2362,7 +2216,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/profile" || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/profile" || Boolean(roomChannelFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const footerLinks = isAdminPage
     ? []
@@ -2591,7 +2445,8 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   }
 }
 
-function renderRoomDirectory(): string {
+function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
+  const showFooter = options.showFooter ?? true;
   const activeChannel = roomChannelOption(activeRoomChannel);
   const folderGroups: Array<{ key: string; label: string; channels: typeof roomChannelOptions; open: boolean }> = [
     {
@@ -2610,11 +2465,11 @@ function renderRoomDirectory(): string {
 
   return `<aside class="room-directory" aria-label="Discussion rooms">
     <div class="room-directory__header">
-      ${TerminalLabel("ROOM INDEX / OPEN CHANNELS")}
-      <span class="room-directory__count">${roomChannelOptions.length} ROOMS</span>
+    ${TerminalLabel("CHANNELS / PRIVATE ROOMS")}
+    <span class="room-directory__count">${roomChannelOptions.length} OPEN</span>
     </div>
-    <h2>Find your room.</h2>
-    <p class="room-directory__intro">Every channel is a shared wall. No handles, no member list, no public identity.</p>
+    <h2>Choose a room.</h2>
+    <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -2638,24 +2493,26 @@ function renderRoomDirectory(): string {
         )
         .join("")}
     </div>
-    <div class="room-directory__footer">
-      <span>ACTIVE CHANNEL</span><strong>// ${activeChannel.label}</strong>
-      ${roomChannelNotice ? `<p role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
-      ${roomPostError ? `<p class="room-post-composer__error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
-      ${roomPostComposerOpen
-        ? `<form class="room-post-composer" novalidate>
-            <label class="ui-field room-post-composer__field" for="room-post-content">
-              <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
-              <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
-            </label>
-            <p class="room-post-composer__note">${hasFullRoomAccess() ? "Your post is stored without a public name." : "Full access is required before you can transmit a post."}</p>
-            <div class="room-post-composer__actions">
-              ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
-              ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
-            </div>
-          </form>`
-        : SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}
-    </div>
+    ${showFooter
+      ? `<div class="room-directory__footer">
+          <span>ACTIVE CHANNEL</span><strong>// ${activeChannel.label}</strong>
+          ${roomChannelNotice ? `<p role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
+          ${roomPostError ? `<p class="room-post-composer__error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
+          ${roomPostComposerOpen
+            ? `<form class="room-post-composer" novalidate>
+                <label class="ui-field room-post-composer__field" for="room-post-content">
+                  <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
+                  <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+                </label>
+                <p class="room-post-composer__note">${hasFullRoomAccess() ? "Your post is stored without a public name." : "Full access is required before you can transmit a post."}</p>
+                <div class="room-post-composer__actions">
+                  ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
+                  ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+                </div>
+              </form>`
+            : SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}
+        </div>`
+      : ""}
   </aside>`;
 }
 
@@ -2801,7 +2658,57 @@ function renderModerationGate(path: string): RenderedProductRoute {
   };
 }
 
+function roomChannelFromPath(path: string): RoomChannel | undefined {
+  const normalizedPath = normalizePath(path);
+  const prefix = "/room/channel/";
+  if (!normalizedPath.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const key = normalizedPath.slice(prefix.length) as RoomChannel;
+  return roomChannelOptions.some((channel) => channel.key === key) ? key : undefined;
+}
+
+function isRoomMobileViewport(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
+}
+
+function renderMobileRoomIndex(): string {
+  const rooms = roomChannelOptions
+    .map((channel, index) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
+      <span class="room-mobile-index__number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="room-mobile-index__copy"><strong>${escapeHtml(channel.label)}</strong><small>${escapeHtml(channel.description)}</small></span>
+      <span class="room-mobile-index__arrow" aria-hidden="true">→</span>
+    </button>`)
+    .join("");
+
+  return publicFrame(
+    "/room",
+    `<main id="main-content" class="public-main room-mobile-index-main">
+      <div class="hidn-container--reading explore-page room-mobile-index">
+        <header class="room-mobile-index__header">
+          ${TerminalLabel("PRIVATE ROOM / INDEX")}
+          <h1>CHOOSE A ROOM.</h1>
+          <p>Read quietly or leave a thought without a public name.</p>
+        </header>
+        <section class="room-mobile-index__list" aria-label="Private rooms">
+          ${rooms}
+        </section>
+      </div>
+    </main>`,
+    "public-page--explore public-page--room-index",
+  );
+}
+
 function renderExplore(path = "/room"): string {
+  const isChannelRoute = Boolean(roomChannelFromPath(path));
+  const channel = roomChannelOption(activeRoomChannel);
+  const headerLabel = isChannelRoute ? `${channel.label} / PRIVATE CHANNEL` : "PRIVATE ROOM / OPEN THREADS";
+  const headerTitle = isChannelRoute ? channel.label : "THE ROOM";
+  const headerCopy = isChannelRoute
+    ? `${channel.description}. Anonymous thoughts and replies stay inside this room.`
+    : "Thoughts move through the room without names. Follow one thread or leave one behind.";
+
   if (!hasRoomSession()) {
     return publicFrame(
       path,
@@ -2823,15 +2730,16 @@ function renderExplore(path = "/room"): string {
       ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
-          ${TerminalLabel("PRIVATE ROOM / OPEN THREADS")}
-          <h1 class="type-display-lg">THE ROOM</h1>
-          <p>Thoughts move through the room without names. Follow one thread or leave one behind.</p>
+          ${isChannelRoute ? `<a class="room-channel-back" href="/room">← ALL ROOMS</a>` : ""}
+          ${TerminalLabel(headerLabel)}
+          <h1 class="type-display-lg">${escapeHtml(headerTitle)}</h1>
+          <p>${escapeHtml(headerCopy)}</p>
         </header>
         <div class="explore-layout">
           <section class="explore-feed" aria-labelledby="explore-feed-title">
             <div class="explore-feed__heading">
               <div>
-                ${TerminalLabel("RECEIVING / ANONYMOUS SIGNAL")}
+        ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
                 <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
               ${StatusIndicator("LOCAL THREAD / LIVE FEEL", "warning", true)}
@@ -2843,7 +2751,7 @@ function renderExplore(path = "/room"): string {
         </div>
       </div>
     </main>`,
-    "public-page--explore",
+    `public-page--explore${isChannelRoute ? " public-page--room-channel" : ""}`,
   );
 }
 
@@ -3907,7 +3815,23 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   }
 
   if (normalizedPath === "/room") {
-    return { metadata: EXPLORE_METADATA, html: renderExplore("/room") };
+    return {
+      metadata: EXPLORE_METADATA,
+      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room"),
+    };
+  }
+
+  const roomChannel = roomChannelFromPath(normalizedPath);
+  if (roomChannel) {
+    activeRoomChannel = roomChannel;
+    return {
+      metadata: {
+        ...EXPLORE_METADATA,
+        title: `HIDN — ${roomChannelOption(roomChannel).label}`,
+        canonicalPath: normalizedPath,
+      },
+      html: renderExplore(normalizedPath),
+    };
   }
 
   if (normalizedPath === "/room/profile") {
@@ -3924,7 +3848,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/explore") {
     window.history.replaceState({}, "", "/room");
-    return { metadata: EXPLORE_METADATA, html: renderExplore("/room") };
+    return {
+      metadata: EXPLORE_METADATA,
+      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room"),
+    };
   }
 
   if (["/manifesto", "/how-it-works", "/privacy"].includes(normalizedPath)) {
@@ -3991,7 +3918,8 @@ function bindRoomLikeInteractions(root: ParentNode): void {
       }
       roomLikeCounts.set(threadId, Math.max(0, nextCount));
 
-      if (normalizePath(window.location.pathname) === "/room" || normalizePath(window.location.pathname) === "/explore") {
+      const normalizedPath = normalizePath(window.location.pathname);
+      if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelFromPath(normalizedPath))) {
         renderExploreFeed(root, activeFeedTab);
       } else {
         rerenderProductRoute();
@@ -4005,6 +3933,11 @@ function bindRoomChannelInteractions(root: ParentNode): void {
     button.addEventListener("click", () => {
       const key = button.dataset.roomChannel as RoomChannel | undefined;
       if (!key || !roomChannelOptions.some((channel) => channel.key === key)) {
+        return;
+      }
+
+      if (isRoomMobileViewport()) {
+        navigateProductRoute(`/room/channel/${key}`);
         return;
       }
 
@@ -4220,13 +4153,12 @@ export function bindProductRoute(root: ParentNode = document): void {
     link.addEventListener("click", (event) => {
       event.preventDefault();
       const returning = hasRoomSession();
-      playHomeRoomEntryCue();
       startRoomEntryTransition(returning ? "/room" : "/room/access", returning ? "return" : "first");
     });
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
-  if (normalizedPath === "/room" && hasRoomSession()) {
+  if ((normalizedPath === "/room" || Boolean(roomChannelFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
   }
   if (normalizedPath === "/room/profile" && hasRoomSession()) {
