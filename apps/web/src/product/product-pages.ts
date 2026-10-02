@@ -195,7 +195,7 @@ interface HomeAudioGraph {
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
-const HOME_AUDIO_MASTER_GAIN = 0.03;
+const HOME_AUDIO_MASTER_GAIN = 0.036;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
@@ -2894,7 +2894,7 @@ function renderRoomCreate(): string {
     ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
     <div class="room-access-actions">
       ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-      ${PrimaryButton({ label: roomBackendStatus === "connecting" ? "CREATING ACCOUNT..." : "CREATE ACCOUNT →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-account" })}
+      ${SecondaryButton({ label: roomBackendStatus === "connecting" ? "CREATING ACCOUNT..." : "CREATE ACCOUNT →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-account" })}
     </div>
   </div>`;
 }

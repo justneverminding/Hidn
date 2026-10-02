@@ -6082,7 +6082,7 @@
 }
 
 .room-access-option:nth-child(2) h2 {
-  color: var(--hidn-signal);
+  color: var(--hidn-broadcast-amber);
 }
 
 .room-payment-card,
