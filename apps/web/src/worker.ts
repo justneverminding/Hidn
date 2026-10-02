@@ -14,10 +14,14 @@ const ACCOUNT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PAYMENT_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
 const ZK_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const MAIN_ROOM_ID = "HIDN-MAIN-ROOM";
+const ROOM_POST_MAX_LENGTH = 2000;
+const ROOM_POST_RATE_LIMIT = 10;
 
 type AccessLevel = "read_only" | "full";
 type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
+type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
 type ReportTargetType = "thread" | "reply" | "account";
 type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
 type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
@@ -98,6 +102,14 @@ interface AdminReportRow {
   reviewer_note: string;
 }
 
+interface RoomPostRow {
+  thread_id: string;
+  content: string;
+  category: string;
+  channel: RoomChannel;
+  created_at: string;
+}
+
 interface ModerationVisibilityRow {
   target_type: "thread" | "reply";
   target_id: string;
@@ -112,6 +124,20 @@ const REPORT_REASONS: readonly ReportReason[] = [
   "self_harm",
   "other",
 ];
+const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "privacy", "politics", "family", "work"];
+const ROOM_POST_CATEGORIES = new Set([
+  "REGRET",
+  "CAREER",
+  "RELATIONSHIPS",
+  "FEAR",
+  "LONELINESS",
+  "AMBITION",
+  "FAMILY",
+  "MONEY",
+  "IDENTITY",
+  "UNCERTAINTY",
+  "JOY",
+]);
 const REPORT_STATUSES: readonly ReportStatus[] = ["open", "reviewed", "dismissed", "actioned"];
 const REPORT_MAX_PER_HOUR = 20;
 const REPORT_MAX_TARGET_ID_LENGTH = 200;
@@ -248,6 +274,14 @@ function normalizeUsername(username: string): string {
 
 function isValidUsername(username: string): boolean {
   return /^HIDN-[A-Z0-9]{1,20}$/.test(username);
+}
+
+function isRoomChannel(value: string): value is RoomChannel {
+  return ROOM_CHANNELS.includes(value as RoomChannel);
+}
+
+function createThreadId(): string {
+  return `THR-${createRandomHex(12).toUpperCase()}`;
 }
 
 function isReportTargetType(value: string): value is ReportTargetType {
@@ -500,6 +534,118 @@ async function getAccountSession(request: Request, env: HidnWorkerEnv): Promise<
   }
 
   return jsonResponse({ ...user, paymentStatus: user.accessLevel === "full" ? "confirmed" : "pending" });
+}
+
+function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
+  return {
+    id: row.thread_id,
+    reference: `// ${row.thread_id.replace(/^THR-/, "").slice(0, 8)}`,
+    text: row.content,
+    category: row.category,
+    channel: row.channel,
+    time: row.created_at,
+    reactions: 0,
+  };
+}
+
+async function listRoomPosts(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reading room posts." }, 401);
+  }
+
+  const channel = new URL(request.url).searchParams.get("channel")?.trim().toLowerCase() ?? "general";
+  if (!isRoomChannel(channel)) {
+    return jsonResponse({ error: "Choose a valid room channel." }, 400);
+  }
+
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT thread_id, content, category, channel, created_at
+     FROM hidn_threads
+     WHERE room_id = ? AND channel = ? AND moderation_state = 'visible'
+     ORDER BY created_at DESC
+     LIMIT 100`,
+  )
+    .bind(MAIN_ROOM_ID, channel)
+    .all<RoomPostRow>();
+
+  return jsonResponse({ posts: result.results.map(serializeRoomPost), channel });
+}
+
+async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before creating a post." }, 401);
+  }
+  if (user.accessLevel !== "full") {
+    return jsonResponse({ error: "Full access is required before creating a post." }, 403);
+  }
+
+  const body = await requestBody(request);
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
+  const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
+  if (!content) {
+    return jsonResponse({ error: "Write something before creating the post." }, 400);
+  }
+  if (content.length > ROOM_POST_MAX_LENGTH) {
+    return jsonResponse({ error: `Posts must be ${ROOM_POST_MAX_LENGTH} characters or fewer.` }, 400);
+  }
+  if (!isRoomChannel(channel)) {
+    return jsonResponse({ error: "Choose a valid room channel." }, 400);
+  }
+  if (!ROOM_POST_CATEGORIES.has(category)) {
+    return jsonResponse({ error: "Choose a valid post category." }, 400);
+  }
+
+  const recentWindow = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recentPosts = await env.ROOM_DB!.prepare(
+    `SELECT COUNT(*) AS count
+     FROM hidn_threads
+     WHERE author_user_id = ? AND created_at >= ?`,
+  )
+    .bind(user.userId, recentWindow)
+    .first<{ count: number }>();
+  if (Number(recentPosts?.count ?? 0) >= ROOM_POST_RATE_LIMIT) {
+    return jsonResponse({ error: "Post limit reached. Try again later." }, 429);
+  }
+
+  const post: RoomPostRow = {
+    thread_id: createThreadId(),
+    content,
+    category,
+    channel,
+    created_at: new Date().toISOString(),
+  };
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_threads
+      (thread_id, room_id, content, category, moderation_state, created_at,
+       updated_at, hidden_at, channel, author_user_id)
+     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, ?)`,
+  )
+    .bind(
+      post.thread_id,
+      MAIN_ROOM_ID,
+      post.content,
+      post.category,
+      post.created_at,
+      post.created_at,
+      post.channel,
+      user.userId,
+    )
+    .run();
+
+  return jsonResponse({ post: serializeRoomPost(post), status: "created" }, 201);
 }
 
 async function signupZkAccount(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -1674,6 +1820,20 @@ const worker = {
         return await logoutAccount(request, env);
       } catch {
         return jsonResponse({ error: "Account logout could not be completed." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/posts") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return request.method === "GET"
+          ? await listRoomPosts(request, env)
+          : await createRoomPost(request, env);
+      } catch {
+        return jsonResponse({ error: request.method === "GET" ? "Room posts could not be loaded." : "Post could not be created." }, 500);
       }
     }
 

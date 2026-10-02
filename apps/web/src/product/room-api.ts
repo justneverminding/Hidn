@@ -28,6 +28,21 @@ export interface AccountResponse {
   recoveryCode?: string;
 }
 
+export interface RoomPost {
+  id: string;
+  reference: string;
+  text: string;
+  category: string;
+  channel: string;
+  time: string;
+  reactions: number;
+}
+
+export interface RoomPostsResponse {
+  posts: RoomPost[];
+  channel: string;
+}
+
 export interface ZkChallengeResponse {
   protocol: "hidn-schnorr-v1";
   challengeId: string;
@@ -151,6 +166,22 @@ async function roomRequest<T>(path: string, body: Record<string, unknown>): Prom
   return (await response.json()) as T;
 }
 
+async function roomGet<T>(path: string): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const message = typeof payload?.error === "string" ? payload.error : `Room backend returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  return (await response.json()) as T;
+}
+
 async function accountRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
   return roomRequest<T>(path, body);
 }
@@ -198,6 +229,18 @@ export async function fetchAccountSession(): Promise<AccountResponse> {
 
 export function logoutAccount(): Promise<{ ok: boolean }> {
   return accountRequest<{ ok: boolean }>("/api/account/logout", {});
+}
+
+export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
+  return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
+}
+
+export function createRoomPost(input: {
+  content: string;
+  channel: string;
+  category: string;
+}): Promise<{ post: RoomPost; status: "created" }> {
+  return accountRequest<{ post: RoomPost; status: "created" }>("/api/room/posts", input);
 }
 
 export function submitReport(input: {

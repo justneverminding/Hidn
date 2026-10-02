@@ -1510,6 +1510,8 @@
 }
 
 .public-page--explore .explore-header h1 {
+  font-size: clamp(2.75rem, 4.5vw, 4.8rem);
+  line-height: 0.96;
   max-width: 12ch;
 }
 
@@ -5197,6 +5199,81 @@
   justify-content: center;
   margin-top: 0.45rem;
   width: 100%;
+}
+
+.room-post-composer {
+  background: rgba(3, 13, 7, 0.46);
+  border: 1px solid rgba(93, 255, 143, 0.16);
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+  padding: 0.85rem;
+}
+
+.room-post-composer__field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.room-post-composer__field .ui-field__label {
+  color: var(--hidn-signal);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.room-post-composer__field textarea {
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(93, 255, 143, 0.2);
+  border-radius: 0;
+  color: var(--hidn-bone);
+  font: inherit;
+  line-height: 1.55;
+  min-height: 7rem;
+  padding: 0.7rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.room-post-composer__field textarea:focus {
+  border-color: var(--hidn-signal);
+  box-shadow: 0 0 0 2px rgba(93, 255, 143, 0.12);
+  outline: none;
+}
+
+.room-post-composer__field textarea::placeholder {
+  color: var(--hidn-text-dim);
+}
+
+.room-post-composer__note,
+.room-post-composer__error {
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.room-post-composer__note {
+  color: var(--hidn-text-dim);
+}
+
+.room-post-composer__error {
+  color: var(--hidn-broadcast-amber) !important;
+}
+
+.room-post-composer__actions {
+  align-items: center;
+  display: flex;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.room-post-composer__actions .ui-button {
+  margin-top: 0;
+  width: auto;
 }
 
 .thread-room__quote {

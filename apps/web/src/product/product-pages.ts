@@ -41,8 +41,10 @@ import {
   publicKeyToHex,
 } from "@hidn/zk";
 import {
+  createRoomPost,
   createPaymentIntent,
   createRoomSession,
+  fetchRoomPosts,
   fetchAdminReports,
   fetchModerationVisibility,
   fetchPaymentIntent,
@@ -62,6 +64,7 @@ import {
   type AccountResponse,
   type ModerationTargetType,
   type PaymentIntentResponse,
+  type RoomPost,
   type ReportReason,
   type ReportStatus,
   type ReportTargetType,
@@ -96,6 +99,13 @@ let roomVerificationRequested = false;
 let activeRoomChannel: RoomChannel = "general";
 let roomProfileOpen = false;
 let roomChannelNotice = "";
+let roomPostComposerOpen = false;
+let roomPostText = "";
+let roomPostError = "";
+let roomPostSubmitting = false;
+let roomPosts: RoomPost[] = [];
+let roomPostsLoadedChannel: RoomChannel | undefined;
+let roomPostsRequest: Promise<void> | undefined;
 let activeReportTarget: ReportTarget | undefined;
 let roomReportReason: ReportReason = "spam";
 let roomReportDetails = "";
@@ -264,6 +274,17 @@ function transmissionViewFromConfession(confession: MockConfession): Transmissio
     time: confession.time,
     category: confession.category,
     reactions: confession.reactions,
+  };
+}
+
+function transmissionViewFromRoomPost(post: RoomPost): TransmissionView {
+  return {
+    id: post.id,
+    reference: post.reference,
+    text: post.text,
+    time: post.time,
+    category: post.category,
+    reactions: post.reactions,
   };
 }
 
@@ -2104,13 +2125,19 @@ function feedForTab(tab: FeedTab): MockConfession[] {
 }
 
 function renderTransmissionRows(tab: FeedTab): string {
-  const confessions = feedForTab(tab);
-  if (!confessions.length) {
+  const mockRows = feedForTab(tab).map(transmissionViewFromConfession);
+  const persistedRows = tab === "latest"
+    ? roomPosts
+        .filter((post) => post.channel === activeRoomChannel)
+        .map(transmissionViewFromRoomPost)
+    : [];
+  const rows = [...persistedRows, ...mockRows];
+  if (!rows.length) {
     return EmptyState("NO TRANSMISSIONS", "Nothing is visible here yet.");
   }
 
-  return confessions
-    .map((confession) => renderTransmissionRow(transmissionViewFromConfession(confession), { href: `/c/${confession.id}` }))
+  return rows
+    .map((transmission) => renderTransmissionRow(transmission, { href: transmission.id?.startsWith("THR-") ? undefined : `/c/${transmission.id}` }))
     .join("");
 }
 
@@ -2128,6 +2155,70 @@ function renderExploreTabs(): string {
       )
       .join("")}
   </div>`;
+}
+
+async function refreshRoomPosts(): Promise<void> {
+  if (!hasRoomSession() || roomPostsRequest || roomPostsLoadedChannel === activeRoomChannel) {
+    return;
+  }
+
+  const requestedChannel = activeRoomChannel;
+  roomPostsRequest = fetchRoomPosts(requestedChannel)
+    .then((response) => {
+      roomPosts = response.posts;
+      roomPostsLoadedChannel = requestedChannel;
+      roomPostError = "";
+      if (normalizePath(window.location.pathname) === "/room") {
+        rerenderProductRoute();
+      }
+    })
+    .catch((error) => {
+      roomPostsLoadedChannel = requestedChannel;
+      roomPostError = error instanceof Error ? error.message : "Room posts could not be loaded.";
+    })
+    .finally(() => {
+      roomPostsRequest = undefined;
+    });
+
+  return roomPostsRequest;
+}
+
+async function submitRoomPost(): Promise<void> {
+  const content = roomPostText.trim();
+  if (!content) {
+    roomPostError = "Write something before posting.";
+    rerenderProductRoute();
+    return;
+  }
+  if (!hasFullRoomAccess()) {
+    roomPostError = "FULL ACCESS REQUIRED / VERIFY YOUR ROOM ACCESS BEFORE POSTING";
+    rerenderProductRoute();
+    return;
+  }
+
+  roomPostSubmitting = true;
+  roomPostError = "";
+  roomChannelNotice = "TRANSMITTING / PRIVATE ROOM";
+  rerenderProductRoute();
+
+  try {
+    const response = await createRoomPost({
+      content,
+      channel: activeRoomChannel,
+      category: "IDENTITY",
+    });
+    roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
+    roomPostsLoadedChannel = activeRoomChannel;
+    roomPostComposerOpen = false;
+    roomPostText = "";
+    roomChannelNotice = `${response.post.reference} POSTED / ANONYMOUS`;
+  } catch (error) {
+    roomPostError = error instanceof Error ? error.message : "The post could not be created.";
+    roomChannelNotice = "";
+  } finally {
+    roomPostSubmitting = false;
+    rerenderProductRoute();
+  }
 }
 
 function renderRoomDirectory(): string {
@@ -2180,7 +2271,20 @@ function renderRoomDirectory(): string {
     <div class="room-directory__footer">
       <span>ACTIVE CHANNEL</span><strong>// ${activeChannel.label}</strong>
       ${roomChannelNotice ? `<p role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
-      ${SecondaryButton({ label: "CREATE A ROOM →", dataAction: "room-create-channel" })}
+      ${roomPostError ? `<p class="room-post-composer__error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
+      ${roomPostComposerOpen
+        ? `<form class="room-post-composer" novalidate>
+            <label class="ui-field room-post-composer__field" for="room-post-content">
+              <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
+              <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+            </label>
+            <p class="room-post-composer__note">${hasFullRoomAccess() ? "Your post is stored without a public name." : "Full access is required before you can transmit a post."}</p>
+            <div class="room-post-composer__actions">
+              ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
+              ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+            </div>
+          </form>`
+        : SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}
     </div>
   </aside>`;
 }
@@ -2551,6 +2655,12 @@ function clearRoomSession(): void {
   roomBackendId = "";
   roomAccountUsername = "";
   roomAccountAccessLevel = "read_only";
+  roomPostComposerOpen = false;
+  roomPostText = "";
+  roomPostError = "";
+  roomPostSubmitting = false;
+  roomPosts = [];
+  roomPostsLoadedChannel = undefined;
   roomAccountRecoveryCode = "";
   roomPaymentIntentId = "";
   roomPayment = undefined;
@@ -2812,7 +2922,7 @@ function renderRoomLogin(): string {
       <p class="room-payment-card__note">The browser uses the key to answer a one-time Schnorr proof challenge. The recovery key is never sent to the Worker.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-        ${PrimaryButton({ label: "LOG IN →", dataAction: "room-submit-login" })}
+        ${SecondaryButton({ label: "LOG IN →", dataAction: "room-submit-login" })}
       </div>
     </form>
   </div>`;
@@ -3177,6 +3287,9 @@ function bindRoomChannelInteractions(root: ParentNode): void {
 
       activeRoomChannel = key;
       roomChannelNotice = "";
+      roomPostComposerOpen = false;
+      roomPostText = "";
+      roomPostError = "";
       rerenderProductRoute();
     });
   });
@@ -3389,6 +3502,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
+  if (normalizedPath === "/room" && hasRoomSession()) {
+    void refreshRoomPosts();
+  }
   if (isModerationSurfacePath(normalizedPath)) {
     void refreshModerationVisibility();
   }
@@ -3651,10 +3767,23 @@ export function bindProductRoute(root: ParentNode = document): void {
         case "room-enter":
           startRoomEntryTransition("/room", "return");
           break;
-        case "room-create-channel":
-          roomChannelNotice = "ROOM CREATION REQUEST QUEUED / LOCAL PROTOTYPE";
+        case "room-create-post":
+          roomPostComposerOpen = true;
+          roomPostError = "";
+          roomChannelNotice = "";
           rerenderProductRoute();
           break;
+        case "room-post-cancel":
+          roomPostComposerOpen = false;
+          roomPostText = "";
+          roomPostError = "";
+          rerenderProductRoute();
+          break;
+        case "room-post-submit": {
+          roomPostText = root.querySelector<HTMLTextAreaElement>("#room-post-content")?.value ?? roomPostText;
+          void submitRoomPost();
+          break;
+        }
         case "thread-reply": {
           if (!hasFullRoomAccess()) {
             break;
