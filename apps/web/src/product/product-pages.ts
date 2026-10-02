@@ -207,7 +207,7 @@ interface HomeAudioGraph {
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
-const HOME_AUDIO_MASTER_GAIN = 0.40587;
+const HOME_AUDIO_MASTER_GAIN = 0.50587;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
@@ -2957,6 +2957,64 @@ function revealRoomRecoveryKeyTemporarily(): void {
   }, ROOM_RECOVERY_REVEAL_DURATION_MS);
 }
 
+async function copyRoomRecoveryKey(button: HTMLButtonElement): Promise<void> {
+  const recoveryCode = roomAccountRecoveryCode.trim();
+  if (!recoveryCode) {
+    return;
+  }
+
+  const copyToClipboard = async (): Promise<boolean> => {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(recoveryCode);
+        return true;
+      } catch {
+        // Fall through to the temporary-input fallback below.
+      }
+    }
+
+    const input = document.createElement("textarea");
+    input.value = recoveryCode;
+    input.setAttribute("readonly", "true");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+    input.remove();
+    return copied;
+  };
+
+  const copied = await copyToClipboard();
+  if (!button.isConnected) {
+    return;
+  }
+
+  const label = button.closest<HTMLElement>(".room-access-key")?.querySelector<HTMLElement>("[data-room-recovery-label]");
+  button.dataset.state = copied ? "copied" : "failed";
+  button.setAttribute("aria-label", copied ? "Recovery key copied" : "Copy failed; select the recovery key manually");
+  if (label) {
+    label.textContent = copied ? "RECOVERY KEY / COPIED" : "RECOVERY KEY / COPY FAILED";
+  }
+
+  window.setTimeout(() => {
+    if (!button.isConnected) {
+      return;
+    }
+
+    delete button.dataset.state;
+    button.setAttribute("aria-label", "Copy recovery key");
+    if (label) {
+      label.textContent = "RECOVERY KEY / SAVE THIS NOW";
+    }
+  }, 1800);
+}
+
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
   if (roomEntryTimer !== undefined) {
@@ -3350,8 +3408,10 @@ function roomPaymentStatusLabel(status: PaymentIntentResponse["status"]): string
 function renderRoomRecoveryPanel(): string {
   if (roomRecoveryRevealMode === "visible") {
     return `<section class="room-access-key room-recovery-panel room-recovery-panel--visible" aria-live="polite">
-      <span class="room-access-key__label">RECOVERY KEY / SAVE THIS NOW</span>
-      <code>${escapeHtml(roomAccountRecoveryCode)}</code>
+      <span class="room-access-key__label" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
+      <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
+        <code>${escapeHtml(roomAccountRecoveryCode)}</code>
+      </button>
       <span class="room-access-key__warning">Save it before entering the room. HIDN cannot recover a lost key.</span>
     </section>`;
   }
@@ -4240,6 +4300,9 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         case "room-enter":
           startRoomEntryTransition("/room", "return");
+          break;
+        case "room-copy-recovery-key":
+          void copyRoomRecoveryKey(button);
           break;
         case "room-create-post":
           roomPostComposerOpen = true;

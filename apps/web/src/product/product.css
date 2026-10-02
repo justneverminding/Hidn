@@ -4502,6 +4502,42 @@
   margin: 1rem 0;
 }
 
+.room-access-key__copy {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  margin: 1rem 0 1.5rem;
+  padding: 0;
+  text-align: inherit;
+  width: 100%;
+}
+
+.room-access-key__copy code {
+  margin: 0;
+  text-align: center;
+  transition: border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+
+.room-access-key__copy:hover code,
+.room-access-key__copy:focus-visible code {
+  border-color: var(--hidn-signal);
+  box-shadow: 0 0 1rem rgba(93, 255, 143, 0.12);
+  outline: none;
+}
+
+.room-access-key__copy[data-state="copied"] code {
+  border-color: var(--hidn-signal);
+  color: var(--hidn-bone);
+}
+
+.room-access-key__copy[data-state="failed"] code {
+  border-color: var(--hidn-broadcast-amber);
+  color: var(--hidn-broadcast-amber);
+}
+
 .room-access-key__warning {
   color: var(--hidn-broadcast-amber);
   display: block;
