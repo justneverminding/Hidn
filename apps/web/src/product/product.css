@@ -7673,3 +7673,11 @@
 .public-page--explore .explore-feed {
   border: 0;
 }
+
+.public-page--explore .explore-feed__heading .ui-status-indicator {
+  color: var(--hidn-broadcast-amber);
+}
+
+.public-page--explore .explore-feed__heading .ui-status-dot {
+  background: var(--hidn-broadcast-amber);
+}
