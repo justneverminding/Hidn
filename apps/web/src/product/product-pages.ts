@@ -96,6 +96,7 @@ let roomBackendId = "";
 let roomAccountUsername = "";
 let roomAccountAccessLevel: AccountAccessLevel = "read_only";
 let roomAccountRecoveryCode = "";
+let roomLoginSubmitting = false;
 let roomRecoveryRevealMode: RoomRecoveryRevealMode = "hidden";
 let roomRecoveryRevealError = "";
 let roomRecoveryRevealTimer: number | undefined;
@@ -2793,6 +2794,7 @@ function clearRoomSession(): void {
   roomDemoId = "";
   roomDemoMemo = "";
   roomLoginError = "";
+  roomLoginSubmitting = false;
   roomBackendStatus = "local";
   roomBackendId = "";
   roomAccountUsername = "";
@@ -2902,29 +2904,80 @@ async function registerRoomAccount(username: string): Promise<void> {
   }
 }
 
+function createZkProofInWorker(secretKey: Uint8Array, message: string): Promise<string> {
+  const runOnMainThread = (): Promise<string> => new Promise((resolve, reject) => {
+    window.setTimeout(() => {
+      try {
+        resolve(createZkProof(secretKey, message));
+      } catch (error) {
+        reject(error);
+      }
+    }, 0);
+  });
+
+  if (typeof Worker === "undefined") {
+    return runOnMainThread();
+  }
+
+  return new Promise((resolve, reject) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./zk-proof-worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      void runOnMainThread().then(resolve, reject);
+      return;
+    }
+
+    const finish = (): void => {
+      worker.terminate();
+    };
+
+    worker.onmessage = (event: MessageEvent<{ type: "proof" | "error"; proof?: string; message?: string }>) => {
+      finish();
+      if (event.data.type === "proof" && event.data.proof) {
+        resolve(event.data.proof);
+        return;
+      }
+
+      reject(new Error(event.data.message ?? "The browser could not create the proof."));
+    };
+    worker.onerror = () => {
+      finish();
+      reject(new Error("The browser could not create the proof."));
+    };
+
+    const secretKeyBuffer = Uint8Array.from(secretKey).buffer;
+    worker.postMessage({ type: "create-proof", secretKey: secretKeyBuffer, message }, [secretKeyBuffer]);
+  });
+}
+
 async function syncAccountLogin(username: string, recoveryCode: string): Promise<void> {
   try {
-    let account: AccountResponse;
+    let account: AccountResponse | undefined;
+    let credential: ReturnType<typeof credentialFromRecoveryCode> | undefined;
     try {
-      const credential = credentialFromRecoveryCode(recoveryCode);
+      credential = credentialFromRecoveryCode(recoveryCode);
+    } catch {
+      // Pre-ZK accounts keep using the original recovery-code endpoint.
+      account = await loginAccount(username, recoveryCode);
+    }
+
+    if (!account) {
+      if (!credential) {
+        throw new Error("The recovery key could not be read by the browser.");
+      }
+
       const challenge = await requestZkChallenge(username);
       const message = buildZkChallengeMessage(username, challenge.challengeId, challenge.challenge);
-      const proof = createZkProof(credential.secretKey, message);
+      const proof = await createZkProofInWorker(credential.secretKey, message);
       account = await verifyZkLogin({
         username,
         challengeId: challenge.challengeId,
         challenge: challenge.challenge,
         proof,
       });
-    } catch (error) {
-      // Keep the pre-milestone recovery-code accounts usable while their
-      // records are migrated. New accounts always take the proof path above.
-      if (recoveryCode.replace(/[\s-]/g, "").length >= 64) {
-        throw error;
-      }
-
-      account = await loginAccount(username, recoveryCode);
     }
+
     persistAccountSession(account);
     roomAccountRecoveryCode = "";
     resetRoomRecoveryReveal();
@@ -2936,6 +2989,8 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
   } catch (error) {
     roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
+  } finally {
+    roomLoginSubmitting = false;
   }
 
   if (normalizePath(window.location.pathname) === "/room/access") {
@@ -2998,6 +3053,18 @@ function renderRoomAccessChooser(): string {
     <header class="room-access-header">
       ${TerminalLabel("HIDN / ROOM ACCESS")}
       <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
+      <div class="room-access-threshold-scene" aria-hidden="true">
+        <span class="room-access-threshold-scene__opening"></span>
+        <span class="room-access-threshold-scene__ladder"></span>
+        <span class="room-access-threshold-scene__traveler">
+          <span class="room-access-threshold-scene__head"></span>
+          <span class="room-access-threshold-scene__torso"></span>
+          <span class="room-access-threshold-scene__arm room-access-threshold-scene__arm--left"></span>
+          <span class="room-access-threshold-scene__arm room-access-threshold-scene__arm--right"></span>
+          <span class="room-access-threshold-scene__leg room-access-threshold-scene__leg--left"></span>
+          <span class="room-access-threshold-scene__leg room-access-threshold-scene__leg--right"></span>
+        </span>
+      </div>
     </header>
     <div class="room-access-options">
       <article class="room-access-option">
@@ -3015,7 +3082,7 @@ function renderRoomAccessChooser(): string {
         ${SecondaryButton({ label: "ENTER THE ROOM", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("ACCOUNT GATE", "Choose a pseudonymous account or return with the recovery key you keep on your side.", "LIVE")}
+    ${SystemMessage("ACCOUNT GATE", "Setup a private account or return with your recovery key for room access", "LIVE")}
   </div>`;
 }
 
@@ -3067,7 +3134,7 @@ function renderRoomLogin(): string {
       <p class="room-payment-card__note">The browser uses the key to answer a one-time Schnorr proof challenge. The recovery key is never sent to the Worker.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-        ${SecondaryButton({ label: "LOG IN →", dataAction: "room-submit-login" })}
+        ${SecondaryButton({ label: roomLoginSubmitting ? "VERIFYING ACCESS..." : "LOG IN →", disabled: roomLoginSubmitting, dataAction: "room-submit-login" })}
       </div>
     </form>
   </div>`;
@@ -3910,6 +3977,7 @@ export function bindProductRoute(root: ParentNode = document): void {
         case "room-login":
           roomAccessMode = "login";
           roomLoginError = "";
+          roomLoginSubmitting = false;
           rerenderProductRoute();
           break;
         case "room-back":
@@ -3945,6 +4013,10 @@ export function bindProductRoute(root: ParentNode = document): void {
           void verifyRoomBackend();
           break;
         case "room-submit-login": {
+          if (roomLoginSubmitting) {
+            break;
+          }
+
           const usernameInput = root.querySelector<HTMLInputElement>("#room-login-username");
           const recoveryInput = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
           const username = completeRoomHandle(usernameInput?.value ?? "");
@@ -3956,6 +4028,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
 
           roomLoginError = "";
+          roomLoginSubmitting = true;
           roomBackendStatus = "connecting";
           rerenderProductRoute();
           void syncAccountLogin(username, recoveryCode);
