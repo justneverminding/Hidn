@@ -199,6 +199,7 @@ interface HomeAmbientAudioSession {
 interface HomeAudioGraph {
   context: AudioContext;
   stringSource: AudioBufferSourceNode;
+  voiceTextureSource: AudioBufferSourceNode;
   oscillators: OscillatorNode[];
 }
 
@@ -830,6 +831,69 @@ function createHomeAudioStringBuffer(context: AudioContext): AudioBuffer {
   return buffer;
 }
 
+function createHomeAudioVoiceTextureBuffer(context: AudioContext): AudioBuffer {
+  const beatFrames = Math.round(context.sampleRate * (60 / HOME_AUDIO_TEMPO));
+  const frameCount = beatFrames * HOME_AUDIO_BEATS_PER_LOOP;
+  const buffer = context.createBuffer(2, frameCount, context.sampleRate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+
+  const addVocalTexture = (
+    startBeat: number,
+    lengthBeats: number,
+    fundamental: number,
+    gain: number,
+    pan: number,
+  ): void => {
+    const startFrame = Math.max(0, Math.floor(startBeat * beatFrames));
+    const length = Math.min(Math.floor(lengthBeats * beatFrames), frameCount - startFrame);
+    if (length <= 0) {
+      return;
+    }
+
+    const duration = length / context.sampleRate;
+    const isShortGesture = lengthBeats < 0.5;
+    const attackTime = isShortGesture ? 0.016 : 0.45;
+    const releaseTime = isShortGesture ? 0.11 : 0.7;
+    let phase = 0;
+
+    for (let offset = 0; offset < length; offset += 1) {
+      const time = offset / context.sampleRate;
+      const remaining = duration - time;
+      const attack = 1 - Math.exp(-time / attackTime);
+      const release = Math.min(1, remaining / releaseTime);
+      const envelope = attack * release;
+      const pitchDrift = 1 + (Math.sin((Math.PI * 2 * time * 0.7) + startBeat) * 0.018);
+      phase += (Math.PI * 2 * fundamental * pitchDrift) / context.sampleRate;
+
+      // Tonal breath: intentionally nonverbal, like a voice heard through a wall.
+      const voiced = (Math.sin(phase) * 0.52)
+        + (Math.sin(phase * 2.01 + 0.35) * 0.24)
+        + (Math.sin(phase * 3.02 + 1.1) * 0.1);
+      const breath = (Math.sin((phase * 4.7) + time * 19) * 0.16)
+        + (Math.sin((phase * 7.3) - time * 13) * 0.1);
+      const sample = (voiced + breath) * envelope * gain;
+      const leftGain = 0.84 - (pan * 0.16);
+      const rightGain = 0.84 + (pan * 0.16);
+      left[startFrame + offset] += sample * leftGain;
+      right[startFrame + offset] += sample * rightGain;
+    }
+  };
+
+  const addChuckle = (startBeat: number, gain: number, pan: number): void => {
+    [0, 0.22, 0.42].forEach((offset, index) => {
+      addVocalTexture(startBeat + offset, 0.16 - (index * 0.01), 205 - (index * 24), gain * (1 - index * 0.14), pan);
+    });
+  };
+
+  addVocalTexture(1.65, 2.25, 148, 0.055, -0.28);
+  addVocalTexture(8.8, 2.05, 132, 0.046, 0.3);
+  addChuckle(5.45, 0.035, -0.2);
+  addChuckle(13.3, 0.029, 0.24);
+
+  return buffer;
+}
+
 function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefined {
   const AudioContextConstructor = window.AudioContext
     ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -853,11 +917,17 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
     const longEchoDelay = context.createDelay(1);
     const longEchoFeedback = context.createGain();
     const longEchoWetGain = context.createGain();
+    const voiceTone = context.createBiquadFilter();
+    const voiceGain = context.createGain();
+    const voiceEchoDelay = context.createDelay(0.9);
+    const voiceEchoFeedback = context.createGain();
+    const voiceEchoWetGain = context.createGain();
     const stringTone = context.createBiquadFilter();
     const sourceGain = context.createGain();
     const stringGain = context.createGain();
     const outputGain = context.createGain();
     const stringSource = context.createBufferSource();
+    const voiceTextureSource = context.createBufferSource();
     const wowOscillator = context.createOscillator();
     const wowDepth = context.createGain();
     const flutterOscillator = context.createOscillator();
@@ -904,6 +974,13 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
     longEchoDelay.delayTime.value = 0.7;
     longEchoFeedback.gain.value = 0.08;
     longEchoWetGain.gain.value = 0.12;
+    voiceTone.type = "bandpass";
+    voiceTone.frequency.value = 760;
+    voiceTone.Q.value = 0.7;
+    voiceGain.gain.value = 0.075;
+    voiceEchoDelay.delayTime.value = 0.48;
+    voiceEchoFeedback.gain.value = 0.18;
+    voiceEchoWetGain.gain.value = 0.08;
     outputGain.gain.value = HOME_AUDIO_MASTER_GAIN;
 
     wowOscillator.frequency.value = 0.12;
@@ -912,6 +989,8 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
     flutterDepth.gain.value = 0.7;
     stringSource.buffer = createHomeAudioStringBuffer(context);
     stringSource.loop = true;
+    voiceTextureSource.buffer = createHomeAudioVoiceTextureBuffer(context);
+    voiceTextureSource.loop = true;
 
     const source = context.createMediaElementSource(audio);
     source.connect(sourceGain);
@@ -919,6 +998,14 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
     stringSource.connect(stringTone);
     stringTone.connect(stringGain);
     stringGain.connect(mixBus);
+    voiceTextureSource.connect(voiceTone);
+    voiceTone.connect(voiceGain);
+    voiceGain.connect(mixBus);
+    voiceGain.connect(voiceEchoDelay);
+    voiceEchoDelay.connect(voiceEchoFeedback);
+    voiceEchoFeedback.connect(voiceEchoDelay);
+    voiceEchoDelay.connect(voiceEchoWetGain);
+    voiceEchoWetGain.connect(mixBus);
 
     mixBus.connect(highPass);
     highPass.connect(warmth);
@@ -946,9 +1033,10 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
     flutterDepth.connect(lowPass.detune);
     const oscillators = [wowOscillator, flutterOscillator];
     stringSource.start();
+    voiceTextureSource.start();
     oscillators.forEach((oscillator) => oscillator.start());
 
-    return { context, stringSource, oscillators };
+    return { context, stringSource, voiceTextureSource, oscillators };
   } catch {
     return undefined;
   }
@@ -1094,6 +1182,11 @@ function stopHomeAudio(root?: ParentNode, rememberChoice = false): void {
       session.graph.stringSource.stop();
     } catch {
       // The string bed may already be stopped during route teardown.
+    }
+    try {
+      session.graph.voiceTextureSource.stop();
+    } catch {
+      // The voice texture may already be stopped during route teardown.
     }
     try {
       session.graph.oscillators.forEach((oscillator) => oscillator.stop());
@@ -3235,7 +3328,7 @@ function renderHome(): RenderedProductRoute {
           </div>
           <div class="home-room-core">
             <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
-            <h1 id="home-room-title">A ROOM<br />WITHOUT <em>NAMES.</em></h1>
+            <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO<span class="home-room-title__watcher" aria-hidden="true"><span class="home-room-invite__glasses home-room-title__glasses"><span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span><span class="home-room-invite__bridge"></span><span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span></span></span></span>M<br />WITHOUT <em>NAMES.</em></h1>
             <p class="home-room-core__copy">A room for anonymous thoughts and unnamed conversations.</p>
             <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
@@ -3244,6 +3337,13 @@ function renderHome(): RenderedProductRoute {
           </div>
           <aside class="home-room-invite" data-home-invite hidden aria-label="Private room invitation">
             <button class="home-room-invite__close" type="button" data-action="home-invite-close" aria-label="Dismiss room invitation">×</button>
+            <div class="home-room-invite__watcher" aria-hidden="true">
+              <span class="home-room-invite__glasses">
+                <span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span>
+                <span class="home-room-invite__bridge"></span>
+                <span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span>
+              </span>
+            </div>
             <span class="home-room-invite__eyebrow">SIGNAL DETECTED / ROOM OPEN</span>
             <p>What are you waiting for?</p>
             <span class="home-room-invite__copy">The room is already receiving.</span>

@@ -2908,6 +2908,57 @@
   font-style: normal;
 }
 
+.home-room-title__double-o {
+  color: transparent;
+  display: inline-block;
+  position: relative;
+}
+
+.home-room-title__watcher {
+  align-items: center;
+  display: flex;
+  height: 0.7em;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  top: 0.08em;
+  transform: translateX(-50%);
+  width: 100%;
+  z-index: 2;
+}
+
+.home-room-title__glasses {
+  gap: 0.06em;
+  transform: rotate(-3deg);
+  width: 100%;
+}
+
+.home-room-title__watcher .home-room-invite__lens {
+  border-width: 0.025em;
+  box-shadow: inset 0 0 0 0.025em rgba(93, 255, 143, 0.12), 0 0 0.12em rgba(93, 255, 143, 0.08);
+  flex: 1 1 0;
+  height: 0.46em;
+  width: auto;
+}
+
+.home-room-title__watcher .home-room-invite__bridge {
+  border-top-width: 0.025em;
+  flex: 0 0 0.09em;
+  width: 0.09em;
+}
+
+.home-room-title__watcher .home-room-invite__eye {
+  box-shadow: 0 0 0.16em rgba(93, 255, 143, 0.72);
+  height: 0.22em;
+  width: 0.3em;
+}
+
+.home-room-title__watcher .home-room-invite__pupil {
+  border-width: 0.025em;
+  height: 0.11em;
+  width: 0.11em;
+}
+
 .home-room-core__copy {
   color: var(--hidn-text-muted);
   font-family: var(--hidn-font-mono);
@@ -3026,6 +3077,115 @@
 
 .home-room-invite:not([hidden]) {
   animation: hidn-room-invite-arrival 520ms var(--hidn-ease) both;
+}
+
+.home-room-invite__watcher {
+  align-items: center;
+  display: flex;
+  height: 2.5rem;
+  margin: -0.2rem 1.3rem 0.1rem 0;
+  position: relative;
+  width: 5.6rem;
+  z-index: 1;
+}
+
+.home-room-invite__glasses {
+  align-items: center;
+  display: flex;
+  gap: 0.16rem;
+  transform: rotate(-3deg);
+}
+
+.home-room-invite__lens {
+  align-items: center;
+  background: radial-gradient(circle at 50% 55%, rgba(93, 255, 143, 0.14), rgba(1, 5, 3, 0.92) 68%);
+  border: 1px solid rgba(231, 237, 218, 0.58);
+  border-radius: 0.28rem 0.28rem 0.7rem 0.7rem;
+  box-shadow: inset 0 0 0 1px rgba(93, 255, 143, 0.12), 0 0 0.7rem rgba(93, 255, 143, 0.08);
+  display: flex;
+  height: 1.4rem;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  width: 2.15rem;
+}
+
+.home-room-invite__lens::after {
+  background: linear-gradient(115deg, transparent 20%, rgba(231, 237, 218, 0.18) 46%, transparent 58%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.home-room-invite__bridge {
+  border-top: 1px solid rgba(231, 237, 218, 0.58);
+  height: 0.1rem;
+  width: 0.38rem;
+}
+
+.home-room-invite__eye {
+  animation: hidn-invite-eye-peek 5.8s ease-in-out infinite;
+  background: var(--hidn-bone);
+  border-radius: 50%;
+  box-shadow: 0 0 0.65rem rgba(93, 255, 143, 0.72);
+  height: 0.72rem;
+  position: relative;
+  transform-origin: center;
+  width: 0.96rem;
+  z-index: 1;
+}
+
+.home-room-invite__eye--right {
+  animation-delay: -0.22s;
+}
+
+.home-room-invite__pupil {
+  background: var(--hidn-bg);
+  border: 1px solid rgba(93, 255, 143, 0.72);
+  border-radius: 50%;
+  height: 0.38rem;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 0.38rem;
+}
+
+@keyframes hidn-invite-eye-peek {
+  0%,
+  10% {
+    transform: translate(-0.22rem, 0.04rem) scaleY(1);
+  }
+
+  13%,
+  16% {
+    transform: translate(-0.22rem, 0.04rem) scaleY(0.12);
+  }
+
+  19%,
+  39% {
+    transform: translate(0.2rem, 0.02rem) scaleY(1);
+  }
+
+  47%,
+  68% {
+    transform: translate(-0.03rem, -0.02rem) scaleY(1);
+  }
+
+  76%,
+  89% {
+    transform: translate(-0.22rem, 0.04rem) scaleY(1);
+  }
+
+  92%,
+  95% {
+    transform: translate(-0.22rem, 0.04rem) scaleY(0.12);
+  }
+
+  100% {
+    transform: translate(-0.22rem, 0.04rem) scaleY(1);
+  }
 }
 
 .home-room-invite::before {
@@ -3314,6 +3474,10 @@
   }
 
   .home-room-invite:not([hidden]) {
+    animation: none;
+  }
+
+  .home-room-invite__eye {
     animation: none;
   }
 
