@@ -169,15 +169,26 @@ const roomChannelOptions: Array<{
   { key: "work", label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
 ];
 
-interface HomeFileAudioSession {
+interface HomeAmbientAudioSession {
   audio: HTMLAudioElement;
+  graph: HomeAudioGraph;
   resumeAudio: () => void;
   gestureHandler: (event: PointerEvent) => void;
 }
 
+interface HomeAudioGraph {
+  context: AudioContext;
+  stringSource: AudioBufferSourceNode;
+  oscillators: OscillatorNode[];
+}
+
 const HOME_STREAM_LIMIT = 4;
-const HOME_AUDIO_SRC = "/audio/hidn-sound-in-a-dark-room.mp3";
-const HOME_AUDIO_DEFAULT_VOLUME = 0.01029;
+const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
+const HOME_AUDIO_SOURCE_VOLUME = 0.55;
+const HOME_AUDIO_MASTER_GAIN = 0.03;
+const HOME_AUDIO_TEMPO = 54;
+const HOME_AUDIO_BEATS_PER_LOOP = 16;
+const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
@@ -195,7 +206,7 @@ let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_
     category: confession.category,
   }));
 let homeStreamCursor = 0;
-let homeFileAudioSession: HomeFileAudioSession | undefined;
+let homeAmbientAudioSession: HomeAmbientAudioSession | undefined;
 let cachedCipherScanHeight: number | undefined;
 let cachedCipherScanAt = 0;
 let cipherScanRequest: Promise<number> | undefined;
@@ -694,6 +705,235 @@ function startHomeInvite(root: ParentNode): void {
   scheduleHomeInvite(root, 20000);
 }
 
+function readHomeAudioPreference(): boolean {
+  try {
+    return window.localStorage.getItem(HOME_AUDIO_PREFERENCE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function hasHomeAudioPreference(): boolean {
+  try {
+    return window.localStorage.getItem(HOME_AUDIO_PREFERENCE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function writeHomeAudioPreference(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(HOME_AUDIO_PREFERENCE_KEY, String(enabled));
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function createHomeAudioSaturationCurve(): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(new ArrayBuffer(2048 * Float32Array.BYTES_PER_ELEMENT)) as Float32Array<ArrayBuffer>;
+  const drive = 1.35;
+  const normalization = Math.tanh(drive);
+
+  for (let index = 0; index < curve.length; index += 1) {
+    const sample = (index * 2) / (curve.length - 1) - 1;
+    curve[index] = Math.tanh(sample * drive) / normalization;
+  }
+
+  return curve;
+}
+
+function createHomeAudioStringBuffer(context: AudioContext): AudioBuffer {
+  const beatFrames = Math.round(context.sampleRate * (60 / HOME_AUDIO_TEMPO));
+  const frameCount = beatFrames * HOME_AUDIO_BEATS_PER_LOOP;
+  const duration = frameCount / context.sampleRate;
+  const buffer = context.createBuffer(2, frameCount, context.sampleRate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+  const addBowedNote = (
+    startBeat: number,
+    lengthBeats: number,
+    frequency: number,
+    gain: number,
+    phaseOffset: number,
+  ): void => {
+    const startFrame = startBeat * beatFrames;
+    const length = Math.min(Math.floor(lengthBeats * beatFrames), frameCount - startFrame);
+    const noteDuration = length / context.sampleRate;
+    const cycles = Math.round(frequency * noteDuration);
+
+    for (let offset = 0; offset < length; offset += 1) {
+      const time = offset / context.sampleRate;
+      const remaining = noteDuration - time;
+      const attack = 1 - Math.exp(-time * 7);
+      const release = Math.min(1, remaining * 7);
+      const envelope = attack * release;
+      const vibrato = Math.sin((Math.PI * 2 * time * 0.32) + phaseOffset) * 0.035;
+      const phase = ((Math.PI * 2 * cycles * time) / noteDuration) + vibrato + phaseOffset;
+      const bowedShape = (Math.sin(phase) * 0.58)
+        + (Math.sin(phase * 2) * 0.25)
+        + (Math.sin(phase * 3) * 0.1)
+        + (Math.sin(phase * 4) * 0.045)
+        + (Math.sin(phase * 5) * 0.02);
+      const weight = bowedShape * envelope * gain;
+      left[startFrame + offset] += weight * 1.02;
+      right[startFrame + offset] += weight * 0.98;
+    }
+  };
+
+  const padVoices = [
+    { frequency: 55, gain: 0.11, phaseOffset: 0 },
+    { frequency: 65.41, gain: 0.07, phaseOffset: 1.7 },
+    { frequency: 77.78, gain: 0.05, phaseOffset: 3.2 },
+  ];
+  for (const voice of padVoices) {
+    const cycles = Math.round(voice.frequency * duration);
+    let phase = 0;
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      const time = frame / context.sampleRate;
+      const swell = 0.44 + (0.2 * Math.sin((Math.PI * 2 * time / duration) - Math.PI / 2));
+      phase = (Math.PI * 2 * cycles * time) / duration;
+      const bowedShape = (Math.sin(phase + voice.phaseOffset) * 0.62)
+        + (Math.sin((phase + voice.phaseOffset) * 2) * 0.22)
+        + (Math.sin((phase + voice.phaseOffset) * 3) * 0.08);
+      const weight = bowedShape * swell * voice.gain;
+      left[frame] += weight * 1.02;
+      right[frame] += weight * 0.98;
+    }
+  }
+
+  const phrase = [164.81, 146.83, 123.47, 98, 123.47, 110, 92.5, 82.41];
+  phrase.forEach((frequency, index) => {
+    addBowedNote(index * 2, 1.15, frequency, 0.06, index * 0.7);
+    addBowedNote(index * 2 + 1, 0.58, frequency * 2, 0.016, index * 0.7 + 0.4);
+  });
+
+  return buffer;
+}
+
+function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefined {
+  const AudioContextConstructor = window.AudioContext
+    ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return undefined;
+  }
+
+  try {
+    const context = new AudioContextConstructor();
+    const mixBus = context.createGain();
+    const highPass = context.createBiquadFilter();
+    const warmth = context.createBiquadFilter();
+    const lowPass = context.createBiquadFilter();
+    const presenceCut = context.createBiquadFilter();
+    const saturation = context.createWaveShaper();
+    const compressor = context.createDynamicsCompressor();
+    const dryGain = context.createGain();
+    const roomDelay = context.createDelay(0.8);
+    const roomFeedback = context.createGain();
+    const roomWetGain = context.createGain();
+    const longEchoDelay = context.createDelay(1);
+    const longEchoFeedback = context.createGain();
+    const longEchoWetGain = context.createGain();
+    const stringTone = context.createBiquadFilter();
+    const sourceGain = context.createGain();
+    const stringGain = context.createGain();
+    const outputGain = context.createGain();
+    const stringSource = context.createBufferSource();
+    const wowOscillator = context.createOscillator();
+    const wowDepth = context.createGain();
+    const flutterOscillator = context.createOscillator();
+    const flutterDepth = context.createGain();
+
+    highPass.type = "highpass";
+    highPass.frequency.value = 42;
+    highPass.Q.value = 0.45;
+
+    warmth.type = "lowshelf";
+    warmth.frequency.value = 135;
+    warmth.gain.value = 1.8;
+
+    lowPass.type = "lowpass";
+    lowPass.frequency.value = 2700;
+    lowPass.Q.value = 0.55;
+
+    presenceCut.type = "peaking";
+    presenceCut.frequency.value = 1500;
+    presenceCut.Q.value = 0.75;
+    presenceCut.gain.value = -3.2;
+
+    stringTone.type = "peaking";
+    stringTone.frequency.value = 520;
+    stringTone.Q.value = 0.7;
+    stringTone.gain.value = 2.8;
+
+    saturation.curve = createHomeAudioSaturationCurve();
+    saturation.oversample = "2x";
+
+    compressor.threshold.value = -26;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 1.8;
+    compressor.attack.value = 0.08;
+    compressor.release.value = 0.55;
+
+    mixBus.gain.value = 1;
+    sourceGain.gain.value = 0.62;
+    stringGain.gain.value = 0.32;
+    dryGain.gain.value = 0.68;
+    roomDelay.delayTime.value = 0.3;
+    roomFeedback.gain.value = 0.16;
+    roomWetGain.gain.value = 0.22;
+    longEchoDelay.delayTime.value = 0.7;
+    longEchoFeedback.gain.value = 0.08;
+    longEchoWetGain.gain.value = 0.12;
+    outputGain.gain.value = HOME_AUDIO_MASTER_GAIN;
+
+    wowOscillator.frequency.value = 0.12;
+    wowDepth.gain.value = 8;
+    flutterOscillator.frequency.value = 3.7;
+    flutterDepth.gain.value = 0.7;
+    stringSource.buffer = createHomeAudioStringBuffer(context);
+    stringSource.loop = true;
+
+    const source = context.createMediaElementSource(audio);
+    source.connect(sourceGain);
+    sourceGain.connect(mixBus);
+    stringSource.connect(stringTone);
+    stringTone.connect(stringGain);
+    stringGain.connect(mixBus);
+
+    mixBus.connect(highPass);
+    highPass.connect(warmth);
+    warmth.connect(lowPass);
+    lowPass.connect(presenceCut);
+    presenceCut.connect(saturation);
+    saturation.connect(compressor);
+    compressor.connect(dryGain);
+    compressor.connect(roomDelay);
+    roomDelay.connect(roomFeedback);
+    roomFeedback.connect(roomDelay);
+    roomDelay.connect(roomWetGain);
+    compressor.connect(longEchoDelay);
+    longEchoDelay.connect(longEchoFeedback);
+    longEchoFeedback.connect(longEchoDelay);
+    longEchoDelay.connect(longEchoWetGain);
+    dryGain.connect(outputGain);
+    roomWetGain.connect(outputGain);
+    longEchoWetGain.connect(outputGain);
+    outputGain.connect(context.destination);
+
+    wowOscillator.connect(wowDepth);
+    wowDepth.connect(lowPass.detune);
+    flutterOscillator.connect(flutterDepth);
+    flutterDepth.connect(lowPass.detune);
+    const oscillators = [wowOscillator, flutterOscillator];
+    stringSource.start();
+    oscillators.forEach((oscillator) => oscillator.start());
+
+    return { context, stringSource, oscillators };
+  } catch {
+    return undefined;
+  }
+}
+
 function setHomeAudioState(root: ParentNode, enabled: boolean): void {
   const button = root.querySelector<HTMLButtonElement>("#home-audio-toggle");
   const label = root.querySelector<HTMLElement>("[data-home-audio-label]");
@@ -703,15 +943,17 @@ function setHomeAudioState(root: ParentNode, enabled: boolean): void {
 
   button.setAttribute("aria-pressed", String(enabled));
   button.dataset.state = enabled ? "on" : "off";
+  button.setAttribute("aria-label", enabled ? "Turn off analog room signal" : "Turn on analog room signal");
   if (label) {
     label.textContent = enabled ? "ON" : "OFF";
   }
 }
 
 function renderAmbientAudioToggle(): string {
-  return `<button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="false" aria-label="Toggle ambient room sound">
+  const remembered = readHomeAudioPreference();
+  return `<button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="${remembered}" data-state="${remembered ? "on" : "off"}" aria-label="${remembered ? "Turn off analog room signal" : "Turn on analog room signal"}">
     <span class="home-room-audio-toggle__label">SIGNAL</span>
-    <span data-home-audio-label>OFF</span>
+    <span data-home-audio-label>${remembered ? "ON" : "OFF"}</span>
   </button>`;
 }
 
@@ -744,73 +986,101 @@ function setHomeAudioAwaitingGesture(root: ParentNode): void {
   }
 
   button.setAttribute("aria-pressed", "false");
-  button.setAttribute("aria-label", "Enable ambient room sound");
+  button.setAttribute("aria-label", "Tap to enable analog room signal");
   button.dataset.state = "blocked";
   if (label) {
     label.textContent = "TAP";
   }
 }
 
-function attemptHomeAudioPlayback(root: ParentNode, audio: HTMLAudioElement): void {
-  void audio.play().then(() => {
+async function attemptHomeAudioPlayback(root: ParentNode): Promise<void> {
+  try {
+    const session = homeAmbientAudioSession;
+    if (!session) {
+      setHomeAudioUnavailable(root);
+      return;
+    }
+
+    const graph = session.graph;
+    if (graph.context.state !== "running") {
+      await graph.context.resume();
+    }
+    if (graph.context.state !== "running") {
+      throw new Error("Ambient signal context is not running");
+    }
+    await session.audio.play();
     setHomeAudioState(root, true);
-  }).catch(() => {
+  } catch {
     setHomeAudioAwaitingGesture(root);
-  });
+  }
 }
 
 function startHomeAudio(root: ParentNode): void {
-  if (typeof window.Audio === "undefined") {
-    setHomeAudioUnavailable(root);
-    return;
-  }
-
-  if (homeFileAudioSession) {
-    attemptHomeAudioPlayback(root, homeFileAudioSession.audio);
+  if (homeAmbientAudioSession) {
+    void attemptHomeAudioPlayback(root);
     return;
   }
 
   const audio = new window.Audio(HOME_AUDIO_SRC);
   audio.loop = true;
   audio.preload = "auto";
-  audio.volume = HOME_AUDIO_DEFAULT_VOLUME;
+  audio.volume = HOME_AUDIO_SOURCE_VOLUME;
+  const graph = createHomeAudioGraph(audio);
+  if (!graph) {
+    setHomeAudioUnavailable(root);
+    return;
+  }
 
   const resumeAudio = (): void => {
-    if (document.visibilityState !== "visible" || !audio.paused) {
+    if (document.visibilityState !== "visible" || (graph.context.state === "running" && !audio.paused)) {
       return;
     }
 
-    attemptHomeAudioPlayback(root, audio);
+    void attemptHomeAudioPlayback(root);
   };
   const gestureHandler = (event: PointerEvent): void => {
     if (event.target instanceof Element && event.target.closest("#home-audio-toggle")) {
       return;
     }
 
-    if (!audio.paused) {
+    if (graph.context.state === "running" && !audio.paused) {
       document.removeEventListener("pointerdown", gestureHandler);
       return;
     }
 
-    attemptHomeAudioPlayback(root, audio);
+    void attemptHomeAudioPlayback(root);
   };
   document.addEventListener("visibilitychange", resumeAudio);
   document.addEventListener("pointerdown", gestureHandler, { passive: true });
-  homeFileAudioSession = { audio, resumeAudio, gestureHandler };
-  attemptHomeAudioPlayback(root, audio);
-  return;
+  homeAmbientAudioSession = { audio, graph, resumeAudio, gestureHandler };
+  void attemptHomeAudioPlayback(root);
 }
 
-function stopHomeAudio(root?: ParentNode): void {
-  if (homeFileAudioSession) {
-    const session = homeFileAudioSession;
-    homeFileAudioSession = undefined;
+function stopHomeAudio(root?: ParentNode, rememberChoice = false): void {
+  if (rememberChoice) {
+    writeHomeAudioPreference(false);
+  }
+
+  if (homeAmbientAudioSession) {
+    const session = homeAmbientAudioSession;
+    homeAmbientAudioSession = undefined;
     document.removeEventListener("visibilitychange", session.resumeAudio);
     document.removeEventListener("pointerdown", session.gestureHandler);
     session.audio.pause();
     session.audio.currentTime = 0;
     session.audio.removeAttribute("src");
     session.audio.load();
+    try {
+      session.graph.stringSource.stop();
+    } catch {
+      // The string bed may already be stopped during route teardown.
+    }
+    try {
+      session.graph.oscillators.forEach((oscillator) => oscillator.stop());
+    } catch {
+      // Oscillators may already be stopped during route teardown.
+    }
+    void session.graph.context.close();
     if (root) {
       setHomeAudioState(root, false);
     }
@@ -823,15 +1093,17 @@ function stopHomeAudio(root?: ParentNode): void {
 }
 
 function toggleHomeAudio(root: ParentNode): void {
-  if (homeFileAudioSession) {
-    if (homeFileAudioSession.audio.paused) {
-      attemptHomeAudioPlayback(root, homeFileAudioSession.audio);
+  if (homeAmbientAudioSession) {
+    if (homeAmbientAudioSession.audio.paused) {
+      writeHomeAudioPreference(true);
+      void attemptHomeAudioPlayback(root);
     } else {
-      stopHomeAudio(root);
+      stopHomeAudio(root, true);
     }
     return;
   }
 
+  writeHomeAudioPreference(true);
   startHomeAudio(root);
 }
 
@@ -3145,12 +3417,16 @@ export function bindProductRoute(root: ParentNode = document): void {
       stopHomeStream();
       stopHomeHeadline();
     }
-    if (audioToggle && typeof window.Audio === "undefined") {
+    const audioContextAvailable = typeof window.AudioContext !== "undefined"
+      || typeof (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext !== "undefined";
+    if (audioToggle && !audioContextAvailable) {
       setHomeAudioUnavailable(root);
     } else {
-      if (normalizedPath === "/") {
+      const shouldResumeAudio = readHomeAudioPreference()
+        || (normalizedPath === "/" && !hasHomeAudioPreference());
+      if (shouldResumeAudio) {
         startHomeAudio(root);
-      } else if (homeFileAudioSession) {
+      } else if (homeAmbientAudioSession) {
         setHomeAudioState(root, true);
       }
       audioToggle?.addEventListener("click", () => {
