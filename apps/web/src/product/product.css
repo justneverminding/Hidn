@@ -2349,21 +2349,6 @@
     right: 1rem;
   }
 
-  .room-access-activity {
-    padding-inline: 1rem;
-  }
-
-  .room-access-activity__header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .room-access-activity p {
-    font-size: 0.52rem;
-    line-height: 1.6;
-  }
-
   .public-page--home .home-stream,
   .public-page--explore .explore-feed {
     padding: var(--hidn-space-4);
@@ -3346,70 +3331,6 @@
   }
 }
 
-/* Phase 2.10.1 — private room access prototype */
-.room-access-activity {
-  background: rgba(1, 3, 2, 0.72);
-  border-block: 1px solid rgba(93, 255, 143, 0.12);
-  margin-inline: auto;
-  max-width: 100rem;
-  padding: 0.55rem var(--hidn-page-gutter);
-  position: relative;
-  z-index: 2;
-}
-
-.room-access-activity__header {
-  align-items: center;
-  display: flex;
-  font-family: var(--hidn-font-mono);
-  font-size: 0.5rem;
-  gap: 1rem;
-  justify-content: space-between;
-  letter-spacing: 0.13em;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.room-access-activity__header > span:first-child {
-  color: var(--hidn-signal);
-}
-
-.room-access-activity__header > span:last-child {
-  color: var(--hidn-text-dim);
-}
-
-.room-access-activity__header i {
-  background: var(--hidn-signal);
-  border-radius: 50%;
-  box-shadow: 0 0 0.45rem rgba(93, 255, 143, 0.7);
-  display: inline-block;
-  height: 0.35rem;
-  margin-right: 0.35rem;
-  width: 0.35rem;
-}
-
-.room-access-activity p {
-  color: var(--hidn-text-muted);
-  font-family: var(--hidn-font-mono);
-  font-size: 0.61rem;
-  letter-spacing: 0.1em;
-  line-height: 1.5;
-  margin: 0.35rem 0 0;
-  text-align: center;
-  text-transform: uppercase;
-}
-
-.room-access-activity__actor {
-  color: var(--hidn-broadcast-amber);
-}
-
-.room-access-activity__action {
-  color: var(--hidn-signal);
-}
-
-.room-access-activity__subject {
-  color: var(--hidn-bone);
-}
-
 .public-page--room .ui-nav-shell {
   align-items: center;
   display: grid;
@@ -3429,39 +3350,6 @@
 .public-page--room .ui-nav-shell__status {
   grid-column: 3;
   grid-row: 1;
-}
-
-.public-page--room .ui-nav-shell .room-access-activity {
-  align-items: center;
-  background: transparent;
-  border-block: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  grid-column: 2;
-  grid-row: 1;
-  justify-content: center;
-  margin: 0;
-  max-width: none;
-  padding: 0;
-  width: 100%;
-}
-
-.public-page--room .ui-nav-shell .room-access-activity__header {
-  display: contents;
-}
-
-.public-page--room .ui-nav-shell .room-access-activity__header > span:first-child {
-  order: 1;
-}
-
-.public-page--room .ui-nav-shell .room-access-activity p {
-  margin: 0;
-  order: 2;
-}
-
-.public-page--room .ui-nav-shell .room-access-activity__header > span:last-child {
-  order: 3;
 }
 
 .public-page--room .public-page__window-actions .home-room-audio-toggle {
@@ -3505,11 +3393,6 @@
   .public-page--room .ui-nav-shell__status {
     grid-column: 2;
     justify-self: end;
-  }
-
-  .public-page--room .ui-nav-shell .room-access-activity {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
 
 }
@@ -4220,6 +4103,10 @@
   margin: 1.5rem auto 0;
 }
 
+.room-access-page--ready .room-ready-enter {
+  flex: 1 1 auto;
+}
+
 .room-access-key {
   margin-top: 2rem;
   max-width: 38rem;
@@ -4318,6 +4205,72 @@
 .public-page {
   font-family: var(--hidn-font-mono);
   font-variant-ligatures: none;
+}
+
+.room-access-activity {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(1, 3, 2, 0.72), rgba(3, 13, 7, 0.42));
+  border-block: 1px solid rgba(93, 255, 143, 0.12);
+  display: flex;
+  flex: 1 1 36rem;
+  flex-direction: column;
+  gap: 0.34rem;
+  max-width: min(52rem, 100%);
+  min-width: 0;
+  padding: 0.55rem clamp(0.75rem, 2vw, 1.5rem);
+  text-align: center;
+}
+
+.room-access-activity__header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.52rem;
+  gap: 0.8rem 1.8rem;
+  justify-content: center;
+  letter-spacing: 0.15em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.room-access-activity__header > span:first-child {
+  color: var(--hidn-signal);
+}
+
+.room-access-activity__header > span:last-child {
+  color: var(--hidn-text-dim);
+}
+
+.room-access-activity__header i {
+  background: var(--hidn-signal);
+  border-radius: 50%;
+  box-shadow: 0 0 0.55rem rgba(93, 255, 143, 0.55);
+  display: inline-block;
+  height: 0.42rem;
+  margin-right: 0.42rem;
+  vertical-align: -0.04rem;
+  width: 0.42rem;
+}
+
+.room-access-activity p {
+  color: var(--hidn-bone);
+  font-size: clamp(0.58rem, 1vw, 0.7rem);
+  letter-spacing: 0.1em;
+  line-height: 1.45;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.room-access-activity__actor {
+  color: var(--hidn-broadcast-amber);
+}
+
+.room-access-activity__action {
+  color: var(--hidn-signal);
+}
+
+.room-access-activity__subject {
+  color: var(--hidn-bone);
 }
 
 .public-page--home,
@@ -4451,6 +4404,21 @@
 @media (max-width: 760px) {
   .public-page:not(.public-page--home) .ui-nav-shell {
     margin-top: 3.1rem;
+  }
+
+  .room-access-activity {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .room-access-activity__header {
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+
+  .room-access-activity p {
+    font-size: 0.52rem;
+    line-height: 1.6;
   }
 
   .public-page__window-chrome {
@@ -5978,35 +5946,6 @@
   left: 0;
   position: absolute;
   right: 0;
-}
-
-.room-access-activity {
-  background: linear-gradient(90deg, transparent, rgba(1, 3, 2, 0.52) 9%, rgba(1, 3, 2, 0.52) 91%, transparent);
-  border-block: 0;
-}
-
-.room-access-activity::before,
-.room-access-activity::after {
-  background: linear-gradient(90deg, transparent, rgba(93, 255, 143, 0.16) 16%, rgba(93, 255, 143, 0.11) 84%, transparent);
-  content: "";
-  height: 1px;
-  left: 0;
-  pointer-events: none;
-  position: absolute;
-  right: 0;
-}
-
-.room-access-activity::before {
-  top: 0;
-}
-
-.room-access-activity::after {
-  bottom: 0;
-}
-
-.public-page--room .ui-nav-shell .room-access-activity::before,
-.public-page--room .ui-nav-shell .room-access-activity::after {
-  display: none;
 }
 
 .public-page.public-page--room .room-access-main {

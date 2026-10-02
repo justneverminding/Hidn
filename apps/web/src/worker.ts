@@ -17,11 +17,15 @@ const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAIN_ROOM_ID = "HIDN-MAIN-ROOM";
 const ROOM_POST_MAX_LENGTH = 2000;
 const ROOM_POST_RATE_LIMIT = 10;
+const LIVE_ACTIVITY_LIMIT = 8;
+const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 type AccessLevel = "read_only" | "full";
 type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
 type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
+type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED";
+type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT";
 type ReportTargetType = "thread" | "reply" | "account";
 type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
 type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
@@ -107,6 +111,14 @@ interface RoomPostRow {
   content: string;
   category: string;
   channel: RoomChannel;
+  created_at: string;
+}
+
+interface ActivityEventRow {
+  event_id: string;
+  signal_ref: string;
+  action: ActivityAction;
+  subject: ActivitySubject;
   created_at: string;
 }
 
@@ -242,6 +254,14 @@ function createReportId(): string {
 
 function createModerationEventId(): string {
   return `MOD-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createActivityEventId(): string {
+  return `ACT-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createActivitySignalRef(): string {
+  return `SIGNAL ${createRandomHex(2).toUpperCase()}`;
 }
 
 function createAccessCode(): string {
@@ -453,6 +473,7 @@ async function signupAccount(request: Request, env: HidnWorkerEnv): Promise<Resp
       .run();
 
     const session = await issueAccountSession(userId, request, env);
+    await recordActivityEvent(env, "JUST OPENED", "A ROOM KEY");
     return jsonResponse(
       {
         userId,
@@ -507,6 +528,7 @@ async function loginAccount(request: Request, env: HidnWorkerEnv): Promise<Respo
     .bind(now, user.user_id)
     .run();
   const session = await issueAccountSession(user.user_id, request, env);
+  await recordActivityEvent(env, "JUST RETURNED", "TO THE ROOM");
 
   return jsonResponse(
     {
@@ -534,6 +556,72 @@ async function getAccountSession(request: Request, env: HidnWorkerEnv): Promise<
   }
 
   return jsonResponse({ ...user, paymentStatus: user.accessLevel === "full" ? "confirmed" : "pending" });
+}
+
+async function recordActivityEvent(
+  env: HidnWorkerEnv,
+  action: ActivityAction,
+  subject: ActivitySubject,
+): Promise<void> {
+  if (!env.ROOM_DB) {
+    return;
+  }
+
+  const createdAt = new Date().toISOString();
+  try {
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_activity_events
+        (event_id, signal_ref, action, subject, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(createActivityEventId(), createActivitySignalRef(), action, subject, createdAt)
+      .run();
+
+    const cutoff = new Date(Date.now() - LIVE_ACTIVITY_RETENTION_MS).toISOString();
+    await env.ROOM_DB.prepare("DELETE FROM hidn_activity_events WHERE created_at < ?")
+      .bind(cutoff)
+      .run();
+  } catch {
+    // Activity is observational; never fail the underlying account or post action.
+  }
+}
+
+function serializeActivityEvent(row: ActivityEventRow): Record<string, string> {
+  return {
+    actor: `ANONYMOUS / ${row.signal_ref}`,
+    action: row.action,
+    subject: row.subject,
+    createdAt: row.created_at,
+  };
+}
+
+async function listLiveActivity(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const url = new URL(request.url);
+  const requestedLimit = Number(url.searchParams.get("limit") ?? LIVE_ACTIVITY_LIMIT);
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), LIVE_ACTIVITY_LIMIT)
+    : LIVE_ACTIVITY_LIMIT;
+  const cutoff = new Date(Date.now() - LIVE_ACTIVITY_RETENTION_MS).toISOString();
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT event_id, signal_ref, action, subject, created_at
+     FROM hidn_activity_events
+     WHERE created_at >= ?
+     ORDER BY created_at DESC
+     LIMIT ${limit}`,
+  )
+    .bind(cutoff)
+    .all<ActivityEventRow>();
+
+  return jsonResponse(
+    { activities: result.results.map(serializeActivityEvent) },
+    200,
+    "no-store",
+  );
 }
 
 function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
@@ -645,6 +733,8 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
     )
     .run();
 
+  await recordActivityEvent(env, "JUST POSTED", "A THOUGHT");
+
   return jsonResponse({ post: serializeRoomPost(post), status: "created" }, 201);
 }
 
@@ -691,6 +781,7 @@ async function signupZkAccount(request: Request, env: HidnWorkerEnv): Promise<Re
       .run();
 
     const session = await issueAccountSession(userId, request, env);
+    await recordActivityEvent(env, "JUST OPENED", "A ROOM KEY");
     return jsonResponse(
       {
         userId,
@@ -831,6 +922,7 @@ async function verifyZkLogin(request: Request, env: HidnWorkerEnv): Promise<Resp
     .bind(consumedAt, row.user_id)
     .run();
   const session = await issueAccountSession(row.user_id, request, env);
+  await recordActivityEvent(env, "JUST RETURNED", "TO THE ROOM");
 
   return jsonResponse(
     {
@@ -1820,6 +1912,18 @@ const worker = {
         return await logoutAccount(request, env);
       } catch {
         return jsonResponse({ error: "Account logout could not be completed." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/activity") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listLiveActivity(request, env);
+      } catch {
+        return jsonResponse({ error: "Live room activity could not be loaded." }, 500);
       }
     }
 

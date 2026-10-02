@@ -44,6 +44,7 @@ import {
   createRoomPost,
   createPaymentIntent,
   createRoomSession,
+  fetchRoomActivity,
   fetchRoomPosts,
   fetchAdminReports,
   fetchModerationVisibility,
@@ -64,6 +65,7 @@ import {
   type AccountResponse,
   type ModerationTargetType,
   type PaymentIntentResponse,
+  type RoomActivityEvent,
   type RoomPost,
   type ReportReason,
   type ReportStatus,
@@ -106,6 +108,10 @@ let roomPostSubmitting = false;
 let roomPosts: RoomPost[] = [];
 let roomPostsLoadedChannel: RoomChannel | undefined;
 let roomPostsRequest: Promise<void> | undefined;
+let roomLiveActivityEvents: RoomActivityEvent[] = [];
+let roomLiveActivityRequest: Promise<void> | undefined;
+let roomLiveActivityTimer: number | undefined;
+let roomLiveActivityStatus: "connecting" | "live" | "offline" = "connecting";
 let activeReportTarget: ReportTarget | undefined;
 let roomReportReason: ReportReason = "spam";
 let roomReportDetails = "";
@@ -203,6 +209,7 @@ const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
 const MODERATION_GATE_MIN_DURATION_MS = 800;
+const ROOM_LIVE_ACTIVITY_REFRESH_MS = 10_000;
 
 function completeRoomHandle(value: string): string {
   const normalized = value.trim().toUpperCase();
@@ -220,19 +227,6 @@ let homeAmbientAudioSession: HomeAmbientAudioSession | undefined;
 let cachedCipherScanHeight: number | undefined;
 let cachedCipherScanAt = 0;
 let cipherScanRequest: Promise<number> | undefined;
-let roomActivityTimer: number | undefined;
-let roomActivityIndex = 0;
-
-const ROOM_ACCESS_ACTIVITY = [
-  { actor: "ANONYMOUS / SIGNAL 0417", action: "JUST POSTED", subject: "A THOUGHT" },
-  { actor: "ANONYMOUS / SIGNAL 0418", action: "JUST COMMENTED", subject: "ON A THREAD" },
-  { actor: "ANONYMOUS / SIGNAL 0419", action: "JUST CREATED", subject: "A ROOM" },
-  { actor: "ANONYMOUS / SIGNAL 0420", action: "JUST LIKED", subject: "A POST" },
-  { actor: "ANONYMOUS / SIGNAL 0421", action: "JUST CREATED", subject: "A THREAD" },
-  { actor: "ANONYMOUS / SIGNAL 0422", action: "JUST CROSSED", subject: "THE THRESHOLD" },
-  { actor: "ANONYMOUS / SIGNAL 0423", action: "JUST RETURNED", subject: "TO THE ROOM" },
-  { actor: "ANONYMOUS / SIGNAL 0424", action: "JUST OPENED", subject: "A ROOM KEY" },
-] as const;
 const roomThreadReplies = new Map<string, AnonymousReply[]>([
   [
     "00417",
@@ -1890,48 +1884,69 @@ function startVisitorClock(root: ParentNode): void {
   visitorClockTimer = window.setInterval(update, 1000);
 }
 
-function renderRoomAccessActivityItem(activity: (typeof ROOM_ACCESS_ACTIVITY)[number]): string {
-  return `<span class="room-access-activity__actor">${escapeHtml(activity.actor)}</span> <span class="room-access-activity__action">${escapeHtml(activity.action)}</span> <span class="room-access-activity__subject">${escapeHtml(activity.subject)}</span>`;
-}
+function renderLiveRoomActivity(): string {
+  const activity = roomLiveActivityEvents[0];
+  const statusLabel = roomLiveActivityStatus === "live"
+    ? "D1 / LIVE FEED"
+    : roomLiveActivityStatus === "offline"
+      ? "SIGNAL OFFLINE"
+      : "LISTENING FOR SIGNAL";
+  const message = activity
+    ? `<p data-room-activity-message role="status" aria-live="polite"><span class="room-access-activity__actor">${escapeHtml(activity.actor)}</span> <span class="room-access-activity__action">${escapeHtml(activity.action)}</span> <span class="room-access-activity__subject">${escapeHtml(activity.subject)}</span></p>`
+    : `<p data-room-activity-message role="status" aria-live="polite">WAITING FOR A LIVE SIGNAL</p>`;
 
-function renderRoomAccessActivity(): string {
-  const activity = ROOM_ACCESS_ACTIVITY[roomActivityIndex % ROOM_ACCESS_ACTIVITY.length];
-
-  return `<section class="room-access-activity" aria-label="Local anonymous activity">
+  return `<section class="room-access-activity" aria-label="Live room activity">
     <div class="room-access-activity__header">
-      <span><i aria-hidden="true"></i> LOCAL SIGNALS</span>
-      <span>ROTATING DEMO / NO LIVE USERS</span>
+      <span><i aria-hidden="true"></i> LIVE ROOM ACTIVITY</span>
+      <span>${statusLabel}</span>
     </div>
-    <p data-room-activity-message role="status" aria-live="polite">${renderRoomAccessActivityItem(activity)}</p>
+    ${message}
   </section>`;
 }
 
-function stopRoomAccessActivity(): void {
-  if (roomActivityTimer !== undefined) {
-    window.clearInterval(roomActivityTimer);
-    roomActivityTimer = undefined;
+async function refreshLiveRoomActivity(): Promise<void> {
+  if (roomLiveActivityRequest) {
+    return roomLiveActivityRequest;
   }
+
+  roomLiveActivityRequest = fetchRoomActivity()
+    .then((response) => {
+      roomLiveActivityEvents = response.activities;
+      roomLiveActivityStatus = "live";
+      if (normalizePath(window.location.pathname) === "/room/access") {
+        rerenderProductRoute();
+      }
+    })
+    .catch(() => {
+      roomLiveActivityStatus = "offline";
+      if (normalizePath(window.location.pathname) === "/room/access") {
+        rerenderProductRoute();
+      }
+    })
+    .finally(() => {
+      roomLiveActivityRequest = undefined;
+    });
+
+  return roomLiveActivityRequest;
 }
 
-function startRoomAccessActivity(root: ParentNode): void {
-  stopRoomAccessActivity();
-
-  const message = root.querySelector<HTMLElement>("[data-room-activity-message]");
-  if (!message) {
+function startLiveRoomActivity(): void {
+  if (roomLiveActivityTimer !== undefined) {
     return;
   }
 
-  const update = (): void => {
-    roomActivityIndex = (roomActivityIndex + 1) % ROOM_ACCESS_ACTIVITY.length;
-    message.dataset.state = "receiving";
-    message.innerHTML = renderRoomAccessActivityItem(ROOM_ACCESS_ACTIVITY[roomActivityIndex]);
-  };
+  roomLiveActivityStatus = "connecting";
+  void refreshLiveRoomActivity();
+  roomLiveActivityTimer = window.setInterval(() => {
+    void refreshLiveRoomActivity();
+  }, ROOM_LIVE_ACTIVITY_REFRESH_MS);
+}
 
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    return;
+function stopLiveRoomActivity(): void {
+  if (roomLiveActivityTimer !== undefined) {
+    window.clearInterval(roomLiveActivityTimer);
+    roomLiveActivityTimer = undefined;
   }
-
-  roomActivityTimer = window.setInterval(update, 4200);
 }
 
 function publicNavigation(path: string): string {
@@ -1946,7 +1961,7 @@ function publicNavigation(path: string): string {
   ).map((link) => ({ ...link, current: normalizedPath === link.href }));
 
   return NavigationShell({
-    centerContent: normalizedPath === "/room/access" ? renderRoomAccessActivity() : "",
+    centerContent: normalizedPath === "/room/access" ? renderLiveRoomActivity() : "",
     descriptor: normalizedPath === "/" ? "ANONYMOUS INTERNET NOIR" : "",
     showIdentity: normalizedPath !== "/room/access",
     showStatus: normalizedPath !== "/room/access",
@@ -2971,7 +2986,7 @@ function renderRoomReady(): string {
     ${roomAccountRecoveryCode ? `<div class="room-access-key">
       <span class="room-access-key__label">RECOVERY KEY / SAVE THIS ONCE</span>
       <code>${escapeHtml(roomAccountRecoveryCode)}</code>
-      <span class="room-access-key__warning">This is the only time HIDN shows the recovery key. D1 stores only a public commitment. HIDN cannot recover the key for you.</span>
+      <span class="room-access-key__warning">This is the only time HIDN shows the recovery key. HIDN cannot recover the key for you.</span>
     </div>` : ""}
     ${showVerification && payment ? `<section class="room-payment-card" aria-labelledby="room-payment-title">
       <div class="room-payment-card__header">
@@ -2998,7 +3013,7 @@ function renderRoomReady(): string {
     </form>` : ""}
     <div class="room-access-actions">
       ${showResetAction ? GhostButton({ label: "START OVER", dataAction: "room-back" }) : ""}
-      ${PrimaryButton({ label: "ENTER ROOM →", dataAction: "room-enter" })}
+      ${SecondaryButton({ label: "ENTER ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
     </div>
   </div>`;
 }
@@ -3477,9 +3492,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   startVisitorClock(root);
   const isRoomAccessPath = normalizePath(window.location.pathname) === "/room/access";
   if (isRoomAccessPath) {
-    startRoomAccessActivity(root);
+    startLiveRoomActivity();
   } else {
-    stopRoomAccessActivity();
+    stopLiveRoomActivity();
   }
   if (isRoomAccessPath && roomAccessMode === "create") {
     void refreshRoomConfig(root);

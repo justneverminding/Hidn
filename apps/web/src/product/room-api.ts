@@ -43,6 +43,17 @@ export interface RoomPostsResponse {
   channel: string;
 }
 
+export interface RoomActivityEvent {
+  actor: string;
+  action: string;
+  subject: string;
+  createdAt: string;
+}
+
+export interface RoomActivityResponse {
+  activities: RoomActivityEvent[];
+}
+
 export interface ZkChallengeResponse {
   protocol: "hidn-schnorr-v1";
   challengeId: string;
@@ -233,6 +244,10 @@ export function logoutAccount(): Promise<{ ok: boolean }> {
 
 export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
   return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
+}
+
+export function fetchRoomActivity(): Promise<RoomActivityResponse> {
+  return roomGet<RoomActivityResponse>("/api/room/activity?limit=8");
 }
 
 export function createRoomPost(input: {
