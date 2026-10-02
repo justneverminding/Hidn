@@ -3618,7 +3618,7 @@ function renderRoomProfile(): RenderedProductRoute {
           </div>
         </div>
       </main>`,
-      "public-page--room",
+      "public-page--room public-page--room-profile",
     ),
   };
 }

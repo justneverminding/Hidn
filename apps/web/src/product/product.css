@@ -7298,4 +7298,39 @@
     border: 0;
     padding: 0;
   }
+
+  .public-page--room-channel .explore-feed__heading {
+    display: none;
+  }
+}
+
+/* Profile pages follow the room index rhythm instead of sitting under the chrome. */
+.public-page--room-profile .room-profile-main {
+  padding-top: clamp(5rem, 8vw, 7rem);
+}
+
+@media (max-width: 760px) {
+  .public-page--room-profile .room-profile-main {
+    padding: 8.5rem 1rem 3.5rem;
+  }
+
+  .public-page--room-profile .room-profile-page__header {
+    margin-bottom: 2.5rem;
+  }
+
+  .public-page--room-profile .room-profile-card {
+    padding: 1.35rem 1rem;
+  }
+
+  .public-page--room-profile .room-profile-card--identity {
+    margin-bottom: 1.35rem;
+  }
+
+  .public-page--room-profile .room-profile-card--key {
+    margin-bottom: 1.75rem;
+  }
+
+  .public-page--room-profile .room-profile-history-grid {
+    gap: 1.35rem;
+  }
 }
