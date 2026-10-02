@@ -38,6 +38,26 @@ export interface RoomPost {
   reactions: number;
 }
 
+export type ContentStatus = "visible" | "pending" | "hidden" | "rejected";
+
+export interface AccountHistoryPost extends RoomPost {
+  status: ContentStatus;
+}
+
+export interface RoomComment {
+  id: string;
+  threadId: string;
+  text: string;
+  channel: string;
+  time: string;
+  status: ContentStatus;
+}
+
+export interface AccountHistoryResponse {
+  posts: AccountHistoryPost[];
+  comments: RoomComment[];
+}
+
 export interface RoomPostsResponse {
   posts: RoomPost[];
   channel: string;
@@ -242,6 +262,10 @@ export function logoutAccount(): Promise<{ ok: boolean }> {
   return accountRequest<{ ok: boolean }>("/api/account/logout", {});
 }
 
+export function fetchAccountHistory(): Promise<AccountHistoryResponse> {
+  return roomGet<AccountHistoryResponse>("/api/account/history");
+}
+
 export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
   return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
 }
@@ -256,6 +280,13 @@ export function createRoomPost(input: {
   category: string;
 }): Promise<{ post: RoomPost; status: "created" }> {
   return accountRequest<{ post: RoomPost; status: "created" }>("/api/room/posts", input);
+}
+
+export function createRoomReply(input: {
+  threadId: string;
+  content: string;
+}): Promise<{ comment: RoomComment; status: "created" }> {
+  return accountRequest<{ comment: RoomComment; status: "created" }>("/api/room/replies", input);
 }
 
 export function submitReport(input: {

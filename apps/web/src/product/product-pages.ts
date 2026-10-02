@@ -41,9 +41,11 @@ import {
   publicKeyToHex,
 } from "@hidn/zk";
 import {
-  createRoomPost,
   createPaymentIntent,
+  createRoomPost,
+  createRoomReply,
   createRoomSession,
+  fetchAccountHistory,
   fetchRoomActivity,
   fetchRoomPosts,
   fetchAdminReports,
@@ -62,10 +64,12 @@ import {
   verifyRoomDemoPayment,
   type AdminReportsResponse,
   type AccountAccessLevel,
+  type AccountHistoryResponse,
   type AccountResponse,
   type ModerationTargetType,
   type PaymentIntentResponse,
   type RoomActivityEvent,
+  type RoomComment,
   type RoomPost,
   type ReportReason,
   type ReportStatus,
@@ -97,6 +101,11 @@ let roomAccountUsername = "";
 let roomAccountAccessLevel: AccountAccessLevel = "read_only";
 let roomAccountRecoveryCode = "";
 let roomLoginSubmitting = false;
+let roomAccountHistory: AccountHistoryResponse | undefined;
+let roomAccountHistoryRequest: Promise<void> | undefined;
+let roomAccountHistoryError = "";
+let roomReplySubmitting = false;
+let roomLocalComments: RoomComment[] = [];
 let roomRecoveryRevealMode: RoomRecoveryRevealMode = "hidden";
 let roomRecoveryRevealError = "";
 let roomRecoveryRevealTimer: number | undefined;
@@ -104,7 +113,6 @@ let roomPaymentIntentId = "";
 let roomPayment: PaymentIntentResponse | undefined;
 let roomVerificationRequested = false;
 let activeRoomChannel: RoomChannel = "general";
-let roomProfileOpen = false;
 let roomChannelNotice = "";
 let roomPostComposerOpen = false;
 let roomPostText = "";
@@ -2261,10 +2269,6 @@ function publicNavigation(path: string): string {
 function renderRoomMenu(): string {
   const profileName = roomAccountUsername || "HIDN-LOCAL";
   const profileVerified = roomAccountAccessLevel === "full";
-  const profileStatus = profileVerified ? "VERIFIED / FULL ACCESS" : "NOT VERIFIED / READ ONLY";
-  const profileCopy = profileVerified
-    ? "The payment watcher confirmed the exact ZEC amount. Full room actions are available to this profile."
-    : "This profile can read the room. Exact ZEC payment is required before replies, reactions, and other full actions unlock.";
 
   return `<div class="room-menu" data-room-menu>
     <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
@@ -2276,22 +2280,14 @@ function renderRoomMenu(): string {
         <span>PRIVATE ROOM / INDEX</span>
         <span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>
       </div>
-      <button class="room-menu__profile" type="button" data-action="room-profile-toggle" aria-expanded="${roomProfileOpen}" aria-controls="room-profile-status">
+      <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
         <span class="room-menu__profile-mark" aria-hidden="true">◎</span>
         <span class="room-menu__profile-copy">
           <strong>PROFILE</strong>
           <small>${escapeHtml(profileName)}</small>
         </span>
         <span class="room-menu__profile-state">${escapeHtml(profileVerified ? "VERIFIED" : "NOT VERIFIED")}</span>
-      </button>
-      <div class="room-menu__profile-panel" id="room-profile-status" role="status"${roomProfileOpen ? "" : " hidden"}>
-        <div class="room-menu__profile-panel-header">
-          <span>PROFILE STATUS</span>
-          <strong>${escapeHtml(profileStatus)}</strong>
-        </div>
-        <p>${escapeHtml(profileCopy)}</p>
-        ${profileVerified ? "" : SecondaryButton({ label: "VERIFY PROFILE →", dataAction: "room-open-verification" })}
-      </div>
+      </a>
       <nav aria-label="Private room channels">
         <a href="/how-it-works"><span>01</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
         <a href="/"><span>02</span> HOME <b aria-hidden="true">↗</b></a>
@@ -2366,7 +2362,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/profile" || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const footerLinks = isAdminPage
     ? []
@@ -2486,6 +2482,30 @@ async function refreshRoomPosts(): Promise<void> {
   return roomPostsRequest;
 }
 
+async function refreshAccountHistory(): Promise<void> {
+  if (!hasRoomSession() || roomAccountHistoryRequest) {
+    return;
+  }
+
+  roomAccountHistoryError = "";
+  roomAccountHistoryRequest = fetchAccountHistory()
+    .then((response) => {
+      roomAccountHistory = response;
+    })
+    .catch((error) => {
+      roomAccountHistory = undefined;
+      roomAccountHistoryError = error instanceof Error ? error.message : "Private account history could not be loaded.";
+    })
+    .finally(() => {
+      roomAccountHistoryRequest = undefined;
+      if (normalizePath(window.location.pathname) === "/room/profile") {
+        rerenderProductRoute();
+      }
+    });
+
+  return roomAccountHistoryRequest;
+}
+
 async function submitRoomPost(): Promise<void> {
   const content = roomPostText.trim();
   if (!content) {
@@ -2520,6 +2540,53 @@ async function submitRoomPost(): Promise<void> {
     roomChannelNotice = "";
   } finally {
     roomPostSubmitting = false;
+    rerenderProductRoute();
+  }
+}
+
+async function submitRoomReply(threadId: string, content: string): Promise<void> {
+  if (!threadId || !content) {
+    return;
+  }
+  if (!hasFullRoomAccess()) {
+    roomPostError = "FULL ACCESS REQUIRED / VERIFY YOUR ROOM ACCESS BEFORE REPLYING";
+    rerenderProductRoute();
+    return;
+  }
+
+  if (!threadId.startsWith("THR-")) {
+    const localComment: RoomComment = {
+      id: `LOCAL-${Date.now()}`,
+      threadId,
+      text: content,
+      channel: activeRoomChannel,
+      time: new Date().toISOString(),
+      status: "visible",
+    };
+    repliesForThread(threadId).push({ text: content, time: "JUST NOW" });
+    roomLocalComments = [localComment, ...roomLocalComments];
+    rerenderProductRoute();
+    return;
+  }
+
+  roomReplySubmitting = true;
+  roomPostError = "";
+  roomChannelNotice = "TRANSMITTING / PRIVATE THREAD";
+  rerenderProductRoute();
+
+  try {
+    const response = await createRoomReply({ threadId, content });
+    roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
+    roomAccountHistory = roomAccountHistory
+      ? { ...roomAccountHistory, comments: [response.comment, ...roomAccountHistory.comments.filter((comment) => comment.id !== response.comment.id)] }
+      : roomAccountHistory;
+    repliesForThread(threadId).push({ text: response.comment.text, time: "JUST NOW" });
+    roomChannelNotice = "REPLY SAVED / PRIVATE HISTORY UPDATED";
+  } catch (error) {
+    roomPostError = error instanceof Error ? error.message : "The reply could not be created.";
+    roomChannelNotice = "";
+  } finally {
+    roomReplySubmitting = false;
     rerenderProductRoute();
   }
 }
@@ -2821,7 +2888,7 @@ function renderThreadRoom(id: string, quotedText = ""): string {
       </label>
       <div class="thread-room__composer-footer">
         <span>${fullAccess ? "NO HANDLE / NO PROFILE / NO TRAIL" : "READ ONLY / PAYMENT REQUIRED"}</span>
-        ${PrimaryButton({ label: fullAccess ? "TRANSMIT REPLY →" : "FULL ACCESS REQUIRED", disabled: !fullAccess, dataAction: "thread-reply" })}
+        ${PrimaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : fullAccess ? "TRANSMIT REPLY →" : "FULL ACCESS REQUIRED", disabled: !fullAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
     <p class="thread-room__note">${fullAccess ? "LOCAL DEMO THREAD. A production room would stream anonymous replies from the backend without attaching a public identity." : "This account can read the room. Create a payment intent from Room Access and wait for the signed watcher confirmation before replying."}</p>
@@ -2995,7 +3062,7 @@ async function copyRoomRecoveryKey(button: HTMLButtonElement): Promise<void> {
     return;
   }
 
-  const label = button.closest<HTMLElement>(".room-access-key")?.querySelector<HTMLElement>("[data-room-recovery-label]");
+  const label = button.closest<HTMLElement>(".room-access-key, .room-profile-card--key")?.querySelector<HTMLElement>("[data-room-recovery-label]");
   button.dataset.state = copied ? "copied" : "failed";
   button.setAttribute("aria-label", copied ? "Recovery key copied" : "Copy failed; select the recovery key manually");
   if (label) {
@@ -3035,7 +3102,6 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:account:verification-requested");
   void logoutAccount().catch(() => undefined);
   roomAccessMode = "choose";
-  roomProfileOpen = false;
   roomDemoId = "";
   roomDemoMemo = "";
   roomLoginError = "";
@@ -3051,6 +3117,10 @@ function clearRoomSession(): void {
   roomPosts = [];
   roomPostsLoadedChannel = undefined;
   roomAccountRecoveryCode = "";
+  roomAccountHistory = undefined;
+  roomAccountHistoryError = "";
+  roomLocalComments = [];
+  roomReplySubmitting = false;
   roomPaymentIntentId = "";
   roomPayment = undefined;
   roomVerificationRequested = false;
@@ -3126,6 +3196,9 @@ function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind 
 
 async function registerRoomAccount(username: string): Promise<void> {
   roomAccountRecoveryCode = "";
+  roomAccountHistory = undefined;
+  roomAccountHistoryError = "";
+  roomLocalComments = [];
   resetRoomRecoveryReveal();
   try {
     const credential = generateZkCredential();
@@ -3225,8 +3298,11 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
     }
 
     persistAccountSession(account);
-    roomAccountRecoveryCode = "";
+    roomAccountRecoveryCode = recoveryCode;
     resetRoomRecoveryReveal();
+    roomAccountHistory = undefined;
+    roomAccountHistoryError = "";
+    roomLocalComments = [];
     roomPayment = undefined;
     roomVerificationRequested = false;
     sessionStorage.removeItem("hidn:account:verification-requested");
@@ -3496,6 +3572,149 @@ function renderRoomReady(): string {
   </div>`;
 }
 
+function contentStatusLabel(status: RoomComment["status"]): string {
+  switch (status) {
+    case "hidden":
+      return "HIDDEN";
+    case "rejected":
+      return "REJECTED";
+    case "pending":
+      return "PENDING REVIEW";
+    default:
+      return "VISIBLE";
+  }
+}
+
+function renderProfileRecoveryKey(): string {
+  if (roomAccountRecoveryCode) {
+    return `<section class="room-profile-card room-profile-card--key" aria-labelledby="room-profile-key-title">
+      <span class="room-access-key__label" id="room-profile-key-title" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
+      <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
+        <code>${escapeHtml(roomAccountRecoveryCode)}</code>
+      </button>
+      <p class="room-profile-card__note">This key is held only in this browser session. It is not stored in D1 and cannot be reconstructed by HIDN.</p>
+    </section>`;
+  }
+
+  return `<section class="room-profile-card room-profile-card--key" aria-labelledby="room-profile-key-title">
+    <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / NOT IN MEMORY</span>
+    <p class="room-profile-card__note">The recovery key is never stored in your profile or sent to HIDN. Refreshing or closing this browser removes it from the current session; use the key you saved to return.</p>
+  </section>`;
+}
+
+function renderProfilePost(post: AccountHistoryResponse["posts"][number]): string {
+  return `<article class="room-profile-history__item">
+    <header><span>${escapeHtml(post.reference)} / ${escapeHtml(post.channel.toUpperCase())}</span><time>${escapeHtml(formatTransmissionTime(post.time))}</time></header>
+    <p>${escapeHtml(post.text)}</p>
+    <footer><span>POST</span><span>${escapeHtml(contentStatusLabel(post.status))}</span></footer>
+  </article>`;
+}
+
+function renderProfileComment(comment: RoomComment): string {
+  return `<article class="room-profile-history__item">
+    <header><span>THREAD / ${escapeHtml(comment.threadId.replace(/^THR-/, "").slice(0, 8))}</span><time>${escapeHtml(formatTransmissionTime(comment.time))}</time></header>
+    <p>${escapeHtml(comment.text)}</p>
+    <footer><span>${escapeHtml(comment.channel.toUpperCase())}</span><span>${escapeHtml(contentStatusLabel(comment.status))}</span></footer>
+  </article>`;
+}
+
+function renderRoomProfile(): RenderedProductRoute {
+  restoreRoomAccountState();
+  if (!hasRoomSession() || !roomAccountUsername) {
+    return {
+      metadata: ROOM_METADATA,
+      html: publicFrame(
+        "/room/profile",
+        `<main id="main-content" class="public-main room-main room-profile-main">
+          <div class="room-locked-page">
+            ${TerminalLabel("HIDN / PROFILE ACCESS REQUIRED")}
+            <h1 class="type-display-lg">THE PROFILE STAYS<br /><em>BEHIND THE KEY.</em></h1>
+            <p>Enter the private room first. Your profile, recovery key session, and personal history are never public.</p>
+            ${actionLink("ENTER THE ROOM", "/room/access", "primary")}
+          </div>
+        </main>`,
+        "public-page--room",
+      ),
+    };
+  }
+
+  const isFull = roomAccountAccessLevel === "full";
+  const posts = roomAccountHistory?.posts ?? [];
+  const localCommentIds = new Set(roomLocalComments.map((comment) => comment.id));
+  const comments = [
+    ...roomLocalComments,
+    ...(roomAccountHistory?.comments ?? []).filter((comment) => !localCommentIds.has(comment.id)),
+  ];
+  const historyLoading = !roomAccountHistory && !roomAccountHistoryError;
+  const historyError = roomAccountHistoryError
+    ? AlertMessage("PROFILE HISTORY", roomAccountHistoryError, "danger")
+    : "";
+
+  return {
+    metadata: {
+      ...ROOM_METADATA,
+      title: "HIDN — Private profile",
+      description: "A private HIDN profile for recovery access and personal room history.",
+      canonicalPath: "/room/profile",
+    },
+    html: publicFrame(
+      "/room/profile",
+      `<main id="main-content" class="public-main room-main room-profile-main">
+        <div class="room-profile-page">
+          <header class="room-access-header room-access-header--compact room-profile-page__header">
+            ${TerminalLabel("PRIVATE ROOM / PROFILE")}
+            <h1 class="type-display-lg room-access-header__title">YOUR SIGNALS<br /><em>STAY WITH YOU.</em></h1>
+            <p class="room-access-header__copy">${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key and history stay behind this session.</p>
+          </header>
+          <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
+            <div class="room-profile-card__heading">
+              <div>
+                ${TerminalLabel("ACCOUNT / PRIVATE HANDLE")}
+                <h2 id="room-profile-status-title">${escapeHtml(roomAccountUsername)}</h2>
+              </div>
+              ${StatusIndicator(isFull ? "VERIFIED / FULL ACCESS" : "NOT VERIFIED / READ ONLY", isFull ? "online" : "warning", true)}
+            </div>
+            <p class="room-profile-card__note">${isFull ? "Full room actions are enabled for this account." : "You can read the room. Verify later to unlock posting, replies, and reactions."}</p>
+            ${isFull ? "" : SecondaryButton({ label: "VERIFY PROFILE →", dataAction: "room-open-verification" })}
+          </section>
+          ${renderProfileRecoveryKey()}
+          ${historyError}
+          <div class="room-profile-history-grid">
+            <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-posts-title">
+              <header class="room-profile-history__header">
+                <div>
+                  ${TerminalLabel("HISTORY / YOUR POSTS")}
+                  <h2 id="room-profile-posts-title">POSTS</h2>
+                </div>
+                <span>${posts.length.toString().padStart(2, "0")}</span>
+              </header>
+              <div class="room-profile-history__list">
+                ${posts.length ? posts.map(renderProfilePost).join("") : historyLoading ? `<p class="room-profile-history__empty">READING PRIVATE HISTORY...</p>` : `<p class="room-profile-history__empty">NO POSTS SAVED HERE YET.</p>`}
+              </div>
+            </section>
+            <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-comments-title">
+              <header class="room-profile-history__header">
+                <div>
+                  ${TerminalLabel("HISTORY / YOUR COMMENTS")}
+                  <h2 id="room-profile-comments-title">COMMENTS</h2>
+                </div>
+                <span>${comments.length.toString().padStart(2, "0")}</span>
+              </header>
+              <div class="room-profile-history__list">
+                ${comments.length ? comments.map(renderProfileComment).join("") : historyLoading ? `<p class="room-profile-history__empty">READING PRIVATE HISTORY...</p>` : `<p class="room-profile-history__empty">NO COMMENTS SAVED HERE YET.</p>`}
+              </div>
+            </section>
+          </div>
+          <div class="room-access-actions room-profile-page__actions">
+            ${GhostButton({ label: "← BACK TO THE ROOM", dataAction: "room-profile-back" })}
+          </div>
+        </div>
+      </main>`,
+      "public-page--room",
+    ),
+  };
+}
+
 function renderRoomAccess(): RenderedProductRoute {
   restoreRoomAccountState();
   const content =
@@ -3689,6 +3908,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room") {
     return { metadata: EXPLORE_METADATA, html: renderExplore("/room") };
+  }
+
+  if (normalizedPath === "/room/profile") {
+    return renderRoomProfile();
   }
 
   if (normalizedPath === "/room/access") {
@@ -4006,6 +4229,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (normalizedPath === "/room" && hasRoomSession()) {
     void refreshRoomPosts();
   }
+  if (normalizedPath === "/room/profile" && hasRoomSession()) {
+    void refreshAccountHistory();
+  }
   if (isModerationSurfacePath(normalizedPath)) {
     void refreshModerationVisibility();
   }
@@ -4178,11 +4404,6 @@ export function bindProductRoute(root: ParentNode = document): void {
           menu?.classList.toggle("room-menu--open", !isOpen);
           break;
         }
-        case "room-profile-toggle":
-          roomProfileOpen = !roomProfileOpen;
-          button.setAttribute("aria-expanded", String(roomProfileOpen));
-          root.querySelector<HTMLElement>("#room-profile-status")?.toggleAttribute("hidden", !roomProfileOpen);
-          break;
         case "room-recovery-open":
           if (!roomAccountRecoveryCode) {
             break;
@@ -4301,6 +4522,9 @@ export function bindProductRoute(root: ParentNode = document): void {
         case "room-enter":
           startRoomEntryTransition("/room", "return");
           break;
+        case "room-profile-back":
+          navigateProductRoute("/room");
+          break;
         case "room-copy-recovery-key":
           void copyRoomRecoveryKey(button);
           break;
@@ -4336,8 +4560,7 @@ export function bindProductRoute(root: ParentNode = document): void {
 
           const threadId = threadRoot.dataset.threadRoot;
           if (threadId) {
-            repliesForThread(threadId).push({ text: value, time: "JUST NOW" });
-            rerenderProductRoute();
+            void submitRoomReply(threadId, value);
           }
           break;
         }

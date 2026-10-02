@@ -17,6 +17,8 @@ const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAIN_ROOM_ID = "HIDN-MAIN-ROOM";
 const ROOM_POST_MAX_LENGTH = 2000;
 const ROOM_POST_RATE_LIMIT = 10;
+const ROOM_REPLY_MAX_LENGTH = 1200;
+const ROOM_REPLY_RATE_LIMIT = 30;
 const LIVE_ACTIVITY_LIMIT = 8;
 const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
@@ -24,8 +26,8 @@ type AccessLevel = "read_only" | "full";
 type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
 type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
-type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED";
-type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT";
+type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED" | "JUST REPLIED";
+type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT" | "A THREAD";
 type ReportTargetType = "thread" | "reply" | "account";
 type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
 type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
@@ -111,6 +113,19 @@ interface RoomPostRow {
   content: string;
   category: string;
   channel: RoomChannel;
+  created_at: string;
+}
+
+interface AccountHistoryPostRow extends RoomPostRow {
+  moderation_state: "visible" | "pending" | "hidden" | "rejected";
+}
+
+interface RoomReplyRow {
+  reply_id: string;
+  thread_id: string;
+  content: string;
+  channel: RoomChannel;
+  moderation_state: "visible" | "pending" | "hidden" | "rejected";
   created_at: string;
 }
 
@@ -302,6 +317,10 @@ function isRoomChannel(value: string): value is RoomChannel {
 
 function createThreadId(): string {
   return `THR-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createReplyId(): string {
+  return `RPL-${createRandomHex(12).toUpperCase()}`;
 }
 
 function isReportTargetType(value: string): value is ReportTargetType {
@@ -634,6 +653,136 @@ function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
     time: row.created_at,
     reactions: 0,
   };
+}
+
+function serializeAccountHistoryPost(row: AccountHistoryPostRow): Record<string, unknown> {
+  return {
+    ...serializeRoomPost(row),
+    status: row.moderation_state,
+  };
+}
+
+function serializeRoomComment(row: RoomReplyRow): Record<string, unknown> {
+  return {
+    id: row.reply_id,
+    threadId: row.thread_id,
+    text: row.content,
+    channel: row.channel,
+    time: row.created_at,
+    status: row.moderation_state,
+  };
+}
+
+async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reading private history." }, 401);
+  }
+
+  const [posts, comments] = await Promise.all([
+    env.ROOM_DB!.prepare(
+      `SELECT thread_id, content, category, channel, created_at, moderation_state
+       FROM hidn_threads
+       WHERE room_id = ? AND author_user_id = ?
+       ORDER BY created_at DESC
+       LIMIT 100`,
+    )
+      .bind(MAIN_ROOM_ID, user.userId)
+      .all<AccountHistoryPostRow>(),
+    env.ROOM_DB!.prepare(
+      `SELECT r.reply_id, r.thread_id, r.content, t.channel,
+              r.moderation_state, r.created_at
+       FROM hidn_replies r
+       JOIN hidn_threads t ON t.thread_id = r.thread_id
+       WHERE t.room_id = ? AND r.author_user_id = ?
+       ORDER BY r.created_at DESC
+       LIMIT 100`,
+    )
+      .bind(MAIN_ROOM_ID, user.userId)
+      .all<RoomReplyRow>(),
+  ]);
+
+  return jsonResponse({
+    posts: posts.results.map(serializeAccountHistoryPost),
+    comments: comments.results.map(serializeRoomComment),
+  });
+}
+
+async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before replying in the room." }, 401);
+  }
+  if (user.accessLevel !== "full") {
+    return jsonResponse({ error: "Full access is required before replying." }, 403);
+  }
+
+  const body = await requestBody(request);
+  const threadId = typeof body.threadId === "string" ? body.threadId.trim().toUpperCase() : "";
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  if (!/^THR-[A-F0-9]{24}$/.test(threadId)) {
+    return jsonResponse({ error: "Choose a valid private-room thread." }, 400);
+  }
+  if (!content) {
+    return jsonResponse({ error: "Write something before replying." }, 400);
+  }
+  if (content.length > ROOM_REPLY_MAX_LENGTH) {
+    return jsonResponse({ error: `Replies must be ${ROOM_REPLY_MAX_LENGTH} characters or fewer.` }, 400);
+  }
+
+  const thread = await env.ROOM_DB!.prepare(
+    `SELECT thread_id, channel
+     FROM hidn_threads
+     WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
+     LIMIT 1`,
+  )
+    .bind(threadId, MAIN_ROOM_ID)
+    .first<{ thread_id: string; channel: RoomChannel }>();
+  if (!thread) {
+    return jsonResponse({ error: "That thread is no longer available for replies." }, 404);
+  }
+
+  const recentWindow = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recentReplies = await env.ROOM_DB!.prepare(
+    `SELECT COUNT(*) AS count
+     FROM hidn_replies
+     WHERE author_user_id = ? AND created_at >= ?`,
+  )
+    .bind(user.userId, recentWindow)
+    .first<{ count: number }>();
+  if (Number(recentReplies?.count ?? 0) >= ROOM_REPLY_RATE_LIMIT) {
+    return jsonResponse({ error: "Reply limit reached. Try again later." }, 429);
+  }
+
+  const reply: RoomReplyRow = {
+    reply_id: createReplyId(),
+    thread_id: thread.thread_id,
+    content,
+    channel: thread.channel,
+    moderation_state: "visible",
+    created_at: new Date().toISOString(),
+  };
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_replies
+      (reply_id, thread_id, content, moderation_state, created_at, hidden_at, author_user_id)
+     VALUES (?, ?, ?, 'visible', ?, NULL, ?)`,
+  )
+    .bind(reply.reply_id, reply.thread_id, reply.content, reply.created_at, user.userId)
+    .run();
+
+  await recordActivityEvent(env, "JUST REPLIED", "A THREAD");
+
+  return jsonResponse({ comment: serializeRoomComment(reply), status: "created" }, 201);
 }
 
 async function listRoomPosts(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -1903,6 +2052,18 @@ const worker = {
       }
     }
 
+    if (url.pathname === "/api/account/history") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listAccountHistory(request, env);
+      } catch {
+        return jsonResponse({ error: "Private account history could not be loaded." }, 500);
+      }
+    }
+
     if (url.pathname === "/api/account/logout") {
       if (request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed." }, 405);
@@ -1924,6 +2085,18 @@ const worker = {
         return await listLiveActivity(request, env);
       } catch {
         return jsonResponse({ error: "Live room activity could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/replies") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await createRoomReply(request, env);
+      } catch {
+        return jsonResponse({ error: "Reply could not be created." }, 500);
       }
     }
 
