@@ -4467,10 +4467,16 @@
   justify-content: center;
 }
 
+.public-page.public-page--room-access .ui-nav-shell::before,
+.public-page.public-page--room-access .public-main::before {
+  display: none;
+}
+
 .public-page.public-page--room-access .room-access-activity {
   flex: 0 1 auto;
   grid-column: 1;
   justify-self: center;
+  border-block: 0;
   width: min(52rem, 100%);
 }
 
