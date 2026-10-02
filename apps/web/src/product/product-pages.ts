@@ -2005,6 +2005,46 @@ function renderLiveRoomActivity(): string {
   </section>`;
 }
 
+function updateLiveRoomActivitySurface(): void {
+  const surface = document.querySelector<HTMLElement>(".room-access-activity");
+  if (!surface) {
+    return;
+  }
+
+  const statusLabel = roomLiveActivityStatus === "live"
+    ? "LIVE FEED"
+    : roomLiveActivityStatus === "offline"
+      ? "SIGNAL OFFLINE"
+      : "LISTENING FOR SIGNAL";
+  const status = surface.querySelector<HTMLElement>(".room-access-activity__header span:last-child");
+  if (status) {
+    status.textContent = statusLabel;
+  }
+
+  const message = surface.querySelector<HTMLElement>("[data-room-activity-message]");
+  if (!message) {
+    return;
+  }
+
+  message.replaceChildren();
+  const activity = roomLiveActivityEvents[0];
+  if (!activity) {
+    message.textContent = "WAITING FOR A LIVE SIGNAL";
+    return;
+  }
+
+  const actor = document.createElement("span");
+  actor.className = "room-access-activity__actor";
+  actor.textContent = activity.actor;
+  const action = document.createElement("span");
+  action.className = "room-access-activity__action";
+  action.textContent = activity.action;
+  const subject = document.createElement("span");
+  subject.className = "room-access-activity__subject";
+  subject.textContent = activity.subject;
+  message.append(actor, " ", action, " ", subject);
+}
+
 async function refreshLiveRoomActivity(): Promise<void> {
   if (roomLiveActivityRequest) {
     return roomLiveActivityRequest;
@@ -2014,15 +2054,11 @@ async function refreshLiveRoomActivity(): Promise<void> {
     .then((response) => {
       roomLiveActivityEvents = response.activities;
       roomLiveActivityStatus = "live";
-      if (normalizePath(window.location.pathname) === "/room/access") {
-        rerenderProductRoute();
-      }
+      updateLiveRoomActivitySurface();
     })
     .catch(() => {
       roomLiveActivityStatus = "offline";
-      if (normalizePath(window.location.pathname) === "/room/access") {
-        rerenderProductRoute();
-      }
+      updateLiveRoomActivitySurface();
     })
     .finally(() => {
       roomLiveActivityRequest = undefined;
