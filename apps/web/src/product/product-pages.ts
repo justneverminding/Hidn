@@ -10,6 +10,7 @@ import {
   PrimaryButton,
   PrivacyBadge,
   SecondaryButton,
+  StatusDot,
   StatusIndicator,
   SystemMessage,
   TerminalLabel,
@@ -433,7 +434,7 @@ function renderTransmissionRow(
     : "";
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
-        <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasFullRoomAccess() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
+        <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasRoomSession() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
         <a class="room-message__action" href="${escapeHtml(options.href)}">REPLIES ${repliesForThread(threadId).length}</a>
         <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
         <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
@@ -562,7 +563,12 @@ async function refreshZcashNetworkStatus(root: ParentNode): Promise<void> {
         return;
       }
 
-      status.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
+      const label = status.querySelector<HTMLElement>("[data-zcash-status-label]");
+      if (label) {
+        label.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
+      } else {
+        status.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
+      }
       status.dataset.zcashState = "live";
       status.title = `Zcash mainnet block #${formattedHeight} from CipherScan.`;
     });
@@ -2368,8 +2374,8 @@ async function submitRoomPost(): Promise<void> {
     rerenderProductRoute();
     return;
   }
-  if (!hasFullRoomAccess()) {
-    roomPostError = "FULL ACCESS REQUIRED / VERIFY YOUR ROOM ACCESS BEFORE POSTING";
+  if (!hasRoomSession()) {
+    roomPostError = "ENTER THE ROOM BEFORE POSTING / FREE ROOM ACCESS IS AVAILABLE";
     rerenderProductRoute();
     return;
   }
@@ -2403,8 +2409,8 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   if (!threadId || !content) {
     return;
   }
-  if (!hasFullRoomAccess()) {
-    roomPostError = "FULL ACCESS REQUIRED / VERIFY YOUR ROOM ACCESS BEFORE REPLYING";
+  if (!hasRoomSession()) {
+    roomPostError = "ENTER THE ROOM BEFORE REPLYING / FREE ROOM ACCESS IS AVAILABLE";
     rerenderProductRoute();
     return;
   }
@@ -2471,6 +2477,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     </div>
     <h2>Choose a room.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
+    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -2505,13 +2512,13 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
                   <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
                   <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
                 </label>
-                <p class="room-post-composer__note">${hasFullRoomAccess() ? "Your post is stored without a public name." : "Full access is required before you can transmit a post."}</p>
+                <p class="room-post-composer__note">Free room access is active. Your post is stored without a public name; cooldowns appear only when activity looks automated or repetitive.</p>
                 <div class="room-post-composer__actions">
                   ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
                   ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
                 </div>
               </form>`
-            : SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}
+            : ""}
         </div>`
       : ""}
   </aside>`;
@@ -2674,6 +2681,33 @@ function isRoomMobileViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
 }
 
+function renderRoomZcashStatus(): string {
+  return `<span class="ui-status-indicator" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
+}
+
+function renderMobilePostSurface(): string {
+  const activeChannel = roomChannelOption(activeRoomChannel);
+  const content = roomPostComposerOpen && hasRoomSession()
+    ? `<form class="room-post-composer room-mobile-index__composer" novalidate>
+        <label class="ui-field room-post-composer__field" for="room-post-content">
+          <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
+          <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+        </label>
+        <p class="room-post-composer__note">Free room access is active. Repeated or automated activity may receive a short cooldown.</p>
+        <div class="room-post-composer__actions">
+          ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
+          ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+        </div>
+      </form>`
+    : SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" });
+
+  return `<div class="room-mobile-index__create">
+    ${content}
+    ${roomChannelNotice ? `<p class="room-post-composer__error" role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
+    ${roomPostError ? `<p class="room-post-composer__error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
+  </div>`;
+}
+
 function renderMobileRoomIndex(): string {
   const rooms = roomChannelOptions
     .map((channel, index) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
@@ -2691,6 +2725,7 @@ function renderMobileRoomIndex(): string {
           ${TerminalLabel("PRIVATE ROOM / INDEX")}
           <h1>CHOOSE A ROOM.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
+          ${renderMobilePostSurface()}
         </header>
         <section class="room-mobile-index__list" aria-label="Private rooms">
           ${rooms}
@@ -2717,7 +2752,7 @@ function renderExplore(path = "/room"): string {
         <div class="room-locked-page">
           ${TerminalLabel("HIDN / ACCESS REQUIRED")}
           <h1 class="type-display-lg">THE ROOM STAYS<br /><em>BEHIND THE KEY.</em></h1>
-          <p>Log in with your HIDN handle and recovery code to read the private room. Full actions unlock after the payment watcher confirms the exact ZEC amount.</p>
+          <p>Log in with your HIDN handle and recovery key to enter the private room. Free users can post and reply; optional ZEC verification unlocks advanced privileges.</p>
           ${actionLink("ENTER THE ROOM", "/room/access", "primary")}
         </div>
       </main>`,
@@ -2735,6 +2770,7 @@ function renderExplore(path = "/room"): string {
           ${TerminalLabel(headerLabel)}
           <h1 class="type-display-lg">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
+          ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
         </header>
         <div class="explore-layout">
           <section class="explore-feed" aria-labelledby="explore-feed-title">
@@ -2743,7 +2779,7 @@ function renderExplore(path = "/room"): string {
         ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
                 <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
-              ${StatusIndicator("LOCAL THREAD / LIVE FEEL", "warning", true)}
+              ${renderRoomZcashStatus()}
             </div>
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
@@ -2762,7 +2798,7 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     .map((reply, index) => ({ reply, index }))
     .filter(({ index }) => !isModerationHidden("reply", `${id}:reply:${index}`));
   const replyCount = visibleReplies.length;
-  const fullAccess = hasFullRoomAccess();
+  const roomAccess = hasRoomSession();
   const messages = replyCount
     ? visibleReplies
         .map(
@@ -2790,17 +2826,17 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     </header>
     ${quotedText ? `<blockquote class="thread-room__quote" data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="thread" data-share-label="ORIGINAL THREAD" data-share-category="IDENTITY" data-share-time="NOW">“${escapeHtml(quotedText)}”</blockquote>` : ""}
     <div class="thread-room__messages" aria-live="polite">${messages}</div>
-    <form class="thread-room__composer${fullAccess ? "" : " thread-room__composer--locked"}" novalidate>
+    <form class="thread-room__composer${roomAccess ? "" : " thread-room__composer--locked"}" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
         <span class="ui-field__label">QUOTE / REPLY WITHOUT A NAME</span>
-        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="${fullAccess ? "Add your thought to the thread..." : "Full access requires a confirmed ZEC payment."}"${fullAccess ? "" : " disabled"}></textarea>
+        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="${roomAccess ? "Add your thought to the thread..." : "Enter the room to reply anonymously."}"${roomAccess ? "" : " disabled"}></textarea>
       </label>
       <div class="thread-room__composer-footer">
-        <span>${fullAccess ? "NO HANDLE / NO PROFILE / NO TRAIL" : "READ ONLY / PAYMENT REQUIRED"}</span>
-        ${PrimaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : fullAccess ? "TRANSMIT REPLY →" : "FULL ACCESS REQUIRED", disabled: !fullAccess || roomReplySubmitting, dataAction: "thread-reply" })}
+        <span>${roomAccess ? "FREE ACCESS / NO HANDLE / NO TRAIL" : "ROOM ACCESS REQUIRED"}</span>
+        ${PrimaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : roomAccess ? "TRANSMIT REPLY →" : "ENTER THE ROOM FIRST", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
-    <p class="thread-room__note">${fullAccess ? "LOCAL DEMO THREAD. A production room would stream anonymous replies from the backend without attaching a public identity." : "This account can read the room. Create a payment intent from Room Access and wait for the signed watcher confirmation before replying."}</p>
+    <p class="thread-room__note">${roomAccess ? "Free room access includes anonymous replies. Suspicious bursts or repeated messages may receive a short signal cooldown." : "Enter the private room to reply without a public name."}</p>
   </section>`;
 }
 
@@ -2873,7 +2909,7 @@ function renderDetail(id: string): RenderedProductRoute {
           </div>
           ${SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
-            <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasFullRoomAccess() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
+            <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasRoomSession() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</a>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
             <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
@@ -3064,11 +3100,6 @@ function persistAccountSession(account: AccountResponse): void {
 
 function hasRoomSession(): boolean {
   return sessionStorage.getItem("hidn:account:logged-in") === "true"
-    || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret")));
-}
-
-function hasFullRoomAccess(): boolean {
-  return sessionStorage.getItem("hidn:account:access-level") === "full"
     || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret")));
 }
 
@@ -3434,17 +3465,17 @@ function renderRoomReady(): string {
   const payment = roomPayment;
   const accountLabel = roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
   const showVerification = roomVerificationRequested && !isFull;
-  const titleText = isNewAccount ? "SAVE YOUR KEY." : isFull ? "THE ROOM IS OPEN." : "THE ROOM IS VISIBLE.";
-  const titleSignal = isNewAccount ? "KEY." : isFull ? "OPEN." : "VISIBLE.";
+  const titleText = isNewAccount ? "SAVE YOUR KEY." : "THE ROOM IS OPEN.";
+  const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
     ? `${accountLabel} is ready. Save the recovery key below, then enter the room.`
     : isFull
       ? `${accountLabel} is active with full room access.`
-      : `${accountLabel} is active. Enter the private room to write freely.`;
+      : `${accountLabel} is active with free room access. Enter the private room to post, reply, and keep your history.`;
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel(isFull ? "HIDN / FULL ACCESS" : "HIDN / READ ONLY")}
+      ${TerminalLabel(isFull ? "HIDN / VERIFIED ACCESS" : "HIDN / FREE ACCESS")}
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
         THE ROOM IS<br />
         <em>${escapeHtml(titleSignal)}</em>
@@ -3458,7 +3489,7 @@ function renderRoomReady(): string {
         <span class="room-payment-card__status"><span aria-hidden="true"></span>${escapeHtml(roomPaymentStatusLabel(payment.status))}</span>
       </div>
       <h2 id="room-payment-title">SEND THE EXACT AMOUNT</h2>
-      <p class="room-payment-card__explainer">Use the receiving address and one-time reference below. HIDN grants full access only after the signed watcher reports the exact zatoshi amount with the required confirmations.</p>
+      <p class="room-payment-card__explainer">Use the receiving address and one-time reference below. Optional ZEC verification unlocks higher room limits and advanced privileges after the signed watcher reports the exact zatoshi amount with the required confirmations.</p>
       <code class="room-payment-card__address">${escapeHtml(payment.receivingAddress ?? "PAYMENT ADDRESS NOT CONFIGURED")}</code>
       <div class="room-payment-card__details">
         <div><span>EXACT AMOUNT</span><strong>${escapeHtml(formattedZecAmount(payment.expectedAmountZat))}</strong></div>
@@ -3581,10 +3612,13 @@ function renderRoomProfile(): RenderedProductRoute {
                 ${TerminalLabel("ACCOUNT / PRIVATE HANDLE")}
                 <h2 id="room-profile-status-title">${escapeHtml(roomAccountUsername)}</h2>
               </div>
-              ${StatusIndicator(isFull ? "VERIFIED / FULL ACCESS" : "NOT VERIFIED / READ ONLY", isFull ? "online" : "warning", true)}
+              ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
             </div>
-            <p class="room-profile-card__note">${isFull ? "Full room actions are enabled for this account." : "You can read the room. Verify later to unlock posting, replies, and reactions."}</p>
-            ${isFull ? "" : SecondaryButton({ label: "VERIFY PROFILE →", dataAction: "room-open-verification" })}
+            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account." : "Free access includes anonymous posts, replies, reactions, and private history. Optional ZEC verification can unlock higher limits and advanced room privileges."}</p>
+            ${isFull ? "" : `<div class="room-profile-card__actions">
+              ${SecondaryButton({ label: "VERIFY WITH ZEC →", dataAction: "room-open-verification" })}
+              ${GhostButton({ label: "CONTINUE FREE →", dataAction: "room-profile-back" })}
+            </div>`}
           </section>
           ${renderProfileRecoveryKey()}
           ${historyError}
@@ -3664,7 +3698,7 @@ function placeholderForPath(path: string): PlaceholderPage {
     return {
       eyebrow: "HIDN / MANIFESTO",
       title: "SHOW THE THOUGHT. HIDE THE PERSON.",
-      copy: "HIDN's privacy-first approach to anonymous thoughts and unnamed conversations.",
+      copy: "HIDN’s privacy-first approach to anonymous thoughts and unnamed conversations.",
       body: "HIDN treats anonymity as a boundary, not a personality. The message can be seen without requiring a name, a profile, or a trail to follow.",
     };
   }
@@ -3900,7 +3934,7 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
 function bindRoomLikeInteractions(root: ParentNode): void {
   root.querySelectorAll<HTMLButtonElement>('[data-action="room-like"]').forEach((button) => {
     button.addEventListener("click", () => {
-      if (!hasFullRoomAccess()) {
+      if (!hasRoomSession()) {
         return;
       }
 
@@ -4463,6 +4497,11 @@ export function bindProductRoute(root: ParentNode = document): void {
           void copyRoomRecoveryKey(button);
           break;
         case "room-create-post":
+          if (!hasRoomSession()) {
+            navigateProductRoute("/room/access");
+            break;
+          }
+
           roomPostComposerOpen = true;
           roomPostError = "";
           roomChannelNotice = "";
@@ -4480,7 +4519,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         }
         case "thread-reply": {
-          if (!hasFullRoomAccess()) {
+          if (!hasRoomSession()) {
             break;
           }
 

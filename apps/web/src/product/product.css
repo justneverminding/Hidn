@@ -4620,7 +4620,19 @@
   max-width: 48rem;
 }
 
-.room-profile-card--identity .ui-button {
+.room-profile-card__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.room-profile-card__actions .ui-button {
+  margin-top: 0;
+}
+
+.room-profile-card--identity > .ui-button {
   margin-top: 1rem;
 }
 
@@ -4793,6 +4805,16 @@
   .room-profile-card__heading {
     align-items: start;
     flex-direction: column;
+  }
+
+  .room-profile-card__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .room-profile-card__actions .ui-button {
+    justify-content: center;
+    width: 100%;
   }
 
 }
@@ -5716,6 +5738,15 @@
   font-size: 0.82rem;
   line-height: 1.5;
   margin: 0 0 1rem;
+}
+
+.room-directory__create {
+  margin: 0 0 1rem;
+}
+
+.room-directory__create .ui-button {
+  justify-content: center;
+  width: 100%;
 }
 
 .room-directory__list {
@@ -7195,6 +7226,23 @@
   max-width: 32ch;
 }
 
+.room-mobile-index__create {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.room-mobile-index__create > .ui-button {
+  justify-content: center;
+  min-height: 3.1rem;
+  width: 100%;
+}
+
+.room-mobile-index__composer {
+  margin-top: 0;
+  text-align: left;
+}
+
 .room-mobile-index__list {
   display: grid;
   margin-top: 1.2rem;
@@ -7379,4 +7427,249 @@
   .public-page--room-profile .room-profile-history-grid {
     gap: 1.35rem;
   }
+}
+
+/* Phase 2.12 — cross-route type and layout fit pass. */
+.public-page :is(h1, h2, h3, p) {
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.public-page :is(.type-display-xl, .type-display-lg, .type-heading-1, .type-heading-2, .type-heading-3) {
+  text-wrap: balance;
+}
+
+.public-page .ui-terminal-label {
+  font-size: clamp(0.62rem, 0.72vw, 0.72rem);
+  letter-spacing: 0.12em;
+  line-height: 1.5;
+}
+
+.public-page .ui-nav-shell {
+  column-gap: clamp(1.25rem, 4vw, 4rem);
+}
+
+.public-page .ui-nav-shell__links a,
+.public-page .ui-footer-shell__links a {
+  font-size: clamp(0.58rem, 0.72vw, 0.7rem);
+  letter-spacing: 0.1em;
+}
+
+.public-page .ui-field__label,
+.public-page .ui-check__label,
+.public-page .ui-radio__label,
+.public-page .room-access-field > span {
+  font-size: clamp(0.64rem, 0.76vw, 0.72rem);
+  letter-spacing: 0.1em;
+  line-height: 1.45;
+}
+
+.public-page .ui-button,
+.public-page .ui-visibility-toggle,
+.public-page .ui-report-dialog__action {
+  font-size: clamp(0.66rem, 0.78vw, 0.76rem);
+  line-height: 1.3;
+}
+
+.public-page .placeholder-main,
+.public-page .detail-main,
+.public-page .explore-main {
+  min-width: 0;
+}
+
+.public-page .placeholder-page,
+.public-page .detail-page {
+  width: min(100%, 68rem);
+}
+
+.public-page .placeholder-header__title,
+.public-page .detail-page__title {
+  font-size: clamp(2.6rem, 6vw, 5.75rem);
+  line-height: 0.94;
+  max-width: 18ch;
+}
+
+.public-page .placeholder-header__copy,
+.public-page .detail-header__copy {
+  line-height: 1.7;
+  max-width: 60ch;
+}
+
+.public-page .placeholder-content {
+  gap: clamp(2rem, 7vw, 6rem);
+}
+
+.public-page .placeholder-content .type-body-lg {
+  font-size: clamp(0.96rem, 1.25vw, 1.12rem);
+  line-height: 1.75;
+  max-width: 42ch;
+}
+
+.public-page .placeholder-steps p {
+  font-size: clamp(0.92rem, 1.1vw, 1rem);
+  line-height: 1.65;
+  max-width: 52ch;
+}
+
+.public-page .detail-card__thought {
+  font-size: clamp(2rem, 4.5vw, 4.1rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.public-page--home .home-room-core h1 {
+  font-size: clamp(2.7rem, 5.4vw, 5.4rem);
+  line-height: 0.96;
+  text-wrap: balance;
+}
+
+.public-page--home .home-room-core__copy {
+  font-size: clamp(0.7rem, 0.95vw, 0.84rem);
+  line-height: 1.7;
+  max-width: 34ch;
+}
+
+.public-page--explore .explore-header h1,
+.public-page--explore .room-mobile-index__header h1,
+.public-page--room .room-access-header__title,
+.public-page--room .room-locked-page h1 {
+  text-wrap: balance;
+}
+
+.public-page--explore .transmission-row__thought,
+.public-page--explore .room-directory__intro,
+.public-page--room .room-access-option p,
+.public-page--room .room-access-header__copy {
+  line-height: 1.7;
+}
+
+.public-page--admin .admin-main {
+  padding-block: clamp(4rem, 7vw, 6rem) clamp(4rem, 7vw, 6.5rem);
+}
+
+.public-page--admin .admin-reports-page {
+  margin-inline: auto;
+  width: min(100%, 58rem);
+}
+
+.public-page--admin .admin-reports-page__header h1 {
+  font-size: clamp(2.75rem, 8vw, 6.25rem);
+  line-height: 0.9;
+  text-wrap: balance;
+}
+
+.public-page--admin .admin-reports-page__header p {
+  font-size: clamp(0.95rem, 1.2vw, 1.06rem);
+  line-height: 1.7;
+  max-width: 60ch;
+}
+
+.public-page--admin .admin-reports-gate h2,
+.public-page--admin .admin-reports-results h2 {
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+@media (max-width: 760px) {
+  .public-page .ui-nav-shell {
+    gap: 0.8rem;
+    padding-block: 0.9rem 1rem;
+  }
+
+  .public-page .ui-nav-shell__links {
+    column-gap: 0.45rem;
+    row-gap: 0.25rem;
+  }
+
+  .public-page .ui-nav-shell__links a,
+  .public-page .ui-footer-shell__links a {
+    min-height: 2.5rem;
+    padding-inline: 0.42rem;
+  }
+
+  .public-page .placeholder-header__title,
+  .public-page .detail-page__title {
+    font-size: clamp(2.25rem, 9.5vw, 3.65rem);
+    line-height: 0.95;
+  }
+
+  .public-page .placeholder-header__copy,
+  .public-page .detail-header__copy {
+    font-size: 0.96rem;
+    line-height: 1.7;
+  }
+
+  .public-page .placeholder-content .type-body-lg {
+    font-size: 0.98rem;
+    line-height: 1.75;
+  }
+
+  .public-page .placeholder-steps li {
+    gap: 0.85rem;
+    grid-template-columns: 2.35rem minmax(0, 1fr);
+    padding-block: 1rem;
+  }
+
+  .public-page--admin .admin-main {
+    padding-block: 4.75rem 3.5rem;
+  }
+
+  .public-page--admin .admin-reports-page__header h1 {
+    font-size: clamp(2.65rem, 11vw, 4.6rem);
+  }
+
+  .public-page--admin .admin-reports-page__header p {
+    font-size: 0.96rem;
+    line-height: 1.65;
+  }
+
+  .public-page--admin .admin-reports-gate,
+  .public-page--admin .admin-reports-results {
+    padding: 1rem;
+  }
+
+  .public-page--room .room-access-option p {
+    font-size: 0.78rem;
+    line-height: 1.7;
+  }
+}
+
+/* Phase 2.13 — keep desktop room markers inside the reading column. */
+.public-page--explore .explore-feed::before {
+  background: linear-gradient(90deg, rgba(2, 6, 4, 0.7), rgba(2, 6, 4, 0.92));
+  line-height: 1.4;
+  max-width: calc(100% - 3rem);
+  overflow: hidden;
+  right: clamp(1.5rem, 3vw, 3rem);
+  text-overflow: ellipsis;
+  top: -0.55rem;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+@media (min-width: 761px) {
+  .public-page--explore .explore-feed__heading {
+    align-items: center;
+    min-height: 3rem;
+  }
+
+  .public-page--explore .explore-feed__heading .ui-status-indicator {
+    align-self: center;
+    color: var(--hidn-signal);
+    flex: 0 0 auto;
+    font-size: clamp(0.6rem, 0.75vw, 0.72rem);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .public-page--explore .explore-feed::before {
+    display: none;
+  }
+}
+
+/* Phase 2.14 — let the room marker float in the stream instead of framing it. */
+.public-page--explore .explore-feed {
+  border: 0;
 }

@@ -16,12 +16,20 @@ const ZK_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAIN_ROOM_ID = "HIDN-MAIN-ROOM";
 const ROOM_POST_MAX_LENGTH = 2000;
-const ROOM_POST_RATE_LIMIT = 10;
 const ROOM_REPLY_MAX_LENGTH = 1200;
-const ROOM_REPLY_RATE_LIMIT = 30;
+const ABUSE_WINDOW_MS = 10 * 60 * 1000;
+const ABUSE_REPEAT_WINDOW_MS = 30 * 60 * 1000;
+const ABUSE_SIGNAL_TTL_MS = 2 * 60 * 60 * 1000;
+const ABUSE_EDGE_BUCKET_MS = 30 * 60 * 1000;
+const ABUSE_BURST_THRESHOLD = 5;
+const ABUSE_COOLDOWN_RISK_THRESHOLD = 3;
+const ABUSE_COOLDOWN_BASE_MS = 30 * 1000;
+const ABUSE_COOLDOWN_MAX_MS = 15 * 60 * 1000;
 const LIVE_ACTIVITY_LIMIT = 8;
 const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
+// `read_only` is the historical database value for free room access. It no
+// longer blocks ordinary posts or replies; `full` is optional verified access.
 type AccessLevel = "read_only" | "full";
 type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
@@ -74,6 +82,24 @@ interface AuthenticatedUser {
   userId: string;
   username: string;
   accessLevel: AccessLevel;
+}
+
+interface AbuseSignalRow {
+  signal_key: string;
+  window_started_at: string;
+  action_count: number;
+  risk_score: number;
+  last_content_hash: string | null;
+  last_content_at: string | null;
+  cooldown_until: string | null;
+  expires_at: string;
+  updated_at: string;
+}
+
+interface AbuseSignalObservation {
+  actionCount: number;
+  riskScore: number;
+  cooldownUntil: string | null;
 }
 
 interface PaymentIntentRow {
@@ -346,6 +372,192 @@ function isModerationAction(value: string): value is ModerationAction {
 async function hashText(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeAbuseContent(content: string): string {
+  return content
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, "<link>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2000);
+}
+
+function abuseCooldownDurationMs(riskScore: number): number {
+  const multiplier = Math.max(0, riskScore - ABUSE_COOLDOWN_RISK_THRESHOLD);
+  return Math.min(ABUSE_COOLDOWN_MAX_MS, ABUSE_COOLDOWN_BASE_MS * 2 ** multiplier);
+}
+
+function abuseCooldownResponse(cooldownUntil: string): Response {
+  const retryAfterSeconds = Math.max(1, Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000));
+  const retryLabel = retryAfterSeconds >= 60
+    ? `${Math.ceil(retryAfterSeconds / 60)} MINUTE${retryAfterSeconds >= 120 ? "S" : ""}`
+    : `${retryAfterSeconds} SECOND${retryAfterSeconds === 1 ? "" : "S"}`;
+
+  return jsonResponse(
+    {
+      error: `SIGNAL COOLDOWN / TRY AGAIN IN ${retryLabel}.`,
+      code: "ABUSE_COOLDOWN",
+      retryAfterSeconds,
+    },
+    429,
+    "no-store",
+    {
+      "Retry-After": String(retryAfterSeconds),
+      "X-HIDN-Abuse-Mode": "cooldown",
+    },
+  );
+}
+
+async function abuseSignalKeyForEdge(request: Request, now: number): Promise<string | null> {
+  const edgeAddress = request.headers.get("CF-Connecting-IP")?.trim();
+  if (!edgeAddress) {
+    return null;
+  }
+
+  // Keep only a rotating digest of the edge address. The raw address never
+  // enters D1 and the digest naturally expires with this short abuse window.
+  const bucket = Math.floor(now / ABUSE_EDGE_BUCKET_MS);
+  const digest = await hashText(`hidn-abuse-v1:${bucket}:${edgeAddress}`);
+  return `edge:${digest}`;
+}
+
+async function updateAbuseSignal(
+  env: HidnWorkerEnv,
+  signalKey: string,
+  contentHash: string,
+  now: number,
+  cooldownRiskThreshold: number,
+): Promise<AbuseSignalObservation | null> {
+  if (!env.ROOM_DB) {
+    return null;
+  }
+
+  try {
+    const existing = await env.ROOM_DB.prepare(
+      `SELECT signal_key, window_started_at, action_count, risk_score,
+              last_content_hash, last_content_at, cooldown_until, expires_at, updated_at
+       FROM hidn_abuse_signals
+       WHERE signal_key = ?
+       LIMIT 1`,
+    )
+      .bind(signalKey)
+      .first<AbuseSignalRow>();
+
+    const nowIso = new Date(now).toISOString();
+    const active = Boolean(existing && Date.parse(existing.expires_at) > now);
+    const cooldownUntil = active && existing?.cooldown_until && Date.parse(existing.cooldown_until) > now
+      ? existing.cooldown_until
+      : null;
+
+    // Do not extend an active cooldown on every bot retry. The caller gets a
+    // stable retry window while the signal remains short-lived in D1.
+    if (cooldownUntil && existing) {
+      return {
+        actionCount: existing.action_count,
+        riskScore: existing.risk_score,
+        cooldownUntil,
+      };
+    }
+
+    const withinWindow = Boolean(
+      active
+      && existing?.window_started_at
+      && Date.parse(existing.window_started_at) > now - ABUSE_WINDOW_MS,
+    );
+    const actionCount = withinWindow ? Number(existing?.action_count ?? 0) + 1 : 1;
+    const repeatedContent = Boolean(
+      withinWindow
+      && existing?.last_content_hash === contentHash
+      && existing.last_content_at
+      && Date.parse(existing.last_content_at) > now - ABUSE_REPEAT_WINDOW_MS,
+    );
+    const burstRisk = actionCount > ABUSE_BURST_THRESHOLD ? 1 : 0;
+    const riskScore = withinWindow
+      ? Number(existing?.risk_score ?? 0) + burstRisk + (repeatedContent ? 2 : 0)
+      : 0;
+    const nextCooldownUntil = riskScore >= cooldownRiskThreshold
+      ? new Date(now + abuseCooldownDurationMs(riskScore)).toISOString()
+      : null;
+    const windowStartedAt = withinWindow ? existing!.window_started_at : nowIso;
+    const expiresAt = new Date(now + ABUSE_SIGNAL_TTL_MS).toISOString();
+
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_abuse_signals
+        (signal_key, window_started_at, action_count, risk_score,
+         last_content_hash, last_content_at, cooldown_until, expires_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(signal_key) DO UPDATE SET
+         window_started_at = excluded.window_started_at,
+         action_count = excluded.action_count,
+         risk_score = excluded.risk_score,
+         last_content_hash = excluded.last_content_hash,
+         last_content_at = excluded.last_content_at,
+         cooldown_until = excluded.cooldown_until,
+         expires_at = excluded.expires_at,
+         updated_at = excluded.updated_at`,
+    )
+      .bind(
+        signalKey,
+        windowStartedAt,
+        actionCount,
+        riskScore,
+        contentHash,
+        nowIso,
+        nextCooldownUntil,
+        expiresAt,
+        nowIso,
+      )
+      .run();
+
+    return { actionCount, riskScore, cooldownUntil: nextCooldownUntil };
+  } catch {
+    // Abuse controls must not turn a missing/unapplied migration into a room
+    // outage. The migration is fail-open until the next deploy applies it.
+    return null;
+  }
+}
+
+async function assessRoomAbuse(
+  request: Request,
+  env: HidnWorkerEnv,
+  user: AuthenticatedUser,
+  content: string,
+): Promise<Response | undefined> {
+  const now = Date.now();
+  const contentHash = await hashText(normalizeAbuseContent(content));
+  const cooldownRiskThreshold = user.accessLevel === "full"
+    ? ABUSE_COOLDOWN_RISK_THRESHOLD + 2
+    : ABUSE_COOLDOWN_RISK_THRESHOLD;
+  const signalKeys = [`account:${user.userId}`];
+  const edgeSignalKey = await abuseSignalKeyForEdge(request, now);
+  if (edgeSignalKey) {
+    signalKeys.push(edgeSignalKey);
+  }
+
+  const observations = await Promise.all(
+    signalKeys.map((signalKey) => updateAbuseSignal(env, signalKey, contentHash, now, cooldownRiskThreshold)),
+  );
+  if (env.ROOM_DB) {
+    try {
+      await env.ROOM_DB.prepare("DELETE FROM hidn_abuse_signals WHERE expires_at <= ?")
+        .bind(new Date(now).toISOString())
+        .run();
+    } catch {
+      // Cleanup is best effort; the signal TTL still bounds active enforcement.
+    }
+  }
+  const cooldowns = observations
+    .map((observation) => observation?.cooldownUntil)
+    .filter((value): value is string => Boolean(value));
+  if (!cooldowns.length) {
+    return undefined;
+  }
+
+  const latestCooldown = cooldowns.reduce((latest, value) => (
+    Date.parse(value) > Date.parse(latest) ? value : latest
+  ));
+  return abuseCooldownResponse(latestCooldown);
 }
 
 async function hashAccessCode(accessCode: string): Promise<string> {
@@ -723,9 +935,6 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
   if (!user) {
     return jsonResponse({ error: "Log in before replying in the room." }, 401);
   }
-  if (user.accessLevel !== "full") {
-    return jsonResponse({ error: "Full access is required before replying." }, 403);
-  }
 
   const body = await requestBody(request);
   const threadId = typeof body.threadId === "string" ? body.threadId.trim().toUpperCase() : "";
@@ -752,16 +961,9 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
     return jsonResponse({ error: "That thread is no longer available for replies." }, 404);
   }
 
-  const recentWindow = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const recentReplies = await env.ROOM_DB!.prepare(
-    `SELECT COUNT(*) AS count
-     FROM hidn_replies
-     WHERE author_user_id = ? AND created_at >= ?`,
-  )
-    .bind(user.userId, recentWindow)
-    .first<{ count: number }>();
-  if (Number(recentReplies?.count ?? 0) >= ROOM_REPLY_RATE_LIMIT) {
-    return jsonResponse({ error: "Reply limit reached. Try again later." }, 429);
+  const abuseResponse = await assessRoomAbuse(request, env, user, content);
+  if (abuseResponse) {
+    return abuseResponse;
   }
 
   const reply: RoomReplyRow = {
@@ -824,9 +1026,6 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
   if (!user) {
     return jsonResponse({ error: "Log in before creating a post." }, 401);
   }
-  if (user.accessLevel !== "full") {
-    return jsonResponse({ error: "Full access is required before creating a post." }, 403);
-  }
 
   const body = await requestBody(request);
   const content = typeof body.content === "string" ? body.content.trim() : "";
@@ -845,16 +1044,9 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
     return jsonResponse({ error: "Choose a valid post category." }, 400);
   }
 
-  const recentWindow = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const recentPosts = await env.ROOM_DB!.prepare(
-    `SELECT COUNT(*) AS count
-     FROM hidn_threads
-     WHERE author_user_id = ? AND created_at >= ?`,
-  )
-    .bind(user.userId, recentWindow)
-    .first<{ count: number }>();
-  if (Number(recentPosts?.count ?? 0) >= ROOM_POST_RATE_LIMIT) {
-    return jsonResponse({ error: "Post limit reached. Try again later." }, 429);
+  const abuseResponse = await assessRoomAbuse(request, env, user, content);
+  if (abuseResponse) {
+    return abuseResponse;
   }
 
   const post: RoomPostRow = {
