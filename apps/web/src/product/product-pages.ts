@@ -206,7 +206,7 @@ interface HomeAudioGraph {
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
-const HOME_AUDIO_MASTER_GAIN = 0.0756;
+const HOME_AUDIO_MASTER_GAIN = 0.10584;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
