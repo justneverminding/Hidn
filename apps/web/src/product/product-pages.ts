@@ -207,7 +207,7 @@ interface HomeAudioGraph {
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
-const HOME_AUDIO_MASTER_GAIN = 0.3058776;
+const HOME_AUDIO_MASTER_GAIN = 0.40587;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
@@ -889,10 +889,10 @@ function createHomeAudioVoiceTextureBuffer(context: AudioContext): AudioBuffer {
     });
   };
 
-  addVocalTexture(1.65, 2.25, 148, 0.055, -0.28);
-  addVocalTexture(8.8, 2.05, 132, 0.046, 0.3);
-  addChuckle(3.8, 0.085, -0.2);
-  addChuckle(11.65, 0.07, 0.24);
+  addVocalTexture(1.65, 2.25, 148, 0.075, -0.28);
+  addVocalTexture(8.8, 2.05, 132, 0.064, 0.3);
+  addChuckle(3.8, 0.11, -0.2);
+  addChuckle(11.65, 0.09, 0.24);
 
   return buffer;
 }
@@ -980,10 +980,10 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
     voiceTone.type = "bandpass";
     voiceTone.frequency.value = 650;
     voiceTone.Q.value = 0.55;
-    voiceGain.gain.value = 0.16;
+    voiceGain.gain.value = 0.24;
     voiceEchoDelay.delayTime.value = 0.48;
-    voiceEchoFeedback.gain.value = 0.18;
-    voiceEchoWetGain.gain.value = 0.12;
+    voiceEchoFeedback.gain.value = 0.2;
+    voiceEchoWetGain.gain.value = 0.17;
     outputGain.gain.value = HOME_AUDIO_MASTER_GAIN;
 
     wowOscillator.frequency.value = 0.12;
@@ -1095,21 +1095,24 @@ function playHomeRoomEntryCue(): void {
     const voiceEnvelope = context.createGain();
     const undertoneGain = context.createGain();
     const breathGain = context.createGain();
+    const screamTone = context.createBiquadFilter();
+    const screamEnvelope = context.createGain();
     const voice = context.createOscillator();
     const lowVoice = context.createOscillator();
+    const scream = context.createOscillator();
     const breath = context.createBufferSource();
 
     master.gain.setValueAtTime(0.0001, now);
-    master.gain.linearRampToValueAtTime(0.2, now + 0.045);
+    master.gain.linearRampToValueAtTime(1.5, now + 0.045);
     master.gain.exponentialRampToValueAtTime(0.0001, now + 3.1);
 
-    dryGain.gain.value = 0.82;
+    dryGain.gain.value = 0.9;
     echoDelay.delayTime.value = 0.34;
     echoFeedback.gain.value = 0.24;
-    echoGain.gain.value = 0.38;
+    echoGain.gain.value = 0.46;
 
     voiceTone.type = "bandpass";
-    voiceTone.frequency.value = 620;
+    voiceTone.frequency.value = 700;
     voiceTone.Q.value = 1.1;
     undertone.type = "lowpass";
     undertone.frequency.value = 360;
@@ -1119,14 +1122,21 @@ function playHomeRoomEntryCue(): void {
     breathTone.Q.value = 0.7;
 
     voiceEnvelope.gain.setValueAtTime(0.0001, now);
-    voiceEnvelope.gain.linearRampToValueAtTime(0.32, now + 0.07);
-    voiceEnvelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.72);
+    voiceEnvelope.gain.linearRampToValueAtTime(0.48, now + 0.07);
+    voiceEnvelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.82);
     undertoneGain.gain.setValueAtTime(0.0001, now);
-    undertoneGain.gain.linearRampToValueAtTime(0.11, now + 0.12);
+    undertoneGain.gain.linearRampToValueAtTime(0.17, now + 0.12);
     undertoneGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.9);
     breathGain.gain.setValueAtTime(0.0001, now);
-    breathGain.gain.linearRampToValueAtTime(0.035, now + 0.08);
+    breathGain.gain.linearRampToValueAtTime(0.055, now + 0.08);
     breathGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.15);
+
+    screamTone.type = "bandpass";
+    screamTone.frequency.value = 980;
+    screamTone.Q.value = 1.45;
+    screamEnvelope.gain.setValueAtTime(0.0001, now);
+    screamEnvelope.gain.linearRampToValueAtTime(0.22, now + 0.11);
+    screamEnvelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.68);
 
     voice.type = "triangle";
     voice.frequency.setValueAtTime(176, now);
@@ -1136,6 +1146,10 @@ function playHomeRoomEntryCue(): void {
     lowVoice.frequency.setValueAtTime(88, now);
     lowVoice.frequency.exponentialRampToValueAtTime(142, now + 0.72);
     lowVoice.frequency.exponentialRampToValueAtTime(78, now + 1.65);
+    scream.type = "sawtooth";
+    scream.frequency.setValueAtTime(286, now + 0.05);
+    scream.frequency.exponentialRampToValueAtTime(720, now + 0.7);
+    scream.frequency.exponentialRampToValueAtTime(360, now + 1.48);
     breath.buffer = createHomeEntryNoiseBuffer(context, 1.2);
 
     voice.connect(voiceEnvelope);
@@ -1145,6 +1159,10 @@ function playHomeRoomEntryCue(): void {
     lowVoice.connect(undertoneGain);
     undertoneGain.connect(undertone);
     undertone.connect(dryGain);
+    scream.connect(screamEnvelope);
+    screamEnvelope.connect(screamTone);
+    screamTone.connect(dryGain);
+    screamTone.connect(echoDelay);
     breath.connect(breathGain);
     breathGain.connect(breathTone);
     breathTone.connect(dryGain);
@@ -1157,9 +1175,11 @@ function playHomeRoomEntryCue(): void {
 
     voice.start(now);
     lowVoice.start(now);
+    scream.start(now);
     breath.start(now);
     voice.stop(now + 1.82);
     lowVoice.stop(now + 1.95);
+    scream.stop(now + 1.78);
     breath.stop(now + 1.22);
     window.setTimeout(() => {
       void context.close();
@@ -3054,6 +3074,7 @@ async function registerRoomAccount(username: string): Promise<void> {
     const account = await signupZkAccount(username, publicKeyToHex(credential.publicKey));
     persistAccountSession(account);
     roomAccountRecoveryCode = credential.recoveryCode;
+    revealRoomRecoveryKeyTemporarily();
     roomPaymentIntentId = "";
     roomPayment = undefined;
     sessionStorage.removeItem("hidn:account:payment-intent");
@@ -3329,9 +3350,9 @@ function roomPaymentStatusLabel(status: PaymentIntentResponse["status"]): string
 function renderRoomRecoveryPanel(): string {
   if (roomRecoveryRevealMode === "visible") {
     return `<section class="room-access-key room-recovery-panel room-recovery-panel--visible" aria-live="polite">
-      <span class="room-access-key__label">RECOVERY KEY / VISIBLE FOR 30 SECONDS</span>
+      <span class="room-access-key__label">RECOVERY KEY / SAVE THIS NOW</span>
       <code>${escapeHtml(roomAccountRecoveryCode)}</code>
-      <span class="room-access-key__warning">Save it now. The key will hide automatically, and HIDN cannot recover a lost key.</span>
+      <span class="room-access-key__warning">Save it before entering the room. HIDN cannot recover a lost key.</span>
     </section>`;
   }
 
@@ -3364,14 +3385,17 @@ function renderRoomRecoveryPanel(): string {
 
 function renderRoomReady(): string {
   const isFull = roomAccountAccessLevel === "full";
+  const isNewAccount = Boolean(roomAccountRecoveryCode);
   const payment = roomPayment;
   const accountLabel = roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
   const showVerification = roomVerificationRequested && !isFull;
-  const titleText = isFull ? "THE ROOM IS OPEN." : "THE ROOM IS VISIBLE.";
-  const titleSignal = isFull ? "OPEN." : "VISIBLE.";
-  const accountCopy = isFull
-    ? `${accountLabel} is active with full room access.`
-    : `${accountLabel} is active. Enter the room to view your channels. Profile verification is available later from the Channels menu.`;
+  const titleText = isNewAccount ? "SAVE YOUR KEY." : isFull ? "THE ROOM IS OPEN." : "THE ROOM IS VISIBLE.";
+  const titleSignal = isNewAccount ? "KEY." : isFull ? "OPEN." : "VISIBLE.";
+  const accountCopy = isNewAccount
+    ? `${accountLabel} is ready. Save the recovery key below, then enter the room.`
+    : isFull
+      ? `${accountLabel} is active with full room access.`
+      : `${accountLabel} is active. Enter the room to view your channels. Profile verification is available later from the Channels menu.`;
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
@@ -3407,7 +3431,7 @@ function renderRoomReady(): string {
       ${SecondaryButton({ label: roomBackendStatus === "connecting" ? "CREATING PAYMENT REQUEST..." : "CREATE PAYMENT REQUEST →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-payment-intent" })}
     </form>` : ""}
     <div class="room-access-actions">
-      ${SecondaryButton({ label: "GO BACK TO ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
+      ${SecondaryButton({ label: isNewAccount ? "ENTER THE ROOM →" : "GO BACK TO ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
     </div>
   </div>`;
 }
