@@ -3643,6 +3643,7 @@
   height: 3.2rem;
   position: absolute;
   transform: translateY(-1rem);
+  animation: hidn-room-entry-loader-fade 2.5s ease both;
 }
 
 .room-entry-transition__loader span {
@@ -3696,6 +3697,7 @@
   letter-spacing: 0.2em;
   margin: 0;
   position: relative;
+  text-shadow: 0 0 0.8rem rgba(93, 255, 143, 0.28);
   text-transform: uppercase;
   z-index: 2;
   animation: hidn-room-entry-label 2.5s steps(2, end) both;
@@ -3712,8 +3714,11 @@
   letter-spacing: 0.16em;
   margin-top: 4rem;
   position: relative;
+  text-align: center;
+  text-shadow: 0 0 0.7rem rgba(255, 190, 72, 0.2);
   text-transform: uppercase;
   z-index: 2;
+  animation: hidn-room-entry-subline 2.5s ease both;
 }
 
 .room-entry-transition--first .room-entry-transition__subline {
@@ -3726,7 +3731,7 @@
   }
 
   12%,
-  78% {
+  88% {
     opacity: 1;
   }
 
@@ -3782,11 +3787,46 @@
   }
 
   45%,
-  80% {
+  74% {
     opacity: 1;
     transform: translateY(0);
   }
 
+  84%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hidn-room-entry-subline {
+  0%,
+  12% {
+    opacity: 0;
+  }
+
+  20%,
+  74% {
+    opacity: 1;
+  }
+
+  84%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hidn-room-entry-loader-fade {
+  0%,
+  10% {
+    opacity: 0;
+  }
+
+  18%,
+  78% {
+    opacity: 1;
+  }
+
+  88%,
   100% {
     opacity: 0;
   }
@@ -4626,6 +4666,22 @@
   .room-access-activity p {
     font-size: 0.52rem;
     line-height: 1.6;
+  }
+
+  .room-entry-transition__label {
+    background: linear-gradient(90deg, transparent, rgba(0, 2, 1, 0.78) 18%, rgba(0, 2, 1, 0.78) 82%, transparent);
+    font-size: clamp(0.58rem, 2.25vw, 0.68rem);
+    letter-spacing: 0.15em;
+    max-width: calc(100vw - 1rem);
+    padding: 0.45rem 1rem;
+    text-align: center;
+  }
+
+  .room-entry-transition__subline {
+    font-size: clamp(0.42rem, 1.8vw, 0.48rem);
+    letter-spacing: 0.12em;
+    max-width: calc(100vw - 2rem);
+    padding-inline: 0.75rem;
   }
 
   .public-page__window-chrome {
@@ -6113,7 +6169,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .room-entry-transition,
-  .room-entry-transition__label {
+  .room-entry-transition__label,
+  .room-entry-transition__loader,
+  .room-entry-transition__subline {
     animation-duration: 320ms;
   }
 
