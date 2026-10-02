@@ -207,7 +207,7 @@ interface HomeAudioGraph {
 const HOME_STREAM_LIMIT = 4;
 const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
-const HOME_AUDIO_MASTER_GAIN = 0.179928;
+const HOME_AUDIO_MASTER_GAIN = 0.3058776;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
@@ -1043,6 +1043,137 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
   } catch {
     return undefined;
   }
+}
+
+function createHomeEntryNoiseBuffer(context: AudioContext, duration: number): AudioBuffer {
+  const frameCount = Math.floor(context.sampleRate * duration);
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+  const channel = buffer.getChannelData(0);
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const progress = frame / frameCount;
+    const fade = Math.pow(1 - progress, 1.8);
+    channel[frame] = ((Math.random() * 2) - 1) * fade;
+  }
+
+  return buffer;
+}
+
+function playHomeRoomEntryCue(): void {
+  if (hasHomeAudioPreference() && !readHomeAudioPreference()) {
+    return;
+  }
+
+  const AudioContextConstructor = window.AudioContext
+    ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return;
+  }
+
+  let context: AudioContext;
+  try {
+    context = new AudioContextConstructor();
+  } catch {
+    return;
+  }
+
+  const play = (): void => {
+    if (context.state !== "running") {
+      void context.close();
+      return;
+    }
+
+    const now = context.currentTime;
+    const master = context.createGain();
+    const dryGain = context.createGain();
+    const echoDelay = context.createDelay(0.8);
+    const echoFeedback = context.createGain();
+    const echoGain = context.createGain();
+    const voiceTone = context.createBiquadFilter();
+    const undertone = context.createBiquadFilter();
+    const breathTone = context.createBiquadFilter();
+    const voiceEnvelope = context.createGain();
+    const undertoneGain = context.createGain();
+    const breathGain = context.createGain();
+    const voice = context.createOscillator();
+    const lowVoice = context.createOscillator();
+    const breath = context.createBufferSource();
+
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.linearRampToValueAtTime(0.2, now + 0.045);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 3.1);
+
+    dryGain.gain.value = 0.82;
+    echoDelay.delayTime.value = 0.34;
+    echoFeedback.gain.value = 0.24;
+    echoGain.gain.value = 0.38;
+
+    voiceTone.type = "bandpass";
+    voiceTone.frequency.value = 620;
+    voiceTone.Q.value = 1.1;
+    undertone.type = "lowpass";
+    undertone.frequency.value = 360;
+    undertone.Q.value = 0.6;
+    breathTone.type = "bandpass";
+    breathTone.frequency.value = 1250;
+    breathTone.Q.value = 0.7;
+
+    voiceEnvelope.gain.setValueAtTime(0.0001, now);
+    voiceEnvelope.gain.linearRampToValueAtTime(0.32, now + 0.07);
+    voiceEnvelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.72);
+    undertoneGain.gain.setValueAtTime(0.0001, now);
+    undertoneGain.gain.linearRampToValueAtTime(0.11, now + 0.12);
+    undertoneGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.9);
+    breathGain.gain.setValueAtTime(0.0001, now);
+    breathGain.gain.linearRampToValueAtTime(0.035, now + 0.08);
+    breathGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.15);
+
+    voice.type = "triangle";
+    voice.frequency.setValueAtTime(176, now);
+    voice.frequency.exponentialRampToValueAtTime(412, now + 0.68);
+    voice.frequency.exponentialRampToValueAtTime(232, now + 1.5);
+    lowVoice.type = "sine";
+    lowVoice.frequency.setValueAtTime(88, now);
+    lowVoice.frequency.exponentialRampToValueAtTime(142, now + 0.72);
+    lowVoice.frequency.exponentialRampToValueAtTime(78, now + 1.65);
+    breath.buffer = createHomeEntryNoiseBuffer(context, 1.2);
+
+    voice.connect(voiceEnvelope);
+    voiceEnvelope.connect(voiceTone);
+    voiceTone.connect(dryGain);
+    voiceTone.connect(echoDelay);
+    lowVoice.connect(undertoneGain);
+    undertoneGain.connect(undertone);
+    undertone.connect(dryGain);
+    breath.connect(breathGain);
+    breathGain.connect(breathTone);
+    breathTone.connect(dryGain);
+    dryGain.connect(master);
+    echoDelay.connect(echoFeedback);
+    echoFeedback.connect(echoDelay);
+    echoDelay.connect(echoGain);
+    echoGain.connect(master);
+    master.connect(context.destination);
+
+    voice.start(now);
+    lowVoice.start(now);
+    breath.start(now);
+    voice.stop(now + 1.82);
+    lowVoice.stop(now + 1.95);
+    breath.stop(now + 1.22);
+    window.setTimeout(() => {
+      void context.close();
+    }, 3500);
+  };
+
+  if (context.state === "suspended") {
+    void context.resume().then(play).catch(() => {
+      void context.close();
+    });
+    return;
+  }
+
+  play();
 }
 
 function setHomeAudioState(root: ParentNode, enabled: boolean): void {
@@ -3782,6 +3913,7 @@ export function bindProductRoute(root: ParentNode = document): void {
     link.addEventListener("click", (event) => {
       event.preventDefault();
       const returning = hasRoomSession();
+      playHomeRoomEntryCue();
       startRoomEntryTransition(returning ? "/room" : "/room/access", returning ? "return" : "first");
     });
   });
