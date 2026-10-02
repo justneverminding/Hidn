@@ -4127,6 +4127,31 @@
   line-height: 1.6;
 }
 
+.room-recovery-panel {
+  margin-top: 2rem;
+}
+
+.room-recovery-panel--hidden {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.room-recovery-panel--hidden p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.66rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.room-recovery-panel--hidden .ui-button {
+  justify-self: center;
+}
+
+.room-recovery-panel .room-access-actions {
+  margin-top: 0.75rem;
+}
+
 @media (max-width: 760px) {
   .public-page--room .public-main {
     min-height: 0;
@@ -4271,6 +4296,18 @@
 
 .room-access-activity__subject {
   color: var(--hidn-bone);
+}
+
+.public-page.public-page--room-access .ui-nav-shell {
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: center;
+}
+
+.public-page.public-page--room-access .room-access-activity {
+  flex: 0 1 auto;
+  grid-column: 1;
+  justify-self: center;
+  width: min(52rem, 100%);
 }
 
 .public-page--home,
