@@ -7314,6 +7314,52 @@
     padding: 8.5rem 1rem 3.5rem;
   }
 
+  .public-page--room-profile .public-page__window-bar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    height: auto;
+    min-height: 2.55rem;
+    padding-block: 0.38rem;
+    column-gap: 0.5rem;
+  }
+
+  .public-page--room-profile .public-page__window-controls {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .public-page--room-profile .public-page__window-title {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    position: static;
+    text-overflow: ellipsis;
+    transform: none;
+    white-space: nowrap;
+  }
+
+  .public-page--room-profile .public-page__window-actions {
+    display: flex;
+    gap: 0.4rem;
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: 0;
+    min-width: 0;
+    width: auto;
+  }
+
+  .public-page--room-profile .public-page__window-actions + .room-menu {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: 0;
+  }
+
   .public-page--room-profile .room-profile-page__header {
     margin-bottom: 2.5rem;
   }

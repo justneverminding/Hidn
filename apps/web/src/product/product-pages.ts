@@ -21,6 +21,7 @@ import {
   EXPLORE_METADATA,
   HOME_METADATA,
   ROOM_METADATA,
+  webPageStructuredData,
   type HidnMetadata,
 } from "../metadata";
 import {
@@ -2239,7 +2240,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
-    ${isHome ? "" : publicWindowChrome(path, isRoomSurface, normalizedPath === "/room" || normalizedPath === "/explore")}
+    ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile", normalizedPath === "/room" || normalizedPath === "/explore")}
     ${isRoomSurface || isAdminPage ? "" : publicNavigation(path)}
     ${main}
     ${isRoomSurface ? renderSelectionTools() : ""}
@@ -3439,7 +3440,7 @@ function renderRoomReady(): string {
     ? `${accountLabel} is ready. Save the recovery key below, then enter the room.`
     : isFull
       ? `${accountLabel} is active with full room access.`
-      : `${accountLabel} is active. Enter the room to view your channels. Profile verification is available later from the Channels menu.`;
+      : `${accountLabel} is active. Enter the private room to write freely.`;
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
@@ -3541,7 +3542,7 @@ function renderRoomProfile(): RenderedProductRoute {
             ${actionLink("ENTER THE ROOM", "/room/access", "primary")}
           </div>
         </main>`,
-        "public-page--room",
+        "public-page--room public-page--room-profile",
       ),
     };
   }
@@ -3663,7 +3664,7 @@ function placeholderForPath(path: string): PlaceholderPage {
     return {
       eyebrow: "HIDN / MANIFESTO",
       title: "SHOW THE THOUGHT. HIDE THE PERSON.",
-      copy: "A public surface for saying the thing without turning the person into content.",
+      copy: "HIDN's privacy-first approach to anonymous thoughts and unnamed conversations.",
       body: "HIDN treats anonymity as a boundary, not a personality. The message can be seen without requiring a name, a profile, or a trail to follow.",
     };
   }
@@ -3672,16 +3673,16 @@ function placeholderForPath(path: string): PlaceholderPage {
     return {
       eyebrow: "HIDN / PRIVACY",
       title: "REVEAL LESS BY DEFAULT.",
-      copy: "Privacy language should stay concrete, limited, and understandable.",
-      body: "This Phase 2 experience is a local mock. It creates no account, requests no wallet, makes no cryptographic proof, and stores no confession beyond the current browser memory.",
+      copy: "Concrete privacy principles for anonymous thoughts, private room access, and recovery keys.",
+      body: "HIDN keeps personal identity out of the conversation. Room access uses a pseudonymous handle and a recovery key; private account history stays behind the room session. Privacy controls are described concretely rather than as a promise of universal anonymity.",
     };
   }
 
   return {
     eyebrow: "HIDN / HOW IT WORKS",
     title: "THE PERSON STAYS OUT OF FRAME.",
-    copy: "Visit, write, preview, and leave without becoming a public identity.",
-    body: "The public flow is intentionally small: a private-proof placeholder, a confession composer, an identityless preview, and a quiet posting result. The current experience is a frontend demonstration only.",
+    copy: "Learn how HIDN supports anonymous thoughts with pseudonymous room access and privacy-first design.",
+    body: "The public flow is intentionally small: set up private access or return with a recovery key, enter the room, then read or leave an anonymous thought. Account access and room verification stay separate from the first step into the room.",
   };
 }
 
@@ -3694,6 +3695,7 @@ function renderPlaceholder(path: string): RenderedProductRoute {
       title: `HIDN — ${title}`,
       description: page.copy,
       canonicalPath: path,
+      structuredData: webPageStructuredData(`HIDN — ${title}`, page.copy, path),
     },
     html: publicFrame(
       path,

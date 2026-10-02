@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0a0c0a" />
     <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href="https://hidn.justneverminding.workers.dev/" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="HIDN public AI-readable summary" />
     <link rel="icon" type="image/png" href="/brand/hidn-browser-icon.png" sizes="1024x1024" />
     <meta
       name="description"
-      content="HIDN is an anonymous confession platform designed around privacy by default."
+      content="HIDN is a privacy-first space for anonymous thoughts and unnamed conversations, built to reveal less by default."
     />
     <meta name="robots" content="index,follow" />
     <meta property="og:type" content="website" />
@@ -16,12 +19,55 @@
     <meta property="og:title" content="Hidn - A room without names" />
     <meta
       property="og:description"
-      content="Show the thought. Hide the person."
+      content="A privacy-first space for anonymous thoughts and unnamed conversations."
     />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:url" content="https://hidn.justneverminding.workers.dev/" />
+    <meta property="og:image" content="https://hidn.justneverminding.workers.dev/brand/references/hidn-brand-reference-02.png" />
+    <meta property="og:image:alt" content="HIDN — a room without names" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Hidn - A room without names" />
+    <meta name="twitter:description" content="A privacy-first space for anonymous thoughts and unnamed conversations." />
+    <meta name="twitter:image" content="https://hidn.justneverminding.workers.dev/brand/references/hidn-brand-reference-02.png" />
+    <meta name="twitter:image:alt" content="HIDN — a room without names" />
     <title>Hidn - A room without names</title>
+    <script type="application/ld+json" data-hidn-structured-data="true">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://hidn.justneverminding.workers.dev/#website",
+            "url": "https://hidn.justneverminding.workers.dev/",
+            "name": "HIDN",
+            "alternateName": "HIDN — A room without names",
+            "description": "A privacy-first space for anonymous thoughts and unnamed conversations.",
+            "publisher": { "@id": "https://hidn.justneverminding.workers.dev/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://hidn.justneverminding.workers.dev/#organization",
+            "name": "HIDN",
+            "alternateName": "HIDN — A room without names",
+            "url": "https://hidn.justneverminding.workers.dev/",
+            "logo": "https://hidn.justneverminding.workers.dev/brand/hidn-browser-icon.png"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
+    <noscript>
+      <main>
+        <h1>HIDN — a room without names</h1>
+        <p>A private room for anonymous thoughts and unnamed conversations. HIDN is designed to reveal less by default.</p>
+        <nav aria-label="Public HIDN pages">
+          <a href="/how-it-works">How HIDN works</a>
+          <a href="/manifesto">HIDN manifesto</a>
+          <a href="/privacy">HIDN privacy principles</a>
+        </nav>
+      </main>
+    </noscript>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -1950,6 +1950,15 @@ async function loginRoom(request: Request, env: HidnWorkerEnv): Promise<Response
   return jsonResponse({ roomId: row.room_id, status: row.status });
 }
 
+const INDEXABLE_PUBLIC_PATHS = new Set(["/", "/how-it-works", "/manifesto", "/privacy"]);
+
+function crawlerPolicyForHtmlPath(pathname: string): string {
+  const normalizedPath = pathname === "/" ? "/" : pathname.replace(/\/+$/, "");
+  return INDEXABLE_PUBLIC_PATHS.has(normalizedPath)
+    ? "index, follow"
+    : "noindex, nofollow, noarchive, nosnippet";
+}
+
 const worker = {
   async fetch(request: Request, env: HidnWorkerEnv): Promise<Response> {
     const url = new URL(request.url);
@@ -2275,7 +2284,19 @@ const worker = {
       }
     }
 
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    const contentType = assetResponse.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("text/html")) {
+      return assetResponse;
+    }
+
+    const headers = new Headers(assetResponse.headers);
+    headers.set("X-Robots-Tag", crawlerPolicyForHtmlPath(url.pathname));
+    return new Response(assetResponse.body, {
+      headers,
+      status: assetResponse.status,
+      statusText: assetResponse.statusText,
+    });
   },
 };
 

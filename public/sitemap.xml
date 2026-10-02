@@ -1,19 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Phase 2 sitemap: only intentionally public, canonical surfaces are listed. -->
+<!-- Only intentionally public, canonical informational surfaces are listed. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://hidn.xyz/</loc>
+    <loc>https://hidn.justneverminding.workers.dev/</loc>
   </url>
   <url>
-    <loc>https://hidn.xyz/explore</loc>
+    <loc>https://hidn.justneverminding.workers.dev/how-it-works</loc>
   </url>
   <url>
-    <loc>https://hidn.xyz/how-it-works</loc>
+    <loc>https://hidn.justneverminding.workers.dev/manifesto</loc>
   </url>
   <url>
-    <loc>https://hidn.xyz/manifesto</loc>
-  </url>
-  <url>
-    <loc>https://hidn.xyz/privacy</loc>
+    <loc>https://hidn.justneverminding.workers.dev/privacy</loc>
   </url>
 </urlset>

@@ -1,10 +1,14 @@
-# HIDN crawler policy foundation.
-# Page-level metadata remains the source of truth for dynamic content.
+# HIDN crawler policy. Public informational pages are discoverable; private
+# room, account, profile, and anonymous-content routes are not.
 
 User-agent: *
 Allow: /
+Allow: /llms.txt
 Disallow: /admin/
 Disallow: /api/
+Disallow: /room
+Disallow: /explore
+Disallow: /c/
+Disallow: /system
 
-Sitemap: https://hidn.xyz/sitemap.xml
-
+Sitemap: https://hidn.justneverminding.workers.dev/sitemap.xml

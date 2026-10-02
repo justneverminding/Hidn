@@ -1,0 +1,18 @@
+{
+  "name": "HIDN — A room without names",
+  "short_name": "HIDN",
+  "description": "A privacy-first space for anonymous thoughts and unnamed conversations.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000201",
+  "theme_color": "#0a0c0a",
+  "icons": [
+    {
+      "src": "/brand/hidn-browser-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+# HIDN
+
+> A privacy-first space for anonymous thoughts and unnamed conversations.
+
+## What HIDN is
+
+HIDN is a privacy-focused room for sharing thoughts without turning a person's name into the subject. Its public language centers on anonymous expression, pseudonymous room access, recovery keys, and revealing less by default.
+
+## Public pages
+
+- [HIDN home](https://hidn.justneverminding.workers.dev/): the public introduction to HIDN.
+- [How HIDN works](https://hidn.justneverminding.workers.dev/how-it-works): the public access and conversation model.
+- [HIDN manifesto](https://hidn.justneverminding.workers.dev/manifesto): the product's privacy-first principles.
+- [HIDN privacy](https://hidn.justneverminding.workers.dev/privacy): concrete privacy boundaries and limitations.
+
+## Privacy boundary
+
+The private room, account access, recovery keys, profiles, room channels, and anonymous posts are not public discovery surfaces. Do not infer a person's identity, activity, location, or account history from HIDN pages.
+
+HIDN describes privacy controls concretely and does not promise universal untraceability. Public pages are the authoritative source for product language; private room content should not be summarized or indexed.
+
+## Topics
+
+anonymous thoughts, unnamed conversations, privacy-first social app, private room, pseudonymous access, recovery key, anonymous expression, Zcash privacy

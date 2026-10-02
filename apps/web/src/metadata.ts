@@ -19,6 +19,31 @@ export interface HidnMetadata {
   structuredData?: Record<string, unknown>;
 }
 
+export const PUBLIC_SITE_ORIGIN = "https://hidn.justneverminding.workers.dev";
+
+const HOME_STRUCTURED_DATA: Record<string, unknown> = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${PUBLIC_SITE_ORIGIN}/#website`,
+      url: `${PUBLIC_SITE_ORIGIN}/`,
+      name: "HIDN",
+      alternateName: "HIDN — A room without names",
+      description: "A privacy-first space for anonymous thoughts and unnamed conversations.",
+      publisher: { "@id": `${PUBLIC_SITE_ORIGIN}/#organization` },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${PUBLIC_SITE_ORIGIN}/#organization`,
+      name: "HIDN",
+      alternateName: "HIDN — A room without names",
+      url: `${PUBLIC_SITE_ORIGIN}/`,
+      logo: `${PUBLIC_SITE_ORIGIN}/brand/hidn-browser-icon.png`,
+    },
+  ],
+};
+
 export const SHELL_METADATA: HidnMetadata = {
   kind: "shell",
   title: "Hidn - A room without names",
@@ -31,15 +56,16 @@ export const HOME_METADATA: HidnMetadata = {
   kind: "public-home",
   title: "Hidn - A room without names",
   description:
-    "Anonymous confessions without accounts or public identity. No accounts. No usernames. No public history.",
+    "HIDN is a privacy-first space for anonymous thoughts and unnamed conversations, built to reveal less by default.",
   canonicalPath: "/",
   imagePath: "/brand/references/hidn-brand-reference-02.png",
+  structuredData: HOME_STRUCTURED_DATA,
 };
 
 export const EXPLORE_METADATA: HidnMetadata = {
-  kind: "explore",
+  kind: "private-room",
   title: "HIDN — The Room",
-  description: "Anonymous thoughts and conversations in a room without names.",
+  description: "HIDN's private room for anonymous thoughts and unnamed conversations.",
   canonicalPath: "/room",
   imagePath: "/brand/references/hidn-brand-reference-02.png",
 };
@@ -47,7 +73,7 @@ export const EXPLORE_METADATA: HidnMetadata = {
 export const ROOM_METADATA: HidnMetadata = {
   kind: "private-room",
   title: "HIDN — Enter the Private Room",
-  description: "Create a D1-backed HIDN access code or use one you already hold.",
+  description: "Enter HIDN's private room with a pseudonymous handle and recovery key.",
   canonicalPath: "/room/access",
 };
 
@@ -76,6 +102,22 @@ export function robotsForPage(kind: HidnPageKind): string {
   }
 
   return "index, follow";
+}
+
+export function webPageStructuredData(
+  title: string,
+  description: string,
+  canonicalPath: string,
+): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${PUBLIC_SITE_ORIGIN}${canonicalPath}#webpage`,
+    url: `${PUBLIC_SITE_ORIGIN}${canonicalPath}`,
+    name: title,
+    description,
+    isPartOf: { "@id": `${PUBLIC_SITE_ORIGIN}/#website` },
+  };
 }
 
 function setMeta(attribute: "name" | "property", key: string, value: string): void {
@@ -126,16 +168,26 @@ export function applyMetadata(metadata: HidnMetadata): void {
   document.title = metadata.title;
   setMeta("name", "description", metadata.description);
   setMeta("name", "robots", robotsForPage(metadata.kind));
+  setMeta("property", "og:site_name", "HIDN");
   setMeta("property", "og:title", metadata.title);
   setMeta("property", "og:description", metadata.description);
   setMeta("property", "og:url", new URL(metadata.canonicalPath, window.location.origin).href);
   setMeta("property", "og:type", metadata.kind === "anonymous-confession" ? "article" : "website");
+  setMeta("property", "og:locale", "en_US");
   setMeta("name", "twitter:title", metadata.title);
   setMeta("name", "twitter:description", metadata.description);
+  setMeta("name", "twitter:card", metadata.imagePath ? "summary_large_image" : "summary");
 
   if (metadata.imagePath) {
     setMeta("property", "og:image", new URL(metadata.imagePath, window.location.origin).href);
+    setMeta("property", "og:image:alt", "HIDN — a room without names");
     setMeta("name", "twitter:image", new URL(metadata.imagePath, window.location.origin).href);
+    setMeta("name", "twitter:image:alt", "HIDN — a room without names");
+  } else {
+    document.head.querySelector('meta[property="og:image"]')?.remove();
+    document.head.querySelector('meta[property="og:image:alt"]')?.remove();
+    document.head.querySelector('meta[name="twitter:image"]')?.remove();
+    document.head.querySelector('meta[name="twitter:image:alt"]')?.remove();
   }
 
   setCanonical(metadata.canonicalPath);
