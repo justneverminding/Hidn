@@ -4879,17 +4879,6 @@
   animation: hidn-verification-notice-rise 420ms var(--hidn-ease-sharp) both;
 }
 
-.hidn-verification-notice__panel::after {
-  background: linear-gradient(90deg, transparent, rgba(93, 255, 143, 0.35), transparent);
-  content: "";
-  height: 1px;
-  left: 10%;
-  position: absolute;
-  right: 10%;
-  top: 0;
-  animation: hidn-verification-notice-scan 1.8s ease-in-out infinite;
-}
-
 .hidn-verification-notice__signal,
 .hidn-verification-notice__subline {
   display: block;
@@ -4903,35 +4892,83 @@
   letter-spacing: 0.16em;
 }
 
-.hidn-verification-notice__mark {
-  align-items: end;
-  display: inline-flex;
-  gap: 0.22rem;
-  height: 2rem;
-  margin: 1.5rem auto 0.75rem;
+.hidn-verification-notice__sky {
+  height: 5.25rem;
+  margin: 1.25rem -1rem 0.8rem;
+  overflow: hidden;
+  position: relative;
 }
 
-.hidn-verification-notice__mark i {
-  animation: hidn-verification-notice-signal 0.8s steps(2, end) infinite;
-  background: var(--hidn-signal);
-  box-shadow: 0 0 0.7rem rgba(93, 255, 143, 0.4);
+.hidn-verification-notice__sky::before,
+.hidn-verification-notice__sky::after {
+  background: linear-gradient(90deg, transparent, rgba(93, 255, 143, 0.18), transparent);
+  content: "";
+  height: 1px;
+  left: 8%;
+  position: absolute;
+  right: 8%;
+}
+
+.hidn-verification-notice__sky::before {
+  top: 0.65rem;
+}
+
+.hidn-verification-notice__sky::after {
+  bottom: 0.65rem;
+  opacity: 0.45;
+}
+
+.hidn-verification-notice__flight {
+  align-items: center;
+  display: flex;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-140%, -50%) rotate(-1deg);
+  white-space: nowrap;
+  animation: hidn-verification-notice-flight 5.2s var(--hidn-ease) both;
+}
+
+.hidn-verification-notice__banner {
+  background: var(--hidn-broadcast-amber);
+  color: #091009;
   display: block;
-  height: 0.5rem;
-  width: 0.18rem;
+  font-family: var(--hidn-font-mono);
+  font-size: clamp(0.65rem, 2vw, 0.82rem);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  padding: 0.65rem 0.9rem;
+  position: relative;
 }
 
-.hidn-verification-notice__mark i:nth-child(1) {
-  height: 0.9rem;
+.hidn-verification-notice__banner::after {
+  border-bottom: 0.45rem solid transparent;
+  border-left: 0.45rem solid var(--hidn-broadcast-amber);
+  border-top: 0.45rem solid transparent;
+  content: "";
+  position: absolute;
+  right: -0.44rem;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
-.hidn-verification-notice__mark i:nth-child(2) {
-  animation-delay: -0.2s;
-  height: 1.5rem;
+.hidn-verification-notice__towline {
+  background: var(--hidn-broadcast-amber);
+  display: block;
+  height: 1px;
+  opacity: 0.8;
+  width: 1.2rem;
 }
 
-.hidn-verification-notice__mark i:nth-child(3) {
-  animation-delay: -0.4s;
-  height: 1.1rem;
+.hidn-verification-notice__plane {
+  color: var(--hidn-signal);
+  display: block;
+  filter: drop-shadow(0 0 0.45rem rgba(93, 255, 143, 0.5));
+  font-family: Arial, sans-serif;
+  font-size: 1.6rem;
+  line-height: 1;
+  transform: translateY(-0.1rem) rotate(-2deg);
 }
 
 .hidn-verification-notice__panel h2 {
@@ -4993,29 +5030,24 @@
   }
 }
 
-@keyframes hidn-verification-notice-scan {
-  0%,
-  100% {
-    opacity: 0.2;
-    transform: translateX(-12%);
+@keyframes hidn-verification-notice-flight {
+  0% {
+    opacity: 0;
+    transform: translate(-140%, -50%) rotate(-1deg);
   }
 
-  50% {
-    opacity: 0.75;
-    transform: translateX(12%);
-  }
-}
-
-@keyframes hidn-verification-notice-signal {
-  0%,
-  100% {
-    opacity: 0.45;
-    transform: scaleY(0.8);
-  }
-
-  50% {
+  12% {
     opacity: 1;
-    transform: scaleY(1);
+  }
+
+  78% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-1deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(140%, -50%) rotate(-1deg);
   }
 }
 
@@ -5028,6 +5060,10 @@
     padding: 2.2rem 1.25rem;
   }
 
+  .hidn-verification-notice__sky {
+    margin-inline: -0.5rem;
+  }
+
   .hidn-verification-notice__panel h2 {
     font-size: clamp(2.35rem, 15vw, 3.6rem);
   }
@@ -5036,9 +5072,13 @@
 @media (prefers-reduced-motion: reduce) {
   .hidn-verification-notice,
   .hidn-verification-notice__panel,
-  .hidn-verification-notice__panel::after,
-  .hidn-verification-notice__mark i {
+  .hidn-verification-notice__flight {
     animation: none;
+  }
+
+  .hidn-verification-notice__flight {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-1deg);
   }
 }
 
