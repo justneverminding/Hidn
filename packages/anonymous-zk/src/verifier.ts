@@ -20,6 +20,24 @@ async function loadGroth16Runtime(): Promise<Groth16Runtime> {
     runtimeGlobal.process.browser = true;
   }
 
+  // Some edge runtimes expose a Worker constructor even though they do not
+  // support the browser worker protocol that ffjavascript expects. That
+  // makes its curve runtime choose the threaded path and fail before proof
+  // verification starts. Verification is small enough to run single-threaded
+  // here, so hide the constructor while the runtime is loaded.
+  try {
+    (runtimeGlobal as unknown as { Worker?: unknown }).Worker = undefined;
+    if ("Worker" in runtimeGlobal) {
+      Object.defineProperty(runtimeGlobal, "Worker", {
+        configurable: true,
+        value: undefined,
+      });
+    }
+  } catch {
+    // If the host exposes a non-configurable Worker, the runtime will still
+    // be loaded and the verifier will safely reject on an unsupported path.
+  }
+
   // The browser build of ffjavascript creates a helper Worker at module load.
   // Cloudflare Workers do not expose URL.createObjectURL, and they do not need
   // that helper for verification. Provide a harmless data URL fallback before
@@ -51,7 +69,9 @@ export async function verifyAnonymousGroth16Proof(
   try {
     const groth16 = await loadGroth16Runtime();
     return await groth16.verify(verificationKey, publicSignals, proof);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.error(`ANONYMOUS_ZK_VERIFY_FAILED / ${message.slice(0, 240)}`);
     return false;
   }
 }

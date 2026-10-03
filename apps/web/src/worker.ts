@@ -13,6 +13,8 @@ import {
 } from "@hidn/anonymous-zk";
 import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
 
+// Keep the edge verifier bundle fresh when its shared anonymous-zk runtime changes.
+
 const CIPHERSCAN_RECENT_BLOCKS_URL =
   "https://api.mainnet.cipherscan.app/api/blocks?limit=1";
 const SHIELDEDSCAN_STATUS_URL = "https://api.shieldedscan.xyz/v1/status";
