@@ -1,3 +1,4 @@
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
@@ -106,7 +107,40 @@ function shieldedScanStatsPlugin() {
   };
 }
 
+function anonymousZkAssetsPlugin() {
+  const sourceRoot = fileURLToPath(new URL("../../packages/anonymous-zk/build", import.meta.url));
+  const targetRoot = fileURLToPath(new URL("../../public/anonymous-zk", import.meta.url));
+  const assets = [
+    ["hidn_membership_js/hidn_membership.wasm", "hidn_membership_js/hidn_membership.wasm"],
+    ["hidn_membership_final.zkey", "hidn_membership_final.zkey"],
+  ] as const;
+
+  return {
+    name: "hidn-anonymous-zk-assets",
+    buildStart() {
+      for (const [sourceRelativePath, targetRelativePath] of assets) {
+        const source = `${sourceRoot}/${sourceRelativePath}`;
+        const target = `${targetRoot}/${targetRelativePath}`;
+        if (existsSync(source)) {
+          mkdirSync(target.slice(0, target.lastIndexOf("/")), { recursive: true });
+          copyFileSync(source, target);
+        }
+        if (!existsSync(target)) {
+          throw new Error(
+            `Missing anonymous ZK asset: ${targetRelativePath}. `
+              + "Build the circuit or restore the tracked public asset before deploying.",
+          );
+        }
+      }
+    },
+  };
+}
+
 const apiProxy = {
+  "/api/anonymous": {
+    changeOrigin: true,
+    target: roomApiTarget,
+  },
   "/api/account": {
     changeOrigin: true,
     target: roomApiTarget,
@@ -142,7 +176,7 @@ export default defineConfig({
   // Keep the repository-level /public directory as the single future asset
   // source, including the canonical HIDN brand asset locations.
   publicDir: fileURLToPath(new URL("../../public", import.meta.url)),
-  plugins: [shieldedScanStatsPlugin()],
+  plugins: [shieldedScanStatsPlugin(), anonymousZkAssetsPlugin()],
   server: {
     proxy: apiProxy,
   },

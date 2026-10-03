@@ -3,6 +3,15 @@ import {
   isValidZkPublicKey,
   verifyZkProof,
 } from "@hidn/zk";
+import {
+  ANONYMOUS_PROTOCOL_VERSION,
+  ANONYMOUS_TREE_DEPTH,
+  anonymousBinding,
+  canonicalAnonymousMessage,
+  createAnonymousMerkleSnapshot,
+  parseField,
+} from "@hidn/anonymous-zk";
+import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
 
 const CIPHERSCAN_RECENT_BLOCKS_URL =
   "https://api.mainnet.cipherscan.app/api/blocks?limit=1";
@@ -37,6 +46,8 @@ const ABUSE_COOLDOWN_MAX_MS = 15 * 60 * 1000;
 const LIVE_ACTIVITY_LIMIT = 8;
 const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
 const NOTIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ANONYMOUS_NOTIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ANONYMOUS_MAX_MEMBERS = 2 ** ANONYMOUS_TREE_DEPTH;
 const AMBIENT_ROOM_THREAD_IDS = new Set([
   "00417",
   "00416",
@@ -103,6 +114,8 @@ interface HidnWorkerEnv {
   CLOUDFLARE_ACCESS_AUD?: string;
   HIDN_SUPER_ADMIN_ACCESS_SUBJECT?: string;
   HIDN_SUPER_ADMIN_EMAIL?: string;
+  ANONYMOUS_ZK_ENABLED?: string;
+  ANONYMOUS_ZK_VERIFICATION_KEY?: string;
 }
 
 interface ShieldedScanStatusPayload {
@@ -243,6 +256,7 @@ interface RoomPostRow {
   reactions?: number;
   reply_count?: number;
   liked_by_current_user?: number;
+  anonymous_notification_capability_hash?: string | null;
 }
 
 interface AccountHistoryPostRow extends RoomPostRow {
@@ -264,6 +278,32 @@ interface RoomReplyRow {
   created_at: string;
   author_user_id?: string | null;
   submission_id?: string | null;
+  anonymous_notification_capability_hash?: string | null;
+}
+
+interface AnonymousMembershipRow {
+  commitment: string;
+  leaf_index: number;
+  display_alias: string;
+  notification_capability_hash: string;
+  created_at: string;
+}
+
+interface AnonymousRootRow {
+  root: string;
+  leaf_count: number;
+  created_at: string;
+}
+
+interface AnonymousNotificationRow {
+  notification_id: string;
+  event_type: NotificationEventType;
+  actor_alias: string;
+  target_type: "thread" | "reply";
+  target_id: string;
+  thread_id: string | null;
+  created_at: string;
+  read_at: string | null;
 }
 
 interface RoomNotificationRow {
@@ -334,6 +374,18 @@ function jsonResponse(
       ...extraHeaders,
     },
   });
+}
+
+function anonymousZkAssetContentType(pathname: string): string | null {
+  if (pathname === "/anonymous-zk/hidn_membership_js/hidn_membership.wasm") {
+    return "application/wasm";
+  }
+
+  if (pathname === "/anonymous-zk/hidn_membership_final.zkey") {
+    return "application/octet-stream";
+  }
+
+  return null;
 }
 
 async function getZecUsdPrice(env: HidnWorkerEnv): Promise<{ price: number; source: string }> {
@@ -429,6 +481,47 @@ function databaseUnavailable(env: HidnWorkerEnv): Response | undefined {
   );
 }
 
+function anonymousZkConfigured(env: HidnWorkerEnv): boolean {
+  return env.ANONYMOUS_ZK_ENABLED?.trim().toLowerCase() === "true"
+    && Boolean(env.ANONYMOUS_ZK_VERIFICATION_KEY?.trim());
+}
+
+function anonymousZkUnavailable(env: HidnWorkerEnv): Response | undefined {
+  if (anonymousZkConfigured(env)) {
+    return undefined;
+  }
+
+  return jsonResponse(
+    {
+      error: "Anonymous ZK participation is not activated on this Worker yet.",
+      code: "ANONYMOUS_ZK_NOT_CONFIGURED",
+      torRequiredForNetworkPrivacy: true,
+    },
+    503,
+    "no-store",
+  );
+}
+
+function isValidAnonymousAlias(value: string): boolean {
+  return /^ANON-[A-Z0-9]{5,12}$/.test(value);
+}
+
+function isValidAnonymousCapability(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value);
+}
+
+function normalizeAnonymousField(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  try {
+    return parseField(value.trim()).toString(10);
+  } catch {
+    return null;
+  }
+}
+
 function createRandomHex(byteLength: number): string {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);
@@ -481,6 +574,10 @@ function createActivityEventId(): string {
 
 function createNotificationId(): string {
   return `NTF-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createAnonymousNotificationId(): string {
+  return `ANF-${createRandomHex(12).toUpperCase()}`;
 }
 
 function createNotificationAlias(): string {
@@ -1165,6 +1262,7 @@ async function createAccountNotification(
   eventType: NotificationEventType,
   targetType: "thread" | "reply",
   targetId: string,
+  actorAlias = createNotificationAlias(),
 ): Promise<void> {
   if (!env.ROOM_DB || !recipientUserId) {
     return;
@@ -1176,11 +1274,817 @@ async function createAccountNotification(
         (notification_id, recipient_user_id, event_type, actor_alias, target_type, target_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(createNotificationId(), recipientUserId, eventType, createNotificationAlias(), targetType, targetId, new Date().toISOString())
+      .bind(createNotificationId(), recipientUserId, eventType, actorAlias, targetType, targetId, new Date().toISOString())
       .run();
   } catch {
     // A notification must never turn a successful post, reply, or reaction into a retry.
   }
+}
+
+async function createAnonymousNotification(
+  env: HidnWorkerEnv,
+  recipientCapabilityHash: string | null | undefined,
+  eventType: NotificationEventType,
+  actorAlias: string,
+  targetType: "thread" | "reply",
+  targetId: string,
+  threadId: string | null,
+): Promise<void> {
+  if (!env.ROOM_DB || !recipientCapabilityHash) {
+    return;
+  }
+
+  try {
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_anonymous_notifications
+        (notification_id, recipient_capability_hash, event_type, actor_alias,
+         target_type, target_id, thread_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        createAnonymousNotificationId(),
+        recipientCapabilityHash,
+        eventType,
+        actorAlias,
+        targetType,
+        targetId,
+        threadId,
+        new Date().toISOString(),
+      )
+      .run();
+  } catch {
+    // A notification must never turn a successful anonymous action into a retry.
+  }
+}
+
+async function listAnonymousMembers(env: HidnWorkerEnv): Promise<AnonymousMembershipRow[]> {
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT commitment, leaf_index, display_alias,
+            notification_capability_hash, created_at
+     FROM hidn_anonymous_members
+     ORDER BY leaf_index ASC
+     LIMIT ${ANONYMOUS_MAX_MEMBERS}`,
+  ).all<AnonymousMembershipRow>();
+  return result.results.sort((left, right) => left.leaf_index - right.leaf_index);
+}
+
+async function rememberAnonymousRoot(
+  env: HidnWorkerEnv,
+  root: string,
+  leafCount: number,
+): Promise<void> {
+  await env.ROOM_DB!.prepare(
+    `INSERT OR IGNORE INTO hidn_anonymous_roots (root, leaf_count, created_at)
+     VALUES (?, ?, ?)`,
+  )
+    .bind(root, leafCount, new Date().toISOString())
+    .run();
+}
+
+async function anonymousTreeSnapshot(env: HidnWorkerEnv): Promise<{
+  members: AnonymousMembershipRow[];
+  tree: ReturnType<typeof createAnonymousMerkleSnapshot>;
+}> {
+  const members = await listAnonymousMembers(env);
+  const tree = createAnonymousMerkleSnapshot(members.map((member) => member.commitment), ANONYMOUS_TREE_DEPTH);
+  await rememberAnonymousRoot(env, tree.root.toString(10), members.length);
+  return { members, tree };
+}
+
+function anonymousProofObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  try {
+    if (JSON.stringify(value).length > 24_000) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+interface VerifiedAnonymousAction {
+  root: string;
+  nullifier: string;
+  binding: string;
+  scope: string;
+}
+
+async function verifyAnonymousAction(
+  env: HidnWorkerEnv,
+  body: Record<string, unknown>,
+  action: "post" | "reply" | "reaction",
+  targetType: "room" | "thread" | "reply",
+  targetId: string,
+  content: string,
+): Promise<VerifiedAnonymousAction | Response> {
+  const protocol = typeof body.protocol === "string" ? body.protocol.trim() : "";
+  if (protocol !== ANONYMOUS_PROTOCOL_VERSION) {
+    return jsonResponse({ error: "This anonymous proof uses an unsupported protocol version." }, 400);
+  }
+
+  const proof = anonymousProofObject(body.proof);
+  const publicSignalValues = Array.isArray(body.publicSignals)
+    ? body.publicSignals.filter((value): value is string => typeof value === "string").map((value) => value.trim())
+    : [];
+  if (!proof || publicSignalValues.length !== 3) {
+    return jsonResponse({ error: "Send a complete anonymous membership proof." }, 400);
+  }
+
+  const root = normalizeAnonymousField(publicSignalValues[0]);
+  const nullifier = normalizeAnonymousField(publicSignalValues[1]);
+  const binding = normalizeAnonymousField(publicSignalValues[2]);
+  const scope = normalizeAnonymousField(body.scope);
+  if (!root || !nullifier || !binding || !scope) {
+    return jsonResponse({ error: "The anonymous proof signals are invalid." }, 400);
+  }
+
+  const rootRow = await env.ROOM_DB!.prepare(
+    `SELECT root, leaf_count, created_at
+     FROM hidn_anonymous_roots
+     WHERE root = ?
+     LIMIT 1`,
+  )
+    .bind(root)
+    .first<AnonymousRootRow>();
+  if (!rootRow) {
+    return jsonResponse({ error: "That anonymous membership root is no longer accepted." }, 400);
+  }
+
+  const message = canonicalAnonymousMessage(action, targetType, targetId, content);
+  let expectedBinding: string;
+  try {
+    expectedBinding = anonymousBinding(nullifier, message);
+  } catch {
+    return jsonResponse({ error: "The anonymous action message is too large for this circuit." }, 400);
+  }
+  if (expectedBinding !== binding) {
+    return jsonResponse({ error: "The anonymous proof is not bound to this action." }, 400);
+  }
+
+  const existingAction = await env.ROOM_DB!.prepare(
+    `SELECT nullifier
+     FROM hidn_anonymous_actions
+     WHERE nullifier = ?
+     LIMIT 1`,
+  )
+    .bind(nullifier)
+    .first<{ nullifier: string }>();
+  if (existingAction) {
+    return jsonResponse(
+      { error: "This anonymous action has already been used.", code: "ANONYMOUS_NULLIFIER_USED" },
+      409,
+    );
+  }
+
+  let verificationKey: unknown;
+  try {
+    verificationKey = JSON.parse(env.ANONYMOUS_ZK_VERIFICATION_KEY ?? "");
+  } catch {
+    return jsonResponse({ error: "The anonymous verification key is not valid JSON." }, 503);
+  }
+
+  const valid = await verifyAnonymousGroth16Proof(verificationKey, publicSignalValues, proof);
+  if (!valid) {
+    return jsonResponse({ error: "The anonymous membership proof could not be verified." }, 400);
+  }
+
+  return { root, nullifier, binding, scope };
+}
+
+async function reserveAnonymousAction(
+  env: HidnWorkerEnv,
+  action: VerifiedAnonymousAction,
+  actionType: "post" | "reply" | "reaction",
+  targetType: "room" | "thread" | "reply",
+  targetId: string,
+): Promise<Response | undefined> {
+  try {
+    await env.ROOM_DB!.prepare(
+      `INSERT INTO hidn_anonymous_actions
+        (nullifier, scope, binding, action_type, target_type, target_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        action.nullifier,
+        action.scope,
+        action.binding,
+        actionType,
+        targetType,
+        targetId,
+        new Date().toISOString(),
+      )
+      .run();
+    return undefined;
+  } catch {
+    return jsonResponse(
+      { error: "This anonymous action has already been used.", code: "ANONYMOUS_NULLIFIER_USED" },
+      409,
+    );
+  }
+}
+
+async function assessAnonymousAbuse(
+  request: Request,
+  env: HidnWorkerEnv,
+  content: string,
+): Promise<Response | undefined> {
+  const now = Date.now();
+  const edgeSignalKey = await abuseSignalKeyForEdge(request, now);
+  if (!edgeSignalKey) {
+    return undefined;
+  }
+
+  const contentHash = await hashText(normalizeAbuseContent(content));
+  const observation = await updateAbuseSignal(
+    env,
+    edgeSignalKey,
+    contentHash,
+    now,
+    ABUSE_COOLDOWN_RISK_THRESHOLD,
+  );
+  return observation?.cooldownUntil ? abuseCooldownResponse(observation.cooldownUntil) : undefined;
+}
+
+async function getAnonymousStatus(_request: Request, env: HidnWorkerEnv): Promise<Response> {
+  return jsonResponse({
+    enabled: anonymousZkConfigured(env),
+    protocol: ANONYMOUS_PROTOCOL_VERSION,
+    treeDepth: ANONYMOUS_TREE_DEPTH,
+    maxMembers: ANONYMOUS_MAX_MEMBERS,
+    networkPrivacy: "direct until a relay or Tor transport is added",
+  });
+}
+
+async function enrollAnonymousMember(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const commitment = normalizeAnonymousField(body.commitment);
+  const notificationCapability = typeof body.notificationCapability === "string"
+    ? body.notificationCapability.trim().toLowerCase()
+    : "";
+  if (!commitment || !isValidAnonymousCapability(notificationCapability)) {
+    return jsonResponse({ error: "Send a valid anonymous commitment and notification capability." }, 400);
+  }
+
+  let member = await env.ROOM_DB!.prepare(
+    `SELECT commitment, leaf_index, display_alias,
+            notification_capability_hash, created_at
+     FROM hidn_anonymous_members
+     WHERE commitment = ?
+     LIMIT 1`,
+  )
+    .bind(commitment)
+    .first<AnonymousMembershipRow>();
+
+  if (!member) {
+    const nextLeaf = await env.ROOM_DB!.prepare(
+      `SELECT COALESCE(MAX(leaf_index), -1) + 1 AS next_leaf
+       FROM hidn_anonymous_members`,
+    ).first<{ next_leaf: number }>();
+    const leafIndex = Number(nextLeaf?.next_leaf ?? 0);
+    if (leafIndex >= ANONYMOUS_MAX_MEMBERS) {
+      return jsonResponse({ error: "The anonymous membership tree is full for this milestone." }, 503);
+    }
+
+    member = {
+      commitment,
+      leaf_index: leafIndex,
+      display_alias: createNotificationAlias(),
+      notification_capability_hash: await hashText(notificationCapability),
+      created_at: new Date().toISOString(),
+    };
+    try {
+      await env.ROOM_DB!.prepare(
+        `INSERT INTO hidn_anonymous_members
+          (commitment, leaf_index, display_alias, notification_capability_hash, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          member.commitment,
+          member.leaf_index,
+          member.display_alias,
+          member.notification_capability_hash,
+          member.created_at,
+        )
+        .run();
+    } catch {
+      return jsonResponse({ error: "That anonymous credential was enrolled concurrently. Try again." }, 409);
+    }
+  }
+
+  const snapshot = await anonymousTreeSnapshot(env);
+  const witness = snapshot.tree.witness(member.leaf_index);
+  return jsonResponse({
+    protocol: ANONYMOUS_PROTOCOL_VERSION,
+    treeDepth: ANONYMOUS_TREE_DEPTH,
+    commitment,
+    displayAlias: member.display_alias,
+    root: witness.root,
+    leafIndex: witness.leafIndex,
+    pathElements: witness.pathElements,
+    pathIndices: witness.pathIndices,
+  }, 201, "no-store");
+}
+
+function anonymousAliasFromBody(body: Record<string, unknown>): string | null {
+  const alias = typeof body.alias === "string" ? body.alias.trim().toUpperCase() : "";
+  return isValidAnonymousAlias(alias) ? alias : null;
+}
+
+function anonymousCapabilityFromBody(body: Record<string, unknown>): string | null {
+  const capability = typeof body.notificationCapability === "string"
+    ? body.notificationCapability.trim().toLowerCase()
+    : "";
+  return isValidAnonymousCapability(capability) ? capability : null;
+}
+
+async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
+  const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
+  const alias = anonymousAliasFromBody(body);
+  const notificationCapability = anonymousCapabilityFromBody(body);
+  if (!content) {
+    return jsonResponse({ error: "Write something before creating the anonymous post." }, 400);
+  }
+  if (content.length > ROOM_FREE_POST_MAX_LENGTH) {
+    return jsonResponse({ error: `Anonymous posts must be ${ROOM_FREE_POST_MAX_LENGTH} characters or fewer.` }, 400);
+  }
+  if (!alias || !notificationCapability) {
+    return jsonResponse({ error: "This anonymous identity is missing its local alias or notification capability." }, 400);
+  }
+  if (!isRoomChannel(channel)) {
+    return jsonResponse({ error: "Choose a valid room channel." }, 400);
+  }
+  if (!ROOM_POST_CATEGORIES.has(category)) {
+    return jsonResponse({ error: "Choose a valid post category." }, 400);
+  }
+
+  const action = await verifyAnonymousAction(
+    env,
+    body,
+    "post",
+    "room",
+    channel,
+    content,
+  );
+  if (action instanceof Response) {
+    return action;
+  }
+
+  const abuseResponse = await assessAnonymousAbuse(request, env, content);
+  if (abuseResponse) {
+    return abuseResponse;
+  }
+
+  const post: RoomPostRow = {
+    thread_id: createThreadId(),
+    content,
+    category,
+    channel,
+    created_at: new Date().toISOString(),
+  };
+  const actionConflict = await reserveAnonymousAction(env, action, "post", "room", post.thread_id);
+  if (actionConflict) {
+    return actionConflict;
+  }
+
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_threads
+      (thread_id, room_id, content, category, moderation_state, created_at,
+       updated_at, hidden_at, channel, author_user_id, anonymous_root,
+       anonymous_nullifier, anonymous_binding, anonymous_alias,
+       anonymous_notification_capability_hash)
+     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      post.thread_id,
+      MAIN_ROOM_ID,
+      post.content,
+      post.category,
+      post.created_at,
+      post.created_at,
+      post.channel,
+      action.root,
+      action.nullifier,
+      action.binding,
+      alias,
+      await hashText(notificationCapability),
+    )
+    .run();
+
+  await recordActivityEvent(env, "JUST POSTED", "A THOUGHT");
+  return jsonResponse(
+    { post: serializeRoomPost(post), status: "created", anonymousAlias: alias },
+    201,
+    "no-store",
+  );
+}
+
+async function createAnonymousReply(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const threadId = typeof body.threadId === "string" ? body.threadId.trim().toUpperCase() : "";
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  const alias = anonymousAliasFromBody(body);
+  const notificationCapability = anonymousCapabilityFromBody(body);
+  if (!/^THR-[A-F0-9]{24}$/.test(threadId)) {
+    return jsonResponse({ error: "Choose a valid private-room thread." }, 400);
+  }
+  if (!content) {
+    return jsonResponse({ error: "Write something before replying anonymously." }, 400);
+  }
+  if (content.length > ROOM_FREE_REPLY_MAX_LENGTH) {
+    return jsonResponse({ error: `Anonymous replies must be ${ROOM_FREE_REPLY_MAX_LENGTH} characters or fewer.` }, 400);
+  }
+  if (!alias || !notificationCapability) {
+    return jsonResponse({ error: "This anonymous identity is missing its local alias or notification capability." }, 400);
+  }
+
+  const thread = await env.ROOM_DB!.prepare(
+    `SELECT thread_id, channel, author_user_id, anonymous_notification_capability_hash
+     FROM hidn_threads
+     WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
+     LIMIT 1`,
+  )
+    .bind(threadId, MAIN_ROOM_ID)
+    .first<{
+      thread_id: string;
+      channel: RoomChannel;
+      author_user_id: string | null;
+      anonymous_notification_capability_hash: string | null;
+    }>();
+  if (!thread) {
+    return jsonResponse({ error: "That thread is no longer available for anonymous replies." }, 404);
+  }
+
+  const action = await verifyAnonymousAction(env, body, "reply", "thread", thread.thread_id, content);
+  if (action instanceof Response) {
+    return action;
+  }
+  const abuseResponse = await assessAnonymousAbuse(request, env, content);
+  if (abuseResponse) {
+    return abuseResponse;
+  }
+
+  const reply: RoomReplyRow = {
+    reply_id: createReplyId(),
+    thread_id: thread.thread_id,
+    content,
+    channel: thread.channel,
+    moderation_state: "visible",
+    created_at: new Date().toISOString(),
+  };
+  const actionConflict = await reserveAnonymousAction(env, action, "reply", "thread", reply.reply_id);
+  if (actionConflict) {
+    return actionConflict;
+  }
+
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_replies
+      (reply_id, thread_id, content, moderation_state, created_at, hidden_at,
+       author_user_id, submission_id, anonymous_root, anonymous_nullifier,
+       anonymous_binding, anonymous_alias, anonymous_notification_capability_hash)
+     VALUES (?, ?, ?, 'visible', ?, NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      reply.reply_id,
+      reply.thread_id,
+      reply.content,
+      reply.created_at,
+      action.root,
+      action.nullifier,
+      action.binding,
+      alias,
+      await hashText(notificationCapability),
+    )
+    .run();
+
+  const actorAlias = alias;
+  if (thread.anonymous_notification_capability_hash) {
+    await createAnonymousNotification(
+      env,
+      thread.anonymous_notification_capability_hash,
+      "reply",
+      actorAlias,
+      "thread",
+      thread.thread_id,
+      thread.thread_id,
+    );
+  }
+  if (thread.author_user_id) {
+    await createAccountNotification(env, thread.author_user_id, "reply", "thread", thread.thread_id, actorAlias);
+  }
+
+  await recordActivityEvent(env, "JUST REPLIED", "A THREAD");
+  return jsonResponse(
+    { comment: serializeRoomComment(reply), status: "created", anonymousAlias: alias },
+    201,
+    "no-store",
+  );
+}
+
+async function createAnonymousReaction(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const body = await requestBody(request);
+  const targetType = body.targetType === "thread" || body.targetType === "reply" ? body.targetType : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId.trim().toUpperCase() : "";
+  const alias = anonymousAliasFromBody(body);
+  if (!targetType || !isAllowedRoomReactionTarget(targetType, targetId) || (targetType === "thread" && isAmbientRoomThreadId(targetId))) {
+    return jsonResponse({ error: "Choose a valid live room signal." }, 400);
+  }
+  if (!alias) {
+    return jsonResponse({ error: "This anonymous identity is missing its local alias." }, 400);
+  }
+
+  const target = targetType === "thread"
+    ? await env.ROOM_DB!.prepare(
+      `SELECT thread_id AS target_id, thread_id, author_user_id,
+              anonymous_notification_capability_hash
+       FROM hidn_threads
+       WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
+       LIMIT 1`,
+    )
+      .bind(targetId, MAIN_ROOM_ID)
+      .first<{
+        target_id: string;
+        thread_id: string;
+        author_user_id: string | null;
+        anonymous_notification_capability_hash: string | null;
+      }>()
+    : await env.ROOM_DB!.prepare(
+      `SELECT r.reply_id AS target_id, r.thread_id, r.author_user_id,
+              r.anonymous_notification_capability_hash
+       FROM hidn_replies r
+       JOIN hidn_threads t ON t.thread_id = r.thread_id
+       WHERE r.reply_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
+       LIMIT 1`,
+    )
+      .bind(targetId, MAIN_ROOM_ID)
+      .first<{
+        target_id: string;
+        thread_id: string;
+        author_user_id: string | null;
+        anonymous_notification_capability_hash: string | null;
+      }>();
+  if (!target) {
+    return jsonResponse({ error: "That live signal is no longer available." }, 404);
+  }
+
+  const action = await verifyAnonymousAction(env, body, "reaction", targetType, targetId, "like");
+  if (action instanceof Response) {
+    return action;
+  }
+  const abuseResponse = await assessAnonymousAbuse(request, env, "like");
+  if (abuseResponse) {
+    return abuseResponse;
+  }
+  const actionConflict = await reserveAnonymousAction(env, action, "reaction", targetType, targetId);
+  if (actionConflict) {
+    return actionConflict;
+  }
+
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_reactions
+      (reaction_id, target_type, target_id, reaction_type, actor_user_id,
+       anonymous_nullifier, anonymous_alias, created_at)
+     VALUES (?, ?, ?, 'like', NULL, ?, ?, ?)`,
+  )
+    .bind(
+      `REA-${createRandomHex(12).toUpperCase()}`,
+      targetType,
+      targetId,
+      action.nullifier,
+      alias,
+      new Date().toISOString(),
+    )
+    .run();
+
+  const count = await env.ROOM_DB!.prepare(
+    `SELECT COUNT(*) AS count
+     FROM hidn_reactions
+     WHERE target_type = ? AND target_id = ? AND reaction_type = 'like'`,
+  )
+    .bind(targetType, targetId)
+    .first<{ count: number }>();
+  if (target.anonymous_notification_capability_hash) {
+    await createAnonymousNotification(
+      env,
+      target.anonymous_notification_capability_hash,
+      "reaction",
+      alias,
+      targetType,
+      targetId,
+      target.thread_id,
+    );
+  }
+  if (target.author_user_id) {
+    await createAccountNotification(env, target.author_user_id, "reaction", targetType, targetId, alias);
+  }
+
+  return jsonResponse({ targetType, targetId, liked: true, reactions: Number(count?.count ?? 0) }, 201, "no-store");
+}
+
+async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const channel = new URL(request.url).searchParams.get("channel")?.trim().toLowerCase() ?? "general";
+  if (!isRoomChannel(channel)) {
+    return jsonResponse({ error: "Choose a valid room channel." }, 400);
+  }
+
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+            COUNT(r.reaction_id) AS reactions,
+            (SELECT COUNT(*)
+             FROM hidn_replies reply_count
+             WHERE reply_count.thread_id = t.thread_id
+               AND reply_count.moderation_state = 'visible') AS reply_count
+     FROM hidn_threads t
+     LEFT JOIN hidn_reactions r
+       ON r.target_type = 'thread'
+      AND r.target_id = t.thread_id
+      AND r.reaction_type = 'like'
+     WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible'
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     ORDER BY t.created_at DESC
+     LIMIT 100`,
+  )
+    .bind(MAIN_ROOM_ID, channel)
+    .all<RoomPostRow>();
+
+  return jsonResponse({ posts: result.results.map(serializeRoomPost), channel }, 200, "no-store");
+}
+
+async function listAnonymousThread(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const threadId = new URL(request.url).searchParams.get("threadId")?.trim().toUpperCase() ?? "";
+  if (!/^THR-[A-F0-9]{24}$/.test(threadId)) {
+    return jsonResponse({ error: "Choose a valid private-room thread." }, 400);
+  }
+
+  const post = await env.ROOM_DB!.prepare(
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+            COUNT(r.reaction_id) AS reactions,
+            (SELECT COUNT(*)
+             FROM hidn_replies reply_count
+             WHERE reply_count.thread_id = t.thread_id
+               AND reply_count.moderation_state = 'visible') AS reply_count
+     FROM hidn_threads t
+     LEFT JOIN hidn_reactions r
+       ON r.target_type = 'thread'
+      AND r.target_id = t.thread_id
+      AND r.reaction_type = 'like'
+     WHERE t.thread_id = ? AND t.room_id = ? AND t.moderation_state = 'visible'
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     LIMIT 1`,
+  )
+    .bind(threadId, MAIN_ROOM_ID)
+    .first<RoomPostRow>();
+  if (!post) {
+    return jsonResponse({ error: "That private thread is no longer available." }, 404);
+  }
+
+  const replies = await env.ROOM_DB!.prepare(
+    `SELECT r.reply_id, r.thread_id, r.content, t.channel,
+            r.moderation_state, r.created_at
+     FROM hidn_replies r
+     JOIN hidn_threads t ON t.thread_id = r.thread_id
+     WHERE r.thread_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
+     ORDER BY r.created_at ASC
+     LIMIT 200`,
+  )
+    .bind(threadId, MAIN_ROOM_ID)
+    .all<RoomReplyRow>();
+
+  return jsonResponse({ post: serializeRoomPost(post), replies: replies.results.map(serializeRoomComment) }, 200, "no-store");
+}
+
+async function listAnonymousNotifications(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const capability = request.headers.get("X-HIDN-Notification-Capability")?.trim().toLowerCase() ?? "";
+  if (!isValidAnonymousCapability(capability)) {
+    return jsonResponse({ error: "Send the local anonymous notification capability." }, 401);
+  }
+  const capabilityHash = await hashText(capability);
+  const cutoff = new Date(Date.now() - ANONYMOUS_NOTIFICATION_RETENTION_MS).toISOString();
+  await env.ROOM_DB!.prepare(
+    `DELETE FROM hidn_anonymous_notifications
+     WHERE recipient_capability_hash = ? AND created_at < ?`,
+  )
+    .bind(capabilityHash, cutoff)
+    .run();
+
+  const requestedLimit = Number(new URL(request.url).searchParams.get("limit") ?? "30");
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 30;
+  const [notifications, unread] = await Promise.all([
+    env.ROOM_DB!.prepare(
+      `SELECT notification_id, event_type, actor_alias, target_type, target_id,
+              thread_id, created_at, read_at
+       FROM hidn_anonymous_notifications
+       WHERE recipient_capability_hash = ? AND created_at >= ?
+       ORDER BY created_at DESC
+       LIMIT ${limit}`,
+    )
+      .bind(capabilityHash, cutoff)
+      .all<AnonymousNotificationRow>(),
+    env.ROOM_DB!.prepare(
+      `SELECT COUNT(*) AS count
+       FROM hidn_anonymous_notifications
+       WHERE recipient_capability_hash = ? AND created_at >= ? AND read_at IS NULL`,
+    )
+      .bind(capabilityHash, cutoff)
+      .first<{ count: number }>(),
+  ]);
+
+  return jsonResponse({
+    notifications: notifications.results.map((notification) => ({
+      id: notification.notification_id,
+      type: notification.event_type,
+      actorAlias: notification.actor_alias,
+      targetType: notification.target_type,
+      targetId: notification.target_id,
+      ...(notification.thread_id ? { threadId: notification.thread_id } : {}),
+      createdAt: notification.created_at,
+      readAt: notification.read_at,
+    })),
+    unreadCount: Number(unread?.count ?? 0),
+  }, 200, "no-store");
+}
+
+async function markAnonymousNotificationsRead(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const capability = request.headers.get("X-HIDN-Notification-Capability")?.trim().toLowerCase() ?? "";
+  if (!isValidAnonymousCapability(capability)) {
+    return jsonResponse({ error: "Send the local anonymous notification capability." }, 401);
+  }
+  const body = await requestBody(request);
+  const notificationIds = Array.isArray(body.notificationIds)
+    ? body.notificationIds
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 50)
+    : [];
+  const capabilityHash = await hashText(capability);
+  const readAt = new Date().toISOString();
+  if (notificationIds.length) {
+    const placeholders = notificationIds.map(() => "?").join(", ");
+    await env.ROOM_DB!.prepare(
+      `UPDATE hidn_anonymous_notifications
+       SET read_at = ?
+       WHERE recipient_capability_hash = ? AND read_at IS NULL AND notification_id IN (${placeholders})`,
+    )
+      .bind(readAt, capabilityHash, ...notificationIds)
+      .run();
+  } else {
+    await env.ROOM_DB!.prepare(
+      `UPDATE hidn_anonymous_notifications
+       SET read_at = ?
+       WHERE recipient_capability_hash = ? AND read_at IS NULL`,
+    )
+      .bind(readAt, capabilityHash)
+      .run();
+  }
+
+  return jsonResponse({ status: "read" });
 }
 
 async function hydrateNotificationAliases(
@@ -1339,25 +2243,37 @@ async function toggleRoomReaction(request: Request, env: HidnWorkerEnv): Promise
   }
 
   const target = targetType === "thread" && isAmbientRoomThreadId(targetId)
-    ? { target_id: targetId, author_user_id: null }
+    ? { target_id: targetId, thread_id: targetId, author_user_id: null, anonymous_notification_capability_hash: null }
     : targetType === "thread"
       ? await env.ROOM_DB!.prepare(
-        `SELECT thread_id AS target_id, author_user_id
+        `SELECT thread_id AS target_id, thread_id, author_user_id,
+                anonymous_notification_capability_hash
          FROM hidn_threads
          WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
          LIMIT 1`,
       )
         .bind(targetId, MAIN_ROOM_ID)
-        .first<{ target_id: string; author_user_id: string | null }>()
+        .first<{
+          target_id: string;
+          thread_id: string;
+          author_user_id: string | null;
+          anonymous_notification_capability_hash: string | null;
+        }>()
       : await env.ROOM_DB!.prepare(
-        `SELECT r.reply_id AS target_id, r.author_user_id
+        `SELECT r.reply_id AS target_id, r.thread_id, r.author_user_id,
+                r.anonymous_notification_capability_hash
          FROM hidn_replies r
          JOIN hidn_threads t ON t.thread_id = r.thread_id
          WHERE r.reply_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
          LIMIT 1`,
       )
         .bind(targetId, MAIN_ROOM_ID)
-        .first<{ target_id: string; author_user_id: string | null }>();
+        .first<{
+          target_id: string;
+          thread_id: string;
+          author_user_id: string | null;
+          anonymous_notification_capability_hash: string | null;
+        }>();
   if (!target) {
     return jsonResponse({ error: "That signal is no longer available." }, 404);
   }
@@ -1394,6 +2310,17 @@ async function toggleRoomReaction(request: Request, env: HidnWorkerEnv): Promise
     .first<{ count: number }>();
   if (liked && target.author_user_id && target.author_user_id !== user.userId) {
     await createAccountNotification(env, target.author_user_id, "reaction", targetType, targetId);
+  }
+  if (liked && target.anonymous_notification_capability_hash) {
+    await createAnonymousNotification(
+      env,
+      target.anonymous_notification_capability_hash,
+      "reaction",
+      createNotificationAlias(),
+      targetType,
+      targetId,
+      target.thread_id,
+    );
   }
 
   return jsonResponse({ targetType, targetId, liked, reactions: Number(count?.count ?? 0) });
@@ -1567,13 +2494,18 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
   }
 
   const thread = await env.ROOM_DB!.prepare(
-    `SELECT thread_id, channel, author_user_id
+    `SELECT thread_id, channel, author_user_id, anonymous_notification_capability_hash
      FROM hidn_threads
      WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
      LIMIT 1`,
   )
     .bind(threadId, MAIN_ROOM_ID)
-    .first<{ thread_id: string; channel: RoomChannel; author_user_id: string | null }>();
+    .first<{
+      thread_id: string;
+      channel: RoomChannel;
+      author_user_id: string | null;
+      anonymous_notification_capability_hash: string | null;
+    }>();
   if (!thread) {
     return jsonResponse({ error: "That thread is no longer available for replies." }, 404);
   }
@@ -1636,6 +2568,17 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
 
   if (thread.author_user_id && thread.author_user_id !== user.userId) {
     await createAccountNotification(env, thread.author_user_id, "reply", "thread", thread.thread_id);
+  }
+  if (thread.anonymous_notification_capability_hash) {
+    await createAnonymousNotification(
+      env,
+      thread.anonymous_notification_capability_hash,
+      "reply",
+      createNotificationAlias(),
+      "thread",
+      thread.thread_id,
+      thread.thread_id,
+    );
   }
 
   await recordActivityEvent(env, "JUST REPLIED", "A THREAD");
@@ -3514,6 +4457,100 @@ const worker = {
       }
     }
 
+    if (url.pathname === "/api/anonymous/status") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      return await getAnonymousStatus(request, env);
+    }
+
+    if (url.pathname === "/api/anonymous/enroll") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await enrollAnonymousMember(request, env);
+      } catch {
+        return jsonResponse({ error: "Anonymous membership could not be enrolled." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/posts") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return request.method === "GET"
+          ? await listAnonymousPosts(request, env)
+          : await createAnonymousPost(request, env);
+      } catch {
+        return jsonResponse({ error: request.method === "GET" ? "Anonymous posts could not be loaded." : "Anonymous post could not be created." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/thread") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listAnonymousThread(request, env);
+      } catch {
+        return jsonResponse({ error: "Anonymous thread could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/replies") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await createAnonymousReply(request, env);
+      } catch {
+        return jsonResponse({ error: "Anonymous reply could not be created." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/reactions") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await createAnonymousReaction(request, env);
+      } catch {
+        return jsonResponse({ error: "Anonymous reaction could not be saved." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/notifications") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listAnonymousNotifications(request, env);
+      } catch {
+        return jsonResponse({ error: "Anonymous notifications could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/notifications/read") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await markAnonymousNotificationsRead(request, env);
+      } catch {
+        return jsonResponse({ error: "Anonymous notifications could not be updated." }, 500);
+      }
+    }
+
     if (url.pathname === "/api/room/activity") {
       if (request.method !== "GET") {
         return jsonResponse({ error: "Method not allowed." }, 405);
@@ -3812,6 +4849,30 @@ const worker = {
 
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") ?? "";
+
+    const anonymousZkContentType = anonymousZkAssetContentType(url.pathname);
+    if (anonymousZkContentType) {
+      if (!assetResponse.ok || contentType.toLowerCase().includes("text/html")) {
+        return new Response("Anonymous proof assets are not available on this deployment.", {
+          status: 503,
+          headers: {
+            "Cache-Control": "no-store",
+            "Content-Type": "text/plain; charset=utf-8",
+          },
+        });
+      }
+
+      const headers = new Headers(assetResponse.headers);
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      headers.set("Content-Type", anonymousZkContentType);
+      headers.set("X-Content-Type-Options", "nosniff");
+      return new Response(assetResponse.body, {
+        headers,
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+      });
+    }
+
     if (!contentType.toLowerCase().includes("text/html")) {
       return assetResponse;
     }

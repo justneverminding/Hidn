@@ -44,12 +44,31 @@ import {
   publicKeyToHex,
 } from "@hidn/zk";
 import {
+  canonicalAnonymousMessage,
+  createAnonymousCircuitInput,
+  anonymousIdentityFromRecoveryCode,
+  createAnonymousIdentity,
+  createAnonymousScope,
+  type AnonymousAction,
+  type AnonymousCircuitInput,
+  type AnonymousIdentity,
+  type AnonymousMerkleWitness,
+} from "@hidn/anonymous-zk";
+import {
   createPaymentIntent,
+  createAnonymousPost,
+  createAnonymousReaction,
+  createAnonymousReply,
   createRoomPost,
   createRoomReply,
   createRoomSession,
+  enrollAnonymousMember,
+  fetchAnonymousStatus,
   fetchAccountHistory,
   fetchAccountNotifications,
+  fetchAnonymousNotifications,
+  fetchAnonymousPosts,
+  fetchAnonymousThread,
   fetchAdminAudit,
   fetchAdminModerators,
   fetchAdminSession,
@@ -66,6 +85,7 @@ import {
   loginRoomSession,
   logoutAccount,
   markAccountNotificationsRead,
+  markAnonymousNotificationsRead,
   moderateAdminContent,
   requestZkChallenge,
   signupZkAccount,
@@ -86,6 +106,8 @@ import {
   type AccountNotification,
   type AccountNotificationsResponse,
   type AccountResponse,
+  type AnonymousStatusResponse,
+  type AnonymousProofEnvelope,
   type ModerationTargetType,
   type PaymentIntentResponse,
   type RoomActivityEvent,
@@ -113,6 +135,7 @@ const ROOM_FREE_REPLY_MAX_LENGTH = 100;
 const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
 const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ROOM_ACCOUNT_RECOVERY_KEY_STORAGE = "hidn:account:recovery-key";
+const ROOM_ANONYMOUS_SESSION_STORAGE = "hidn:anonymous:session";
 const ROOM_RECOVERY_CONFIRMATIONS = [
   "Do you understand that this is your recovery key to the private room?",
   "Do you understand that HIDN cannot recover this key if you lose it?",
@@ -151,6 +174,10 @@ let roomAccountUsername = "";
 let roomAccountAccessLevel: AccountAccessLevel = "read_only";
 let roomAccountRecoveryCode = "";
 let roomAccountWasCreated = false;
+let roomAnonymousIdentity: AnonymousIdentity | undefined;
+let roomAnonymousWitness: AnonymousMerkleWitness | undefined;
+let roomAnonymousStatus: AnonymousStatusResponse | undefined;
+let roomAnonymousSubmitting = false;
 let roomLoginSubmitting = false;
 let roomAccountHistory: AccountHistoryResponse | undefined;
 let roomAccountHistoryRequest: Promise<void> | undefined;
@@ -336,6 +363,49 @@ const roomThreadReplies = new Map<string, AnonymousReply[]>([
 ]);
 const roomLikeCounts = new Map<string, number>();
 const roomLikedIds = new Set<string>();
+
+function createAnonymousProofInWorker(input: AnonymousCircuitInput): Promise<AnonymousProofEnvelope> {
+  if (typeof Worker === "undefined") {
+    return Promise.reject(new Error("This browser cannot generate the anonymous proof locally."));
+  }
+
+  const wasmUrl = new URL("/anonymous-zk/hidn_membership_js/hidn_membership.wasm", window.location.origin).toString();
+  const zkeyUrl = new URL("/anonymous-zk/hidn_membership_final.zkey", window.location.origin).toString();
+
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("../anonymous-proof-worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<{ type: "proof" | "error"; proof?: AnonymousProofEnvelope; message?: string }>) => {
+      worker.terminate();
+      if (event.data.type === "proof" && event.data.proof) {
+        resolve(event.data.proof);
+        return;
+      }
+      reject(new Error(event.data.message ?? "The anonymous proof could not be generated."));
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      reject(new Error("The anonymous proof worker could not be started."));
+    };
+    worker.postMessage({ input, wasmUrl, zkeyUrl });
+  });
+}
+
+async function createAnonymousRoomProof(
+  action: AnonymousAction,
+  targetType: "room" | "thread" | "reply",
+  targetId: string,
+  content: string,
+): Promise<{ scope: string; proof: AnonymousProofEnvelope }> {
+  if (!roomAnonymousIdentity || !roomAnonymousWitness) {
+    throw new Error("The anonymous room session is not available. Return with your recovery key first.");
+  }
+
+  const scope = createAnonymousScope();
+  const message = canonicalAnonymousMessage(action, targetType, targetId, content);
+  const input = createAnonymousCircuitInput(roomAnonymousIdentity.secret, roomAnonymousWitness, scope, message);
+  const proof = await createAnonymousProofInWorker(input);
+  return { scope, proof };
+}
 
 function formatTransmissionTime(value: string): string {
   if (/^\d{2}:\d{2}$/.test(value)) {
@@ -525,6 +595,10 @@ function roomReactionStateSignature(path: string): string {
 }
 
 async function refreshRoomReactionState(path = normalizePath(window.location.pathname)): Promise<void> {
+  if (roomAnonymousIdentity) {
+    return;
+  }
+
   const targetIds = roomReactionTargetIds(path);
   const signature = targetIds.join("|");
   if (!targetIds.length || signature === roomReactionStateKey) {
@@ -2501,7 +2575,7 @@ function publicNavigation(path: string): string {
 }
 
 function renderRoomMenu(): string {
-  const profileName = roomAccountUsername || "HIDN-LOCAL";
+  const profileName = roomAnonymousIdentity ? "ANONYMOUS" : roomAccountUsername || "HIDN-LOCAL";
   const profileVerified = roomAccountAccessLevel === "full";
 
   return `<div class="room-menu" data-room-menu>
@@ -2703,7 +2777,9 @@ async function refreshRoomPosts(): Promise<void> {
   }
 
   const requestedChannel = activeRoomChannel;
-  roomPostsRequest = fetchRoomPosts(requestedChannel)
+  roomPostsRequest = (roomAnonymousIdentity
+    ? fetchAnonymousPosts(requestedChannel)
+    : fetchRoomPosts(requestedChannel))
     .then((response) => {
       const pendingPosts = roomPosts.filter(
         (post) => post.channel === requestedChannel && roomPendingPostIds.has(post.id),
@@ -2750,10 +2826,12 @@ async function refreshRoomThread(threadId: string): Promise<void> {
     return existingRequest;
   }
 
-  const sessionUsername = roomAccountUsername;
-  const request = fetchRoomThread(threadId)
+  const sessionMarker = roomAnonymousIdentity?.commitment ?? roomAccountUsername;
+  const request = (roomAnonymousIdentity
+    ? fetchAnonymousThread(threadId)
+    : fetchRoomThread(threadId))
     .then((response) => {
-      if (!hasRoomSession() || roomAccountUsername !== sessionUsername) {
+      if (!hasRoomSession() || (roomAnonymousIdentity?.commitment ?? roomAccountUsername) !== sessionMarker) {
         return;
       }
 
@@ -2796,7 +2874,7 @@ async function refreshRoomThread(threadId: string): Promise<void> {
 }
 
 async function refreshAccountHistory(): Promise<void> {
-  if (!hasRoomSession() || roomAccountHistoryRequest) {
+  if (!hasRoomSession() || roomAnonymousIdentity || roomAccountHistoryRequest) {
     return;
   }
 
@@ -2840,7 +2918,10 @@ async function refreshAccountNotifications(): Promise<void> {
   }
 
   const previousSignature = notificationStateSignature(roomNotifications);
-  roomNotificationsRequest = fetchAccountNotifications()
+  const notificationCapability = roomAnonymousIdentity?.notificationCapability;
+  roomNotificationsRequest = (notificationCapability
+    ? fetchAnonymousNotifications(notificationCapability)
+    : fetchAccountNotifications())
     .then((response) => {
       if (!hasRoomSession()) {
         return;
@@ -2877,7 +2958,11 @@ async function markRoomNotificationsRead(): Promise<void> {
     const unreadIds = roomNotifications.notifications
       .filter((notification) => !notification.readAt)
       .map((notification) => notification.id);
-    await markAccountNotificationsRead(unreadIds);
+    if (roomAnonymousIdentity?.notificationCapability) {
+      await markAnonymousNotificationsRead(roomAnonymousIdentity.notificationCapability, unreadIds);
+    } else {
+      await markAccountNotificationsRead(unreadIds);
+    }
     const readAt = new Date().toISOString();
     roomNotifications = {
       ...roomNotifications,
@@ -2900,7 +2985,11 @@ async function markRoomNotificationRead(notificationId: string): Promise<void> {
   }
 
   try {
-    await markAccountNotificationsRead([notificationId]);
+    if (roomAnonymousIdentity?.notificationCapability) {
+      await markAnonymousNotificationsRead(roomAnonymousIdentity.notificationCapability, [notificationId]);
+    } else {
+      await markAccountNotificationsRead([notificationId]);
+    }
     const readAt = new Date().toISOString();
     if (roomNotifications) {
       const wasUnread = roomNotifications.notifications.some(
@@ -2964,11 +3053,24 @@ async function submitRoomPost(): Promise<void> {
   rerenderProductRoute();
 
   try {
-    const response = await createRoomPost({
-      content,
-      channel: activeRoomChannel,
-      category: "IDENTITY",
-    });
+    const response = roomAnonymousIdentity
+      ? await (async () => {
+        const { scope, proof } = await createAnonymousRoomProof("post", "room", activeRoomChannel, content);
+        return createAnonymousPost({
+          proof,
+          scope,
+          alias: roomAnonymousIdentity!.alias,
+          notificationCapability: roomAnonymousIdentity!.notificationCapability,
+          content,
+          channel: activeRoomChannel,
+          category: "IDENTITY",
+        });
+      })()
+      : await createRoomPost({
+        content,
+        channel: activeRoomChannel,
+        category: "IDENTITY",
+      });
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
     roomLikeCounts.set(response.post.id, response.post.reactions);
@@ -3023,7 +3125,19 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   rerenderProductRoute();
 
   try {
-    const response = await createRoomReply({ threadId, content, submissionId: createRoomReplySubmissionId() });
+    const response = roomAnonymousIdentity
+      ? await (async () => {
+        const { scope, proof } = await createAnonymousRoomProof("reply", "thread", threadId, content);
+        return createAnonymousReply({
+          proof,
+          scope,
+          alias: roomAnonymousIdentity!.alias,
+          notificationCapability: roomAnonymousIdentity!.notificationCapability,
+          threadId,
+          content,
+        });
+      })()
+      : await createRoomReply({ threadId, content, submissionId: createRoomReplySubmissionId() });
     roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
     roomAccountHistory = roomAccountHistory
       ? { ...roomAccountHistory, comments: [response.comment, ...roomAccountHistory.comments.filter((comment) => comment.id !== response.comment.id)] }
@@ -3783,6 +3897,11 @@ function resetRoomRecoveryReveal(): void {
 }
 
 function openRoomRecoveryCheck(): void {
+  if (roomAnonymousIdentity && roomAccountRecoveryCode) {
+    revealRoomRecoveryKeyTemporarily();
+    return;
+  }
+
   if (!roomAccountRecoveryCode) {
     roomAccessMode = "login";
     roomLoginError = "Enter the recovery key you saved to restore it in this browser session.";
@@ -3905,6 +4024,102 @@ async function copyRoomRecoveryKey(button: HTMLButtonElement): Promise<void> {
   }, 1800);
 }
 
+function persistAnonymousSession(): void {
+  if (!roomAnonymousIdentity || !roomAnonymousWitness) {
+    return;
+  }
+
+  sessionStorage.setItem(ROOM_ANONYMOUS_SESSION_STORAGE, JSON.stringify({
+    identity: roomAnonymousIdentity,
+    witness: roomAnonymousWitness,
+  }));
+  sessionStorage.setItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE, roomAnonymousIdentity.recoveryCode);
+}
+
+function restoreAnonymousSession(): boolean {
+  const stored = sessionStorage.getItem(ROOM_ANONYMOUS_SESSION_STORAGE);
+  if (!stored) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as {
+      identity?: AnonymousIdentity;
+      witness?: AnonymousMerkleWitness;
+    };
+    if (!parsed.identity?.secret || !parsed.identity.commitment || !parsed.identity.notificationCapability || !parsed.witness?.root) {
+      return false;
+    }
+
+    roomAnonymousIdentity = parsed.identity;
+    roomAnonymousWitness = parsed.witness;
+    roomAccountUsername = "";
+    roomAccountRecoveryCode = roomAnonymousIdentity.recoveryCode;
+    roomAccountAccessLevel = "read_only";
+    roomBackendStatus = "connected";
+    if (roomAccessMode === "choose") {
+      roomAccessMode = "ready";
+    }
+    return true;
+  } catch {
+    sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
+    return false;
+  }
+}
+
+async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
+  roomAnonymousSubmitting = true;
+  roomBackendStatus = "connecting";
+  roomLoginError = "";
+  try {
+    const status = await fetchAnonymousStatus();
+    roomAnonymousStatus = status;
+    if (!status.enabled) {
+      throw new Error("Anonymous ZK access is not activated on this Worker yet. The username-free entry screen is ready, but the Worker still needs its verification key.");
+    }
+
+    const identity = recoveryCode
+      ? await anonymousIdentityFromRecoveryCode(recoveryCode)
+      : await createAnonymousIdentity();
+    const enrollment = await enrollAnonymousMember({
+      commitment: identity.commitment,
+      notificationCapability: identity.notificationCapability,
+    });
+
+    roomAnonymousIdentity = { ...identity, alias: enrollment.displayAlias };
+    roomAnonymousWitness = {
+      root: enrollment.root,
+      leafIndex: enrollment.leafIndex,
+      pathElements: enrollment.pathElements,
+      pathIndices: enrollment.pathIndices,
+    };
+    roomAccountUsername = "";
+    roomAccountRecoveryCode = identity.recoveryCode;
+    roomAccountAccessLevel = "read_only";
+    roomAccountWasCreated = !recoveryCode;
+    roomBackendStatus = "connected";
+    roomPaymentIntentId = "";
+    roomPayment = undefined;
+    roomVerificationRequested = false;
+    roomLoginError = "";
+    persistAnonymousSession();
+    roomAccessMode = "ready";
+    if (!recoveryCode) {
+      revealRoomRecoveryKeyTemporarily();
+    }
+  } catch (error) {
+    roomBackendStatus = "offline";
+    roomLoginError = error instanceof Error ? error.message : "The anonymous room access could not be activated.";
+  } finally {
+    roomAnonymousSubmitting = false;
+    roomLoginSubmitting = false;
+  }
+
+  if (normalizePath(window.location.pathname) === "/room/access") {
+    rerenderProductRoute();
+  }
+}
+
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
   stopRoomNotificationPolling();
@@ -3923,6 +4138,7 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:account:username");
   sessionStorage.removeItem("hidn:account:access-level");
   sessionStorage.removeItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE);
+  sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
   sessionStorage.removeItem("hidn:account:payment-intent");
   sessionStorage.removeItem("hidn:account:verification-requested");
   void logoutAccount().catch(() => undefined);
@@ -3935,6 +4151,10 @@ function clearRoomSession(): void {
   roomBackendId = "";
   roomAccountUsername = "";
   roomAccountAccessLevel = "read_only";
+  roomAnonymousIdentity = undefined;
+  roomAnonymousWitness = undefined;
+  roomAnonymousStatus = undefined;
+  roomAnonymousSubmitting = false;
   roomPostComposerOpen = false;
   roomPostText = "";
   roomPostError = "";
@@ -3967,6 +4187,10 @@ function clearRoomSession(): void {
 }
 
 function restoreRoomAccountState(): void {
+  if (restoreAnonymousSession()) {
+    return;
+  }
+
   if (sessionStorage.getItem("hidn:account:logged-in") !== "true") {
     return;
   }
@@ -3995,7 +4219,8 @@ function persistAccountSession(account: AccountResponse): void {
 }
 
 function hasRoomSession(): boolean {
-  return sessionStorage.getItem("hidn:account:logged-in") === "true"
+  return Boolean(roomAnonymousIdentity && roomAnonymousWitness)
+    || sessionStorage.getItem("hidn:account:logged-in") === "true"
     || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret")));
 }
 
@@ -4232,43 +4457,39 @@ function renderRoomAccessChooser(): string {
       <article class="room-access-option">
         <div>
           <h2>BEGIN WITHOUT A NAME</h2>
-          <p>Choose an anonymous handle to access the private room.</p>
+          <p>Create a private recovery key to access the room. No username is required.</p>
         </div>
-        ${SecondaryButton({ label: "SET UP PRIVATE ACCESS", dataAction: "room-create" })}
+        ${SecondaryButton({ label: "SET UP ANONYMOUS ACCESS", dataAction: "room-create" })}
       </article>
       <article class="room-access-option">
         <div>
-          <h2>CONTINUE WITHOUT A NAME</h2>
-          <p>Enter your private handle and recovery key to return.</p>
+          <h2>RETURN WITH YOUR KEY</h2>
+          <p>Use the recovery key you saved. It is the only return credential.</p>
         </div>
-        ${SecondaryButton({ label: "ENTER THE ROOM", dataAction: "room-login" })}
+        ${SecondaryButton({ label: "ENTER WITH RECOVERY KEY", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("ACCOUNT GATE", "Setup a private account or return with your recovery key for room access", "LIVE")}
+    ${SystemMessage("PRIVATE ACCESS", "Create anonymous access or return with your recovery key for room access", "LIVE")}
   </div>`;
 }
 
 function renderRoomCreate(): string {
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / CREATE ACCOUNT")}
-      <h1 class="type-display-lg room-access-header__title">CHOOSE A<br /><em>HANDLE.</em></h1>
-      <p class="room-access-header__copy">Choose HIDN- followed by letters or numbers, such as HIDN-NOIR42. The handle is a private lookup key, not an author name.</p>
+      ${TerminalLabel("HIDN / ANONYMOUS ACCESS")}
+      <h1 class="type-display-lg room-access-header__title">KEEP YOUR<br /><em>KEY.</em></h1>
+      <p class="room-access-header__copy">HIDN creates a private recovery key on this device. No username, handle, or public identity is needed.</p>
     </header>
     <form class="room-login-card room-account-card" novalidate>
-      <label class="room-access-field" for="room-account-username">
-        <span>HIDN HANDLE / PRIVATE LOOKUP KEY</span>
-        <div class="room-handle-input">
-          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-account-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
-        </div>
-      </label>
-      <p class="room-payment-card__note">The browser creates a private recovery key and sends only its public commitment to D1. Save the key when it appears; do not use a real name.</p>
+      <div class="room-access-key room-access-key--pending">
+        <span class="room-access-key__label">PRIVATE CREDENTIAL / GENERATED IN YOUR BROWSER</span>
+        <p>The browser creates the secret locally and sends only a membership commitment to the Worker. Save the recovery key when it appears; HIDN cannot recover it.</p>
+      </div>
     </form>
     ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
     <div class="room-access-actions">
       ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-      ${SecondaryButton({ label: roomBackendStatus === "connecting" ? "CREATING ACCOUNT..." : "CREATE ACCOUNT →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-account" })}
+      ${SecondaryButton({ label: roomAnonymousSubmitting ? "CREATING PRIVATE KEY..." : "GENERATE RECOVERY KEY →", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
     </div>
   </div>`;
 }
@@ -4276,27 +4497,20 @@ function renderRoomCreate(): string {
 function renderRoomLogin(): string {
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / ACCOUNT LOGIN")}
+      ${TerminalLabel("HIDN / RECOVERY ACCESS")}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
-      <p class="room-access-header__copy">Use your HIDN handle and recovery key. The browser proves you hold it without sending the key to HIDN.</p>
+      <p class="room-access-header__copy">Use the recovery key you saved. It is the only credential; the browser proves you hold it without sending the key to HIDN.</p>
     </header>
     ${roomLoginError ? AlertMessage("ID NEEDED", roomLoginError, "danger") : ""}
     <form class="room-login-card" novalidate>
-      <label class="room-access-field" for="room-login-username">
-        <span>HIDN HANDLE</span>
-        <div class="room-handle-input">
-          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-login-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
-        </div>
-      </label>
       <label class="room-access-field" for="room-login-recovery-code">
-        <span>RECOVERY KEY</span>
-        <input id="room-login-recovery-code" type="text" placeholder="HIDN-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
+        <span>PRIVATE RECOVERY KEY</span>
+        <input id="room-login-recovery-code" type="text" placeholder="HIDN-ANON-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
       </label>
-      <p class="room-payment-card__note">The browser uses the key to answer a one-time Schnorr proof challenge. The recovery key is never sent to the Worker.</p>
+      <p class="room-payment-card__note">The browser derives your anonymous membership credential locally. The recovery key is never sent to the Worker.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-        ${SecondaryButton({ label: roomLoginSubmitting ? "VERIFYING ACCESS..." : "LOG IN →", disabled: roomLoginSubmitting, dataAction: "room-submit-login" })}
+        ${SecondaryButton({ label: roomLoginSubmitting || roomAnonymousSubmitting ? "VERIFYING KEY..." : "ENTER WITH KEY →", disabled: roomLoginSubmitting || roomAnonymousSubmitting, dataAction: "room-submit-login" })}
       </div>
     </form>
   </div>`;
@@ -4333,6 +4547,24 @@ function renderRecoveryConfirmationFields(): string {
 }
 
 function renderRoomRecoveryPanel(): string {
+  if (roomAnonymousIdentity) {
+    if (roomRecoveryRevealMode === "visible") {
+      return `<section class="room-access-key room-recovery-panel room-recovery-panel--visible" aria-live="polite">
+        <span class="room-access-key__label" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
+        <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
+          <code>${escapeHtml(roomAccountRecoveryCode)}</code>
+        </button>
+        <span class="room-access-key__warning">VISIBLE FOR 20 SECONDS / HIDN CANNOT RECOVER A LOST KEY.</span>
+      </section>`;
+    }
+
+    return `<section class="room-access-key room-recovery-panel room-recovery-panel--hidden">
+      <span class="room-access-key__label">RECOVERY KEY / LOCAL ONLY</span>
+      <p>This key is the only way back into this anonymous access session. It is not a username and is never sent to HIDN.</p>
+      ${SecondaryButton({ label: "SHOW KEY TEMPORARILY →", dataAction: "room-recovery-open" })}
+    </section>`;
+  }
+
   if (!roomAccountRecoveryCode) {
     return `<section class="room-access-key room-recovery-panel room-recovery-panel--hidden">
       <span class="room-access-key__label">RECOVERY KEY / NOT IN THIS SESSION</span>
@@ -4383,7 +4615,7 @@ function renderRoomReady(): string {
   const isFull = roomAccountAccessLevel === "full";
   const isNewAccount = roomAccountWasCreated;
   const payment = roomPayment;
-  const accountLabel = roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
+  const accountLabel = roomAnonymousIdentity ? "ANONYMOUS ACCESS" : roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
   const showVerification = roomVerificationRequested && !isFull;
   const titleText = isNewAccount ? "SAVE YOUR KEY." : "THE ROOM IS OPEN.";
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
@@ -4402,7 +4634,7 @@ function renderRoomReady(): string {
       </h1>
       <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
     </header>
-    ${roomAccountUsername ? renderRoomRecoveryPanel() : ""}
+    ${roomAnonymousIdentity || roomAccountUsername ? renderRoomRecoveryPanel() : ""}
     ${showVerification && payment ? `<section class="room-payment-card" aria-labelledby="room-payment-title">
       <div class="room-payment-card__header">
         <span class="room-payment-card__eyebrow">PAYMENT INTENT / MAINNET</span>
@@ -4534,7 +4766,7 @@ function renderZecVerificationNotice(): string {
 
 function renderRoomProfile(): RenderedProductRoute {
   restoreRoomAccountState();
-  if (!hasRoomSession() || !roomAccountUsername) {
+  if (!hasRoomSession()) {
     return {
       metadata: ROOM_METADATA,
       html: publicFrame(
@@ -4553,6 +4785,8 @@ function renderRoomProfile(): RenderedProductRoute {
   }
 
   const isFull = roomAccountAccessLevel === "full";
+  const isAnonymous = Boolean(roomAnonymousIdentity);
+  const profileLabel = isAnonymous ? "ANONYMOUS ACCESS" : roomAccountUsername;
   const posts = roomAccountHistory?.posts ?? [];
   const localCommentIds = new Set(roomLocalComments.map((comment) => comment.id));
   const comments = [
@@ -4586,13 +4820,13 @@ function renderRoomProfile(): RenderedProductRoute {
               ${TerminalLabel("PRIVATE SIGNAL / PROFILE")}
             </div>
             <h1 class="type-display-lg room-access-header__title">YOUR SIGNALS<br /><em>STAY WITH YOU.</em></h1>
-            <p class="room-access-header__copy">${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key and history stay behind this session.</p>
+            <p class="room-access-header__copy">${isAnonymous ? "This is a private anonymous access surface. Your recovery key stays on this device and is never used as a public name." : `${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key and history stay behind this session.`}</p>
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
               <div>
-                ${TerminalLabel("ACCOUNT / PRIVATE HANDLE")}
-                <h2 id="room-profile-status-title">${escapeHtml(roomAccountUsername)}</h2>
+                ${TerminalLabel(isAnonymous ? "ACCESS / ANONYMOUS CREDENTIAL" : "ACCOUNT / PRIVATE HANDLE")}
+                <h2 id="room-profile-status-title">${escapeHtml(profileLabel)}</h2>
               </div>
               ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
             </div>
@@ -5025,17 +5259,42 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
     }
     roomLikeCounts.set(threadId, Math.max(0, nextCount));
   } else {
+    if (roomAnonymousIdentity && roomLikedIds.has(threadId)) {
+      roomChannelNotice = "REACTION ALREADY SAVED / PRIVATE";
+      roomPostError = "";
+      if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelFromPath(normalizedPath))) {
+        renderExploreFeed(root, activeFeedTab);
+      } else {
+        rerenderProductRoute();
+      }
+      return;
+    }
+
     button.dataset.pending = "true";
     button.disabled = true;
     try {
-      const response = await toggleRoomReaction({ targetType: "thread", targetId: threadId });
-      roomLikeCounts.set(threadId, mockReactionBaseCount(threadId) + response.reactions);
-      if (response.liked) {
+      if (roomAnonymousIdentity) {
+        const { scope, proof } = await createAnonymousRoomProof("reaction", "thread", threadId, "like");
+        const response = await createAnonymousReaction({
+          proof,
+          scope,
+          alias: roomAnonymousIdentity.alias,
+          targetType: "thread",
+          targetId: threadId,
+        });
+        roomLikeCounts.set(threadId, response.reactions);
         roomLikedIds.add(threadId);
+        roomChannelNotice = "REACTION SAVED / PRIVATE";
       } else {
-        roomLikedIds.delete(threadId);
+        const response = await toggleRoomReaction({ targetType: "thread", targetId: threadId });
+        roomLikeCounts.set(threadId, mockReactionBaseCount(threadId) + response.reactions);
+        if (response.liked) {
+          roomLikedIds.add(threadId);
+        } else {
+          roomLikedIds.delete(threadId);
+        }
+        roomChannelNotice = response.liked ? "REACTION SAVED / PRIVATE" : "REACTION REMOVED / PRIVATE";
       }
-      roomChannelNotice = response.liked ? "REACTION SAVED / PRIVATE" : "REACTION REMOVED / PRIVATE";
       roomPostError = "";
     } catch (error) {
       roomPostError = error instanceof Error ? error.message : "The reaction could not be saved.";
@@ -5694,18 +5953,15 @@ export function bindProductRoute(root: ParentNode = document): void {
           rerenderProductRoute();
           break;
         case "room-create-account": {
-          const input = root.querySelector<HTMLInputElement>("#room-account-username");
-          const handle = completeRoomHandle(input?.value ?? "");
-          if (!ROOM_HANDLE_PATTERN.test(handle)) {
-            roomLoginError = "Choose a handle in the format HIDN-NOIR42: HIDN- followed by letters or numbers only.";
-            rerenderProductRoute();
+          if (roomAnonymousSubmitting) {
             break;
           }
 
+          roomAnonymousSubmitting = true;
           roomBackendStatus = "connecting";
           roomLoginError = "";
           rerenderProductRoute();
-          void registerRoomAccount(handle);
+          void registerAnonymousRoomAccess();
           break;
         }
         case "room-verify-demo":
@@ -5721,25 +5977,24 @@ export function bindProductRoute(root: ParentNode = document): void {
           void verifyRoomBackend();
           break;
         case "room-submit-login": {
-          if (roomLoginSubmitting) {
+          if (roomLoginSubmitting || roomAnonymousSubmitting) {
             break;
           }
 
-          const usernameInput = root.querySelector<HTMLInputElement>("#room-login-username");
           const recoveryInput = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
-          const username = completeRoomHandle(usernameInput?.value ?? "");
           const recoveryCode = recoveryInput?.value.trim() ?? "";
-          if (!ROOM_HANDLE_PATTERN.test(username) || !recoveryCode) {
-            roomLoginError = "Enter a HIDN handle and your recovery key before continuing.";
+          if (!/^HIDN-ANON-[A-F0-9-]+$/i.test(recoveryCode)) {
+            roomLoginError = "Enter the HIDN-ANON recovery key you saved before continuing.";
             rerenderProductRoute();
             break;
           }
 
           roomLoginError = "";
           roomLoginSubmitting = true;
+          roomAnonymousSubmitting = true;
           roomBackendStatus = "connecting";
           rerenderProductRoute();
-          void syncAccountLogin(username, recoveryCode);
+          void registerAnonymousRoomAccess(recoveryCode);
           break;
         }
         case "room-create-payment-intent": {

@@ -85,6 +85,36 @@ export interface AccountNotificationsResponse {
   unreadCount: number;
 }
 
+export interface AnonymousStatusResponse {
+  enabled: boolean;
+  protocol: string;
+  treeDepth: number;
+  maxMembers: number;
+  networkPrivacy: string;
+}
+
+export interface AnonymousEnrollmentResponse {
+  protocol: string;
+  treeDepth: number;
+  commitment: string;
+  displayAlias: string;
+  root: string;
+  leafIndex: number;
+  pathElements: string[];
+  pathIndices: number[];
+}
+
+export interface AnonymousProofEnvelope {
+  protocol: string;
+  proof: unknown;
+  publicSignals: string[];
+}
+
+export interface AnonymousNotificationsResponse {
+  notifications: AccountNotification[];
+  unreadCount: number;
+}
+
 export interface RecoveryQuestionsResponse {
   configured: boolean;
   questions: string[];
@@ -295,6 +325,143 @@ async function roomGet<T>(path: string): Promise<T> {
 
 async function accountRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
   return roomRequest<T>(path, body);
+}
+
+async function anonymousRequest<T>(
+  path: string,
+  body: Record<string, unknown>,
+  notificationCapability = "",
+): Promise<T> {
+  const headers = new Headers({ Accept: "application/json", "Content-Type": "application/json" });
+  if (notificationCapability) {
+    headers.set("X-HIDN-Notification-Capability", notificationCapability);
+  }
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "omit",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const message = typeof payload?.error === "string" ? payload.error : `Anonymous room backend returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+  const payload = await response.json().catch(() => null);
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Anonymous ZK access is not activated on this Worker yet.");
+  }
+  return payload as T;
+}
+
+async function anonymousGet<T>(path: string, notificationCapability = ""): Promise<T> {
+  const headers = new Headers({ Accept: "application/json" });
+  if (notificationCapability) {
+    headers.set("X-HIDN-Notification-Capability", notificationCapability);
+  }
+  const response = await fetch(path, {
+    credentials: "omit",
+    headers,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const message = typeof payload?.error === "string" ? payload.error : `Anonymous room backend returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+  const payload = await response.json().catch(() => null);
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Anonymous ZK access is not activated on this Worker yet.");
+  }
+  return payload as T;
+}
+
+export function fetchAnonymousStatus(): Promise<AnonymousStatusResponse> {
+  return anonymousGet<AnonymousStatusResponse>("/api/anonymous/status");
+}
+
+export function enrollAnonymousMember(input: {
+  commitment: string;
+  notificationCapability: string;
+}): Promise<AnonymousEnrollmentResponse> {
+  return anonymousRequest<AnonymousEnrollmentResponse>("/api/anonymous/enroll", input);
+}
+
+export function fetchAnonymousPosts(channel: string): Promise<RoomPostsResponse> {
+  return anonymousGet<RoomPostsResponse>(`/api/anonymous/posts?channel=${encodeURIComponent(channel)}`);
+}
+
+export function fetchAnonymousThread(threadId: string): Promise<RoomThreadResponse> {
+  return anonymousGet<RoomThreadResponse>(`/api/anonymous/thread?threadId=${encodeURIComponent(threadId)}`);
+}
+
+export function createAnonymousPost(input: {
+  proof: AnonymousProofEnvelope;
+  scope: string;
+  alias: string;
+  notificationCapability: string;
+  content: string;
+  channel: string;
+  category: string;
+}): Promise<{ post: RoomPost; status: "created"; anonymousAlias: string }> {
+  return anonymousRequest<{ post: RoomPost; status: "created"; anonymousAlias: string }>("/api/anonymous/posts", {
+    ...input.proof,
+    scope: input.scope,
+    alias: input.alias,
+    notificationCapability: input.notificationCapability,
+    content: input.content,
+    channel: input.channel,
+    category: input.category,
+  });
+}
+
+export function createAnonymousReply(input: {
+  proof: AnonymousProofEnvelope;
+  scope: string;
+  alias: string;
+  notificationCapability: string;
+  threadId: string;
+  content: string;
+}): Promise<{ comment: RoomComment; status: "created"; anonymousAlias: string }> {
+  return anonymousRequest<{ comment: RoomComment; status: "created"; anonymousAlias: string }>("/api/anonymous/replies", {
+    ...input.proof,
+    scope: input.scope,
+    alias: input.alias,
+    notificationCapability: input.notificationCapability,
+    threadId: input.threadId,
+    content: input.content,
+  });
+}
+
+export function createAnonymousReaction(input: {
+  proof: AnonymousProofEnvelope;
+  scope: string;
+  alias: string;
+  targetType: "thread" | "reply";
+  targetId: string;
+}): Promise<{ targetType: "thread" | "reply"; targetId: string; liked: true; reactions: number }> {
+  return anonymousRequest<{ targetType: "thread" | "reply"; targetId: string; liked: true; reactions: number }>("/api/anonymous/reactions", {
+    ...input.proof,
+    scope: input.scope,
+    alias: input.alias,
+    targetType: input.targetType,
+    targetId: input.targetId,
+  });
+}
+
+export function fetchAnonymousNotifications(notificationCapability: string): Promise<AnonymousNotificationsResponse> {
+  return anonymousGet<AnonymousNotificationsResponse>("/api/anonymous/notifications?limit=30", notificationCapability);
+}
+
+export function markAnonymousNotificationsRead(
+  notificationCapability: string,
+  notificationIds: string[] = [],
+): Promise<{ status: "read" }> {
+  return anonymousRequest<{ status: "read" }>(
+    "/api/anonymous/notifications/read",
+    { notificationIds },
+    notificationCapability,
+  );
 }
 
 export function signupAccount(username: string): Promise<AccountResponse> {

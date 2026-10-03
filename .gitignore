@@ -13,3 +13,4 @@ dist/
 .idea/
 .vscode/
 coverage/
+packages/anonymous-zk/build/

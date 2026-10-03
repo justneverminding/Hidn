@@ -1,0 +1,27 @@
+{
+  "name": "@hidn/anonymous-zk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./prover": "./src/prover.ts",
+    "./verifier": "./src/verifier.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:circuit": "mkdir -p build && node ../../node_modules/@distributedlab/circom2/dist/cli.js --r1cs --wasm --sym --O2 -l ../../node_modules/circomlib/circuits -o build circuits/hidn_membership.circom",
+    "test:protocol": "tsx scripts/protocol-test.ts",
+    "test:proof": "tsx scripts/proof-test.ts"
+  },
+  "dependencies": {
+    "poseidon-lite": "^0.3.0",
+    "snarkjs": "^0.7.6"
+  },
+  "devDependencies": {
+    "@distributedlab/circom2": "^0.2.22-rc.1",
+    "circomlib": "^2.0.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}
