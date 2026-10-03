@@ -303,6 +303,18 @@ function transmissionViewFromRoomPost(post: RoomPost): TransmissionView {
   };
 }
 
+function mockConfessionFromRoomPost(post: RoomPost): MockConfession {
+  return {
+    id: post.id,
+    reference: post.reference,
+    text: post.text,
+    category: isMockCategory(post.category) ? post.category : "IDENTITY",
+    relativeTime: formatTransmissionTime(post.time),
+    reactions: post.reactions,
+    time: post.time,
+  };
+}
+
 function shareableConfessionForId(id: string): MockConfession | undefined {
   const mockConfession = getMockConfession(id);
   if (mockConfession) {
@@ -314,15 +326,7 @@ function shareableConfessionForId(id: string): MockConfession | undefined {
     return undefined;
   }
 
-  return {
-    id: post.id,
-    reference: post.reference,
-    text: post.text,
-    category: isMockCategory(post.category) ? post.category : "IDENTITY",
-    relativeTime: formatTransmissionTime(post.time),
-    reactions: post.reactions,
-    time: post.time,
-  };
+  return mockConfessionFromRoomPost(post);
 }
 
 function repliesForThread(id: string): AnonymousReply[] {
@@ -2439,7 +2443,10 @@ function renderTransmissionRows(tab: FeedTab): string {
   }
 
   return rows
-    .map((transmission) => renderTransmissionRow(transmission, { href: transmission.id?.startsWith("THR-") ? undefined : `/c/${transmission.id}` }))
+    .map((transmission) => renderTransmissionRow(
+      transmission,
+      { href: transmission.id ? `/c/${encodeURIComponent(transmission.id)}` : undefined },
+    ))
     .join("");
 }
 
@@ -3000,11 +3007,16 @@ function renderThreadRoom(id: string, quotedText = ""): string {
 }
 
 function renderDetail(id: string): RenderedProductRoute {
-  const confession = getMockConfession(id);
+  const mockConfession = getMockConfession(id);
+  const livePost = roomPosts.find((post) => post.id === id);
+  const confession = mockConfession ?? (livePost ? mockConfessionFromRoomPost(livePost) : undefined);
+  const isLivePost = Boolean(livePost);
   const metadata: HidnMetadata = {
     kind: "anonymous-confession",
     title: "HIDN — Anonymous confession",
-    description: "An anonymous HIDN confession. No public identity or confession history is attached.",
+    description: isLivePost
+      ? "An anonymous HIDN room thread. No public identity is attached to the conversation."
+      : "An anonymous HIDN confession. No public identity or confession history is attached.",
     canonicalPath: `/c/${encodeURIComponent(id)}`,
   };
 
@@ -3016,7 +3028,7 @@ function renderDetail(id: string): RenderedProductRoute {
         `<main id="main-content" class="public-main detail-main">
           <div class="hidn-container--reading detail-page">
             <h1 class="detail-page__title">TRANSMISSION NOT FOUND</h1>
-            ${ErrorState("TRANSMISSION NOT FOUND", "This local demo confession is no longer available in memory.")}
+            ${ErrorState("TRANSMISSION NOT FOUND", "This thread is no longer available in the current room feed.")}
             ${actionLink("BACK TO THE ROOM", "/room", "secondary")}
           </div>
         </main>`,
@@ -3066,7 +3078,9 @@ function renderDetail(id: string): RenderedProductRoute {
             <div><span>COMMENTS</span><strong>${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</strong></div>
             <div><span>POSTED</span><strong>${escapeHtml(confession.relativeTime)}</strong></div>
           </div>
-          ${SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
+          ${isLivePost
+            ? SystemMessage("ROOM STATUS / LIVE THREAD", "This thread is stored in the private room feed. No public identity is attached to the conversation.", "INFO")
+            : SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
             <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasRoomSession() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</a>
