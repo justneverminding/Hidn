@@ -17,8 +17,10 @@ const PAYMENT_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
 const ZK_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAIN_ROOM_ID = "HIDN-MAIN-ROOM";
-const ROOM_POST_MAX_LENGTH = 2000;
-const ROOM_REPLY_MAX_LENGTH = 1200;
+const ROOM_FREE_POST_MAX_LENGTH = 200;
+const ROOM_FREE_REPLY_MAX_LENGTH = 100;
+const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
+const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ABUSE_WINDOW_MS = 10 * 60 * 1000;
 const ABUSE_REPEAT_WINDOW_MS = 30 * 60 * 1000;
 const ABUSE_SIGNAL_TTL_MS = 2 * 60 * 60 * 1000;
@@ -110,6 +112,14 @@ interface AuthenticatedUser {
   userId: string;
   username: string;
   accessLevel: AccessLevel;
+}
+
+function roomPostMaxLength(user: AuthenticatedUser): number {
+  return user.accessLevel === "full" ? ROOM_VERIFIED_POST_MAX_LENGTH : ROOM_FREE_POST_MAX_LENGTH;
+}
+
+function roomReplyMaxLength(user: AuthenticatedUser): number {
+  return user.accessLevel === "full" ? ROOM_VERIFIED_REPLY_MAX_LENGTH : ROOM_FREE_REPLY_MAX_LENGTH;
 }
 
 interface AbuseSignalRow {
@@ -1080,8 +1090,9 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
   if (!content) {
     return jsonResponse({ error: "Write something before replying." }, 400);
   }
-  if (content.length > ROOM_REPLY_MAX_LENGTH) {
-    return jsonResponse({ error: `Replies must be ${ROOM_REPLY_MAX_LENGTH} characters or fewer.` }, 400);
+  const maxLength = roomReplyMaxLength(user);
+  if (content.length > maxLength) {
+    return jsonResponse({ error: `Replies must be ${maxLength} characters or fewer.` }, 400);
   }
 
   const thread = await env.ROOM_DB!.prepare(
@@ -1169,8 +1180,9 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
   if (!content) {
     return jsonResponse({ error: "Write something before creating the post." }, 400);
   }
-  if (content.length > ROOM_POST_MAX_LENGTH) {
-    return jsonResponse({ error: `Posts must be ${ROOM_POST_MAX_LENGTH} characters or fewer.` }, 400);
+  const maxLength = roomPostMaxLength(user);
+  if (content.length > maxLength) {
+    return jsonResponse({ error: `Posts must be ${maxLength} characters or fewer.` }, 400);
   }
   if (!isRoomChannel(channel)) {
     return jsonResponse({ error: "Choose a valid room channel." }, 400);

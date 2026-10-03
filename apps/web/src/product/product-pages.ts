@@ -99,6 +99,31 @@ type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 
+const ROOM_FREE_POST_MAX_LENGTH = 200;
+const ROOM_FREE_REPLY_MAX_LENGTH = 100;
+const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
+const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
+
+function roomPostCharacterLimit(): number {
+  return roomAccountAccessLevel === "full" ? ROOM_VERIFIED_POST_MAX_LENGTH : ROOM_FREE_POST_MAX_LENGTH;
+}
+
+function roomReplyCharacterLimit(): number {
+  return roomAccountAccessLevel === "full" ? ROOM_VERIFIED_REPLY_MAX_LENGTH : ROOM_FREE_REPLY_MAX_LENGTH;
+}
+
+function roomPostLimitCopy(): string {
+  return roomAccountAccessLevel === "full"
+    ? `VERIFIED ACCESS / UP TO ${roomPostCharacterLimit().toLocaleString()} CHARACTERS.`
+    : `FREE ACCESS / UP TO ${roomPostCharacterLimit()} CHARACTERS. VERIFY WITH ZEC FOR MORE.`;
+}
+
+function roomReplyLimitCopy(): string {
+  return roomAccountAccessLevel === "full"
+    ? `VERIFIED ACCESS / UP TO ${roomReplyCharacterLimit().toLocaleString()} CHARACTERS.`
+    : `FREE ACCESS / UP TO ${roomReplyCharacterLimit()} CHARACTERS. VERIFY WITH ZEC FOR MORE.`;
+}
+
 let activeFeedTab: FeedTab = "latest";
 let roomAccessMode: RoomAccessMode = "choose";
 let roomDemoId = "";
@@ -2549,6 +2574,12 @@ async function submitRoomPost(): Promise<void> {
     rerenderProductRoute();
     return;
   }
+  const maxLength = roomPostCharacterLimit();
+  if (content.length > maxLength) {
+    roomPostError = `Posts must be ${maxLength} characters or fewer${roomAccountAccessLevel === "full" ? "." : ". VERIFY WITH ZEC FOR MORE."}`;
+    rerenderProductRoute();
+    return;
+  }
   if (!hasRoomSession()) {
     roomPostError = "ENTER THE ROOM BEFORE POSTING / FREE ROOM ACCESS IS AVAILABLE";
     rerenderProductRoute();
@@ -2583,6 +2614,12 @@ async function submitRoomPost(): Promise<void> {
 
 async function submitRoomReply(threadId: string, content: string): Promise<void> {
   if (!threadId || !content) {
+    return;
+  }
+  const maxLength = roomReplyCharacterLimit();
+  if (content.length > maxLength) {
+    roomPostError = `Replies must be ${maxLength} characters or fewer${roomAccountAccessLevel === "full" ? "." : ". VERIFY WITH ZEC FOR MORE."}`;
+    rerenderProductRoute();
     return;
   }
   if (!hasRoomSession()) {
@@ -2690,9 +2727,9 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
             ? `<form class="room-post-composer" novalidate>
                 <label class="ui-field room-post-composer__field" for="room-post-content">
                   <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
-                  <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+                  <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
                 </label>
-                <p class="room-post-composer__note">Free room access is active. Your post is stored without a public name; cooldowns appear only when activity looks automated or repetitive.</p>
+                <p class="room-post-composer__note">${roomPostLimitCopy()} Your post is stored without a public name; cooldowns appear only when activity looks automated or repetitive.</p>
                 <div class="room-post-composer__actions">
                   ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
                   ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -2986,9 +3023,9 @@ function renderMobilePostSurface(): string {
     ? `<form class="room-post-composer room-mobile-index__composer" novalidate>
         <label class="ui-field room-post-composer__field" for="room-post-content">
           <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
-          <textarea id="room-post-content" rows="5" maxlength="2000" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
-        </label>
-        <p class="room-post-composer__note">Free room access is active. Repeated or automated activity may receive a short cooldown.</p>
+        <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+      </label>
+        <p class="room-post-composer__note">${roomPostLimitCopy()} Repeated or automated activity may receive a short cooldown.</p>
         <div class="room-post-composer__actions">
           ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
           ${PrimaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -3125,14 +3162,14 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     <form class="thread-room__composer${roomAccess ? "" : " thread-room__composer--locked"}" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
         <span class="ui-field__label">QUOTE / REPLY WITHOUT A NAME</span>
-        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" placeholder="${roomAccess ? "Add your thought to the thread..." : "Enter the room to reply anonymously."}"${roomAccess ? "" : " disabled"}></textarea>
+        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" maxlength="${roomReplyCharacterLimit()}" placeholder="${roomAccess ? "Add your thought to the thread..." : "Enter the room to reply anonymously."}"${roomAccess ? "" : " disabled"}></textarea>
       </label>
       <div class="thread-room__composer-footer">
         <span>${roomAccess ? "FREE ACCESS / NO HANDLE / NO TRAIL" : "ROOM ACCESS REQUIRED"}</span>
         ${PrimaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : roomAccess ? "TRANSMIT REPLY →" : "ENTER THE ROOM FIRST", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
-    <p class="thread-room__note">${roomAccess ? "Free room access includes anonymous replies. Suspicious bursts or repeated messages may receive a short signal cooldown." : "Enter the private room to reply without a public name."}</p>
+    <p class="thread-room__note">${roomAccess ? `${roomReplyLimitCopy()} Suspicious bursts or repeated messages may receive a short signal cooldown.` : "Enter the private room to reply without a public name."}</p>
   </section>`;
 }
 
@@ -3918,7 +3955,7 @@ function renderRoomProfile(): RenderedProductRoute {
               </div>
               ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
             </div>
-            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account." : "Free access includes anonymous posts, replies, reactions, and private history. Optional ZEC verification can unlock higher limits and advanced room privileges."}</p>
+            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 200 characters and replies allow 100; optional ZEC verification unlocks higher limits and advanced room privileges."}</p>
             ${isFull ? "" : `<div class="room-profile-card__actions">
               ${SecondaryButton({ label: "VERIFY WITH ZEC →", dataAction: "room-open-verification" })}
               ${GhostButton({ label: "CONTINUE FREE →", dataAction: "room-profile-back" })}
