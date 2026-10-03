@@ -121,6 +121,7 @@ let roomPostText = "";
 let roomPostError = "";
 let roomPostSubmitting = false;
 let roomPosts: RoomPost[] = [];
+let roomPendingPostIds = new Set<string>();
 let roomPostsLoadedChannel: RoomChannel | undefined;
 let roomPostsRequest: Promise<void> | undefined;
 let roomLiveActivityEvents: RoomActivityEvent[] = [];
@@ -296,6 +297,28 @@ function transmissionViewFromRoomPost(post: RoomPost): TransmissionView {
     time: post.time,
     category: post.category,
     reactions: post.reactions,
+  };
+}
+
+function shareableConfessionForId(id: string): MockConfession | undefined {
+  const mockConfession = getMockConfession(id);
+  if (mockConfession) {
+    return mockConfession;
+  }
+
+  const post = roomPosts.find((candidate) => candidate.id === id);
+  if (!post) {
+    return undefined;
+  }
+
+  return {
+    id: post.id,
+    reference: post.reference,
+    text: post.text,
+    category: isMockCategory(post.category) ? post.category : "IDENTITY",
+    relativeTime: formatTransmissionTime(post.time),
+    reactions: post.reactions,
+    time: post.time,
   };
 }
 
@@ -1813,7 +1836,7 @@ function replyIndexFromButton(button: HTMLButtonElement): number | undefined {
 }
 
 async function shareThreadImage(root: ParentNode, id: string, mode: "save" | "share" | "x", replyIndex?: number): Promise<void> {
-  const confession = getMockConfession(id);
+  const confession = shareableConfessionForId(id);
   if (!confession) {
     return;
   }
@@ -2246,7 +2269,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
-    ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile", normalizedPath === "/room" || normalizedPath === "/explore")}
+    ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
     ${isRoomSurface || isAdminPage ? "" : publicNavigation(path)}
     ${main}
     ${isRoomSurface ? renderSelectionTools() : ""}
@@ -2325,10 +2348,21 @@ async function refreshRoomPosts(): Promise<void> {
   const requestedChannel = activeRoomChannel;
   roomPostsRequest = fetchRoomPosts(requestedChannel)
     .then((response) => {
-      roomPosts = response.posts;
+      const pendingPosts = roomPosts.filter(
+        (post) => post.channel === requestedChannel && roomPendingPostIds.has(post.id),
+      );
+      const responseIds = new Set(response.posts.map((post) => post.id));
+      roomPosts = [
+        ...pendingPosts.filter((post) => !responseIds.has(post.id)),
+        ...response.posts,
+      ];
+      for (const post of response.posts) {
+        roomPendingPostIds.delete(post.id);
+      }
       roomPostsLoadedChannel = requestedChannel;
       roomPostError = "";
-      if (normalizePath(window.location.pathname) === "/room") {
+      const normalizedPath = normalizePath(window.location.pathname);
+      if (normalizedPath === "/room" || Boolean(roomChannelFromPath(normalizedPath))) {
         rerenderProductRoute();
       }
     })
@@ -2391,6 +2425,7 @@ async function submitRoomPost(): Promise<void> {
       channel: activeRoomChannel,
       category: "IDENTITY",
     });
+    roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
     roomPostsLoadedChannel = activeRoomChannel;
     roomPostComposerOpen = false;
@@ -2452,6 +2487,10 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   }
 }
 
+function renderRoomEyeWatcher(extraClass = ""): string {
+  return `<span class="home-room-title__watcher${extraClass ? ` ${extraClass}` : ""}" aria-hidden="true"><span class="home-room-invite__glasses home-room-title__glasses"><span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span><span class="home-room-invite__bridge"></span><span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span></span></span>`;
+}
+
 function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
   const showFooter = options.showFooter ?? true;
   const activeChannel = roomChannelOption(activeRoomChannel);
@@ -2475,7 +2514,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     ${TerminalLabel("CHANNELS / PRIVATE ROOMS")}
     <span class="room-directory__count">${roomChannelOptions.length} OPEN</span>
     </div>
-    <h2>Choose a room.</h2>
+    <h2>Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
     ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
@@ -2723,7 +2762,7 @@ function renderMobileRoomIndex(): string {
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
           ${TerminalLabel("PRIVATE ROOM / INDEX")}
-          <h1>CHOOSE A ROOM.</h1>
+          <h1>CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
           ${renderMobilePostSurface()}
         </header>
@@ -3060,6 +3099,7 @@ function clearRoomSession(): void {
   roomPostError = "";
   roomPostSubmitting = false;
   roomPosts = [];
+  roomPendingPostIds.clear();
   roomPostsLoadedChannel = undefined;
   roomAccountRecoveryCode = "";
   roomAccountHistory = undefined;
@@ -3811,7 +3851,7 @@ function renderHome(): RenderedProductRoute {
           </div>
           <div class="home-room-core">
             <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
-            <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO<span class="home-room-title__watcher" aria-hidden="true"><span class="home-room-invite__glasses home-room-title__glasses"><span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span><span class="home-room-invite__bridge"></span><span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span></span></span></span>M<br />WITHOUT <em>NAMES.</em></h1>
+            <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO${renderRoomEyeWatcher()}</span>M<br />WITHOUT <em>NAMES.</em></h1>
             <p class="home-room-core__copy">A private room for anonymous thoughts and unnamed conversations.</p>
             <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>

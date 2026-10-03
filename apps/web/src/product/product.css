@@ -7691,3 +7691,117 @@
   line-height: 1.65;
   max-width: 62ch;
 }
+
+/* Phase 2.16 — keep the room marker fully inside the feed surface. */
+.public-page--explore .explore-feed::before {
+  max-width: none;
+  overflow: visible;
+  pointer-events: none;
+  right: clamp(1rem, 2.5vw, 2rem);
+  text-overflow: clip;
+  top: 0.3rem;
+  z-index: 3;
+}
+
+/* Phase 2.17 — match room header copy to the confession reading treatment. */
+.public-page--explore .explore-header p,
+.public-page--explore .room-directory__intro,
+.public-page--room-index .room-mobile-index__header p {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(0.92rem, 1vw, 1.05rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.65;
+}
+
+/* Phase 2.18 — remove the redundant room-feed marker. */
+.public-page--explore .explore-feed::before {
+  content: none;
+  display: none;
+}
+
+/* Phase 2.19 — use the room's readable heading face and let the eye watcher serve as the double-o. */
+.public-page--explore .room-directory h2,
+.public-page--room-index .room-mobile-index__header h1 {
+  color: var(--hidn-bone);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-shadow: 0 0 1rem rgba(93, 255, 143, 0.12);
+}
+
+.public-page--explore .room-directory h2 {
+  font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+  line-height: 1.05;
+}
+
+.room-directory-title__double-o {
+  color: transparent;
+  display: inline-block;
+  position: relative;
+  vertical-align: -0.04em;
+  white-space: nowrap;
+  min-width: 1.08em;
+}
+
+.home-room-title__double-o {
+  color: transparent;
+}
+
+.room-directory-title__watcher {
+  animation: hidn-room-eye-glitch 5.2s steps(1, end) infinite;
+  filter: drop-shadow(0 0 0.14em rgba(93, 255, 143, 0.68));
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.room-directory-title__watcher .home-room-invite__lens {
+  background: rgba(2, 6, 4, 0.28);
+  border-color: rgba(93, 255, 143, 0.78);
+  box-shadow: inset 0 0 0 0.025em rgba(93, 255, 143, 0.24), 0 0 0.16em rgba(93, 255, 143, 0.24);
+}
+
+.home-room-title__watcher .home-room-invite__lens {
+  background: rgba(2, 6, 4, 0.28);
+}
+
+.room-directory-title__watcher .home-room-invite__eye {
+  background: var(--hidn-signal);
+  box-shadow: 0 0 0.22em rgba(93, 255, 143, 0.92);
+}
+
+.room-directory-title__watcher .home-room-invite__pupil {
+  border-color: rgba(2, 6, 4, 0.92);
+}
+
+@keyframes hidn-room-eye-glitch {
+  0%,
+  72%,
+  100% {
+    filter: drop-shadow(0 0 0.14em rgba(93, 255, 143, 0.68));
+    transform: translate(-50%, -50%);
+  }
+
+  73% {
+    filter: drop-shadow(-0.06em 0 rgba(93, 255, 143, 0.92)) drop-shadow(0.06em 0 rgba(161, 255, 190, 0.72));
+    transform: translate(calc(-50% - 0.04em), -50%) skewX(-4deg);
+  }
+
+  74%,
+  77% {
+    filter: drop-shadow(0 0 0.26em rgba(93, 255, 143, 0.92));
+    transform: translate(-50%, -50%);
+  }
+
+  75% {
+    filter: drop-shadow(0.06em 0 rgba(93, 255, 143, 0.92)) drop-shadow(-0.06em 0 rgba(161, 255, 190, 0.72));
+    transform: translate(calc(-50% + 0.04em), -50%) skewX(4deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-directory-title__watcher {
+    animation: none;
+    filter: drop-shadow(0 0 0.14em rgba(93, 255, 143, 0.68));
+  }
+}
