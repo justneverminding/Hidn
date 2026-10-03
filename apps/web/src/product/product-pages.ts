@@ -4905,7 +4905,11 @@ function restoreRoomRecoveryInteractionState(state: RoomRecoveryInteractionState
   }
 }
 
-function rerenderProductRoute(): void {
+function rerenderProductRoute(force = false): void {
+  if (!force && roomVerificationNoticeOpen && normalizePath(window.location.pathname) === "/room/profile") {
+    return;
+  }
+
   const recoveryState = captureRoomRecoveryInteractionState();
   window.dispatchEvent(new CustomEvent("hidn:rerender"));
   restoreRoomRecoveryInteractionState(recoveryState);
@@ -5601,7 +5605,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
 
           roomVerificationNoticeOpen = true;
-          rerenderProductRoute();
+          rerenderProductRoute(true);
           break;
         case "room-verification-notice-close":
           roomVerificationNoticeOpen = false;
