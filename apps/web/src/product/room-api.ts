@@ -135,6 +135,38 @@ export interface AdminReportsResponse {
   limit: number;
 }
 
+export type AdminRole = "super_admin" | "moderator" | "reviewer";
+export type AdminStatus = "active" | "disabled";
+
+export interface AdminSession {
+  adminId: string;
+  email: string | null;
+  displayName: string | null;
+  role: AdminRole;
+  source: "cloudflare_access" | "legacy_token";
+}
+
+export interface AdminModerator {
+  adminId: string;
+  email: string | null;
+  displayName: string | null;
+  role: AdminRole;
+  status: AdminStatus;
+  createdAt: string;
+  lastSeenAt: string | null;
+}
+
+export interface AdminAuditEvent {
+  eventId: string;
+  adminId: string;
+  adminEmail: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  reason: string | null;
+  createdAt: string;
+}
+
 export interface ModerationVisibilityResponse {
   hiddenTargets: Array<{
     targetType: ModerationTargetType;
@@ -299,14 +331,21 @@ export function submitReport(input: {
   return accountRequest<ReportSubmissionResponse>("/api/reports", input);
 }
 
-async function adminRequest<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+async function adminRequest<T>(path: string, token = "", init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  // Keep the browser request under the same Cloudflare Access application as
+  // the admin console. A second Access application for the API would trigger
+  // a separate OAuth handoff during fetch and surface as a generic network
+  // error in the console.
+  const scopedPath = path.startsWith("/api/admin") ? `/admin${path}` : path;
+  const response = await fetch(scopedPath, {
     ...init,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
-    },
+    headers,
+    credentials: "same-origin",
     cache: "no-store",
   });
   if (!response.ok) {
@@ -316,6 +355,10 @@ async function adminRequest<T>(path: string, token: string, init: RequestInit = 
   }
 
   return (await response.json()) as T;
+}
+
+export function fetchAdminSession(): Promise<{ admin: AdminSession }> {
+  return adminRequest<{ admin: AdminSession }>("/api/admin/session");
 }
 
 export function fetchAdminReports(token: string, status: ReportStatus | "all" = "all"): Promise<AdminReportsResponse> {
@@ -358,6 +401,37 @@ export function moderateAdminContent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export function fetchAdminModerators(token = ""): Promise<{ admins: AdminModerator[] }> {
+  return adminRequest<{ admins: AdminModerator[] }>("/api/admin/moderators", token);
+}
+
+export function createAdminModerator(
+  token: string,
+  input: { email: string; displayName?: string; role: AdminRole; accessSubject?: string },
+): Promise<{ status: "created"; email: string; role: AdminRole }> {
+  return adminRequest(`/api/admin/moderators`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAdminModerator(
+  token: string,
+  adminId: string,
+  input: { role?: AdminRole; status?: AdminStatus; displayName?: string },
+): Promise<{ status: "updated"; adminId: string; role: AdminRole; accountStatus: AdminStatus }> {
+  return adminRequest(`/api/admin/moderators/${encodeURIComponent(adminId)}`, token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchAdminAudit(token = "", limit = 100): Promise<{ events: AdminAuditEvent[] }> {
+  return adminRequest<{ events: AdminAuditEvent[] }>(`/api/admin/audit?limit=${encodeURIComponent(String(limit))}`, token);
 }
 
 export async function fetchModerationVisibility(): Promise<ModerationVisibilityResponse> {

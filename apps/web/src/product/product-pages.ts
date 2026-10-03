@@ -48,6 +48,10 @@ import {
   createRoomReply,
   createRoomSession,
   fetchAccountHistory,
+  fetchAdminAudit,
+  fetchAdminModerators,
+  fetchAdminSession,
+  createAdminModerator,
   fetchRoomActivity,
   fetchRoomPosts,
   fetchAdminReports,
@@ -61,10 +65,15 @@ import {
   requestZkChallenge,
   signupZkAccount,
   submitReport,
+  updateAdminModerator,
   updateAdminReport,
   verifyZkLogin,
   verifyRoomDemoPayment,
+  type AdminAuditEvent,
+  type AdminModerator,
+  type AdminRole,
   type AdminReportsResponse,
+  type AdminSession,
   type AccountAccessLevel,
   type AccountHistoryResponse,
   type AccountResponse,
@@ -135,7 +144,13 @@ let roomReportFeedback = "";
 let roomReportNotice = "";
 let roomReportSubmitting = false;
 let adminReportToken = "";
+let adminSession: AdminSession | undefined;
+let adminSessionLoaded = false;
 let adminReports: AdminReportsResponse | undefined;
+let adminModerators: AdminModerator[] | undefined;
+let adminModeratorsLoaded = false;
+let adminAuditEvents: AdminAuditEvent[] | undefined;
+let adminAuditLoaded = false;
 let adminReportFilter: ReportStatus | "all" = "all";
 let adminReportError = "";
 let adminReportLoading = false;
@@ -2759,22 +2774,26 @@ function renderAdminReports(): RenderedProductRoute {
           <header class="admin-reports-page__header">
             ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
             <h1 class="type-display-lg">REPORT<br /><em>CONSOLE.</em></h1>
-            <p>Review user-submitted moderation reports, then hide or restore thread and reply content. This surface is not linked from public navigation and report data is only loaded after Worker-token authorization.</p>
+            <p>Review user-submitted moderation reports, then hide or restore thread and reply content. Cloudflare Access protects this surface before the Worker checks your HIDN administrator role.</p>
           </header>
           <section class="admin-reports-gate" aria-labelledby="admin-reports-gate-title">
             <div>
-              ${TerminalLabel("WORKER AUTHORIZATION")}
+              ${TerminalLabel("ADMIN AUTHORIZATION")}
               <h2 id="admin-reports-gate-title">OPEN THE PRIVATE QUEUE.</h2>
             </div>
             <label class="ui-field" for="admin-report-token">
-              <span class="ui-field__label">REPORT ADMIN TOKEN / MEMORY ONLY</span>
-              <input id="admin-report-token" type="password" autocomplete="off" placeholder="Paste the Worker secret" />
+              <span class="ui-field__label">LEGACY TOKEN / MIGRATION FALLBACK</span>
+              <input id="admin-report-token" type="password" autocomplete="off" placeholder="Optional when Access is enabled" />
             </label>
             <div class="admin-reports-gate__actions">
               ${PrimaryButton({ label: adminReportLoading ? "LOADING REPORTS..." : "LOAD REPORTS →", disabled: adminReportLoading, dataAction: "admin-reports-load" })}
               ${GhostButton({ label: "CLEAR", dataAction: "admin-reports-clear" })}
             </div>
-            <p class="admin-reports-gate__status" role="status">${adminReportToken ? "TOKEN PRESENT / NOT STORED" : "NO TOKEN PRESENT"}</p>
+            <p class="admin-reports-gate__status" role="status">${adminSession
+              ? `${escapeHtml(adminSession.role.replace("_", " ").toUpperCase())} / ${escapeHtml(adminSession.email ?? "ACCESS IDENTITY")}`
+              : adminReportToken
+                ? "LEGACY TOKEN PRESENT / NOT STORED"
+                : "OPEN THROUGH CLOUDFLARE ACCESS OR USE THE MIGRATION TOKEN"}</p>
           </section>
           ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
           ${adminReports ? `<section class="admin-reports-results" aria-labelledby="admin-reports-results-title">
@@ -2800,7 +2819,118 @@ function renderAdminReports(): RenderedProductRoute {
             <div class="admin-reports-list">
               ${reportRows.length ? reportRows.map(renderAdminReportCard).join("") : `<p class="admin-reports-empty">No reports match this filter.</p>`}
             </div>
-          </section>` : SystemMessage("PRIVATE QUEUE / LOCKED", "Enter the REPORT_ADMIN_TOKEN configured on the HIDN Worker. The token is sent only in the request header and is not saved in this browser.", "INFO")}
+          </section>` : SystemMessage("PRIVATE QUEUE / LOCKED", "Cloudflare Access should sign you in before the Worker checks your HIDN role. The legacy token remains available only during migration and is not saved in this browser.", "INFO")}
+        </div>
+      </main>`,
+      "public-page--admin",
+    ),
+  };
+}
+
+function renderAdminDashboard(): RenderedProductRoute {
+  return {
+    metadata: {
+      kind: "admin",
+      title: "HIDN — Admin Control",
+      description: "Private HIDN administrator control surface.",
+      canonicalPath: "/admin",
+    },
+    html: publicFrame(
+      "/admin",
+      `<main id="main-content" class="public-main admin-main">
+        <div class="hidn-container--reading admin-reports-page">
+          <header class="admin-reports-page__header">
+            ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
+            <h1 class="type-display-lg">ADMIN<br /><em>CONTROL.</em></h1>
+            <p>This is the control room for HIDN moderation. Cloudflare Access handles the human login; HIDN applies the role after the Worker verifies the Access identity.</p>
+          </header>
+          <section class="admin-reports-gate" aria-labelledby="admin-control-session-title">
+            ${TerminalLabel("CURRENT SESSION")}
+            <h2 id="admin-control-session-title">${adminSession ? escapeHtml((adminSession.displayName || adminSession.email || "ACCESS IDENTITY").toUpperCase()) : "SESSION NOT LOADED."}</h2>
+            <p class="admin-reports-gate__status">${adminSession ? `${escapeHtml(adminSession.role.replace("_", " ").toUpperCase())} / ${escapeHtml(adminSession.email ?? "ACCESS IDENTITY")}` : "OPEN THIS PAGE THROUGH CLOUDFLARE ACCESS."}</p>
+          </section>
+          ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
+          <nav class="admin-reports-summary" aria-label="Admin tools">
+            <a class="ui-button ui-button--primary" href="/admin/reports">REPORT QUEUE →</a>
+            ${adminSession?.role === "super_admin" ? `<a class="ui-button ui-button--secondary" href="/admin/moderators">MODERATORS →</a><a class="ui-button ui-button--secondary" href="/admin/audit">AUDIT LOG →</a>` : ""}
+          </nav>
+        </div>
+      </main>`,
+      "public-page--admin",
+    ),
+  };
+}
+
+function renderAdminModerators(): RenderedProductRoute {
+  const admins = adminModerators ?? [];
+  return {
+    metadata: {
+      kind: "admin",
+      title: "HIDN — Admin Roles",
+      description: "Private HIDN administrator role control.",
+      canonicalPath: "/admin/moderators",
+    },
+    html: publicFrame(
+      "/admin/moderators",
+      `<main id="main-content" class="public-main admin-main">
+        <div class="hidn-container--reading admin-reports-page">
+          <header class="admin-reports-page__header">
+            ${TerminalLabel("HIDN / SUPER ADMIN ONLY")}
+            <h1 class="type-display-lg">ADMIN<br /><em>ROLES.</em></h1>
+            <p>Add or disable moderator and reviewer identities. They must sign in through the Cloudflare Access application with the same email before HIDN grants the role.</p>
+            <p><a href="/admin">← ADMIN CONTROL</a></p>
+          </header>
+          <section class="admin-reports-gate" aria-labelledby="admin-role-add-title">
+            ${TerminalLabel("ADD ADMINISTRATOR")}
+            <h2 id="admin-role-add-title">GRANT A ROLE.</h2>
+            <label class="ui-field" for="admin-moderator-email"><span class="ui-field__label">ACCESS EMAIL</span><input id="admin-moderator-email" type="email" autocomplete="off" placeholder="moderator@example.com" /></label>
+            <label class="ui-field" for="admin-moderator-name"><span class="ui-field__label">DISPLAY NAME / OPTIONAL</span><input id="admin-moderator-name" type="text" autocomplete="off" placeholder="ROOM MODERATOR" /></label>
+            <label class="ui-field" for="admin-moderator-role"><span class="ui-field__label">ROLE</span><select id="admin-moderator-role"><option value="moderator">MODERATOR / REPORT ACTIONS</option><option value="reviewer">REVIEWER / READ ONLY</option><option value="super_admin">SUPER ADMIN / FULL CONTROL</option></select></label>
+            <div class="admin-reports-gate__actions">${PrimaryButton({ label: "GRANT ROLE →", dataAction: "admin-moderator-create" })}</div>
+          </section>
+          ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
+          <section class="admin-reports-results" aria-labelledby="admin-role-list-title">
+            ${TerminalLabel("CURRENT ADMINISTRATORS")}
+            <h2 id="admin-role-list-title">${admins.length} IDENTITY${admins.length === 1 ? "" : "IES"}.</h2>
+            <div class="admin-reports-list">
+              ${admins.length ? admins.map((admin) => `<article class="admin-report-card">
+                <header class="admin-report-card__header"><div><span class="admin-report-card__id">${escapeHtml(admin.adminId)}</span><h2>${escapeHtml(admin.displayName || admin.email || "ACCESS IDENTITY")}</h2></div><span class="admin-report-card__status">${escapeHtml(admin.status.toUpperCase())}</span></header>
+                <dl class="admin-report-card__meta"><div><dt>EMAIL</dt><dd>${escapeHtml(admin.email ?? "NOT SET")}</dd></div><div><dt>ROLE</dt><dd>${escapeHtml(admin.role.replace("_", " ").toUpperCase())}</dd></div><div><dt>LAST SEEN</dt><dd>${escapeHtml(admin.lastSeenAt ?? "NOT YET")}</dd></div></dl>
+                <div class="admin-report-card__review"><label class="ui-field" for="admin-role-${escapeHtml(admin.adminId)}"><span class="ui-field__label">ROLE</span><select id="admin-role-${escapeHtml(admin.adminId)}" data-admin-role><option value="super_admin"${admin.role === "super_admin" ? " selected" : ""}>SUPER ADMIN</option><option value="moderator"${admin.role === "moderator" ? " selected" : ""}>MODERATOR</option><option value="reviewer"${admin.role === "reviewer" ? " selected" : ""}>REVIEWER</option></select></label><button class="ui-button ui-button--secondary" type="button" data-action="admin-moderator-update" data-admin-id="${escapeHtml(admin.adminId)}" data-admin-status="${escapeHtml(admin.status)}">SAVE ROLE →</button>${admin.status === "active" && admin.adminId !== adminSession?.adminId ? `<button class="ui-button ui-button--danger" type="button" data-action="admin-moderator-disable" data-admin-id="${escapeHtml(admin.adminId)}">DISABLE →</button>` : ""}</div>
+              </article>`).join("") : `<p class="admin-reports-empty">No administrator records yet.</p>`}
+            </div>
+          </section>
+        </div>
+      </main>`,
+      "public-page--admin",
+    ),
+  };
+}
+
+function renderAdminAudit(): RenderedProductRoute {
+  const events = adminAuditEvents ?? [];
+  return {
+    metadata: {
+      kind: "admin",
+      title: "HIDN — Admin Audit",
+      description: "Private HIDN administrator audit log.",
+      canonicalPath: "/admin/audit",
+    },
+    html: publicFrame(
+      "/admin/audit",
+      `<main id="main-content" class="public-main admin-main">
+        <div class="hidn-container--reading admin-reports-page">
+          <header class="admin-reports-page__header">
+            ${TerminalLabel("HIDN / SUPER ADMIN ONLY")}
+            <h1 class="type-display-lg">AUDIT<br /><em>LOG.</em></h1>
+            <p>Every role change, report update, and content action is recorded here with the acting admin identity.</p>
+            <p><a href="/admin">← ADMIN CONTROL</a></p>
+          </header>
+          <section class="admin-reports-results" aria-labelledby="admin-audit-list-title">
+            ${TerminalLabel("RECENT ADMIN ACTIONS")}
+            <h2 id="admin-audit-list-title">${events.length} EVENT${events.length === 1 ? "" : "S"}.</h2>
+            <div class="admin-reports-list">${events.length ? events.map((event) => `<article class="admin-report-card"><header class="admin-report-card__header"><div><span class="admin-report-card__id">${escapeHtml(event.eventId)}</span><h2>${escapeHtml(event.action.replaceAll("_", " ").toUpperCase())}</h2></div><span class="admin-report-card__status">${escapeHtml(event.createdAt)}</span></header><dl class="admin-report-card__meta"><div><dt>ADMIN</dt><dd>${escapeHtml(event.adminEmail ?? event.adminId)}</dd></div><div><dt>TARGET</dt><dd>${escapeHtml(event.targetType)} / ${escapeHtml(event.targetId)}</dd></div></dl>${event.reason ? `<p class="admin-report-card__details"><strong>NOTE</strong>${escapeHtml(event.reason)}</p>` : ""}</article>`).join("") : `<p class="admin-reports-empty">No audit events yet.</p>`}</div>
+          </section>
         </div>
       </main>`,
       "public-page--admin",
@@ -4052,8 +4182,20 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderRoomAccess();
   }
 
+  if (normalizedPath === "/admin") {
+    return renderAdminDashboard();
+  }
+
   if (normalizedPath === "/admin/reports") {
     return renderAdminReports();
+  }
+
+  if (normalizedPath === "/admin/moderators") {
+    return renderAdminModerators();
+  }
+
+  if (normalizedPath === "/admin/audit") {
+    return renderAdminAudit();
   }
 
   if (normalizedPath === "/explore") {
@@ -4217,9 +4359,24 @@ async function submitActiveReport(): Promise<void> {
   }
 }
 
+async function loadAdminSessionState(): Promise<boolean> {
+  if (adminSessionLoaded) {
+    return Boolean(adminSession);
+  }
+  adminSessionLoaded = true;
+  try {
+    adminSession = (await fetchAdminSession()).admin;
+    return true;
+  } catch {
+    adminSession = undefined;
+    return false;
+  }
+}
+
 async function loadAdminReports(): Promise<void> {
-  if (!adminReportToken) {
-    adminReportError = "Paste the REPORT_ADMIN_TOKEN before loading the queue.";
+  const hasSession = adminSession ? true : await loadAdminSessionState();
+  if (!adminReportToken && !hasSession) {
+    adminReportError = "Open this page through Cloudflare Access, or provide the temporary migration token.";
     adminReports = undefined;
     rerenderProductRoute();
     return;
@@ -4242,12 +4399,96 @@ async function loadAdminReports(): Promise<void> {
   }
 }
 
+async function loadAdminModerators(): Promise<void> {
+  adminModeratorsLoaded = true;
+  const hasSession = adminSession ? true : await loadAdminSessionState();
+  if (!hasSession || adminSession?.role !== "super_admin") {
+    adminReportError = "A super-admin Cloudflare Access session is required for role control.";
+    rerenderProductRoute();
+    return;
+  }
+
+  try {
+    adminModerators = (await fetchAdminModerators(adminReportToken)).admins;
+    adminReportError = "";
+  } catch (error) {
+    adminModerators = undefined;
+    adminReportError = error instanceof Error ? error.message : "Administrator records could not be loaded.";
+  }
+  if (normalizePath(window.location.pathname) === "/admin/moderators") {
+    rerenderProductRoute();
+  }
+}
+
+async function loadAdminAudit(): Promise<void> {
+  adminAuditLoaded = true;
+  const hasSession = adminSession ? true : await loadAdminSessionState();
+  if (!hasSession || adminSession?.role !== "super_admin") {
+    adminReportError = "A super-admin Cloudflare Access session is required for the audit log.";
+    rerenderProductRoute();
+    return;
+  }
+
+  try {
+    adminAuditEvents = (await fetchAdminAudit(adminReportToken)).events;
+    adminReportError = "";
+  } catch (error) {
+    adminAuditEvents = undefined;
+    adminReportError = error instanceof Error ? error.message : "The admin audit could not be loaded.";
+  }
+  if (normalizePath(window.location.pathname) === "/admin/audit") {
+    rerenderProductRoute();
+  }
+}
+
+async function createAdminModeratorFromRoot(root: ParentNode): Promise<void> {
+  const email = root.querySelector<HTMLInputElement>("#admin-moderator-email")?.value.trim() ?? "";
+  const displayName = root.querySelector<HTMLInputElement>("#admin-moderator-name")?.value.trim() ?? "";
+  const role = root.querySelector<HTMLSelectElement>("#admin-moderator-role")?.value ?? "moderator";
+  if (!email || (role !== "super_admin" && role !== "moderator" && role !== "reviewer")) {
+    adminReportError = "Enter an email and choose a valid administrator role.";
+    rerenderProductRoute();
+    return;
+  }
+
+  try {
+    await createAdminModerator(adminReportToken, { email, displayName, role: role as AdminRole });
+    adminReportError = "ADMIN ROLE GRANTED / THEY CAN SIGN IN THROUGH ACCESS NOW";
+    await loadAdminModerators();
+  } catch (error) {
+    adminReportError = error instanceof Error ? error.message : "The administrator role could not be granted.";
+    rerenderProductRoute();
+  }
+}
+
+async function updateAdminModeratorFromRoot(button: HTMLButtonElement, disable = false): Promise<void> {
+  const adminId = button.dataset.adminId;
+  const card = button.closest<HTMLElement>(".admin-report-card");
+  const role = card?.querySelector<HTMLSelectElement>("[data-admin-role]")?.value ?? "moderator";
+  if (!adminId || (role !== "super_admin" && role !== "moderator" && role !== "reviewer")) {
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    await updateAdminModerator(adminReportToken, adminId, {
+      role: role as AdminRole,
+      status: disable ? "disabled" : "active",
+    });
+    adminReportError = disable ? "ADMIN DISABLED / AUDIT EVENT RECORDED" : "ADMIN ROLE UPDATED / AUDIT EVENT RECORDED";
+    await loadAdminModerators();
+  } catch (error) {
+    adminReportError = error instanceof Error ? error.message : "The administrator role could not be updated.";
+    rerenderProductRoute();
+  }
+}
+
 async function updateAdminReportFromRoot(button: HTMLButtonElement): Promise<void> {
   const reportId = button.dataset.reportId;
   const card = button.closest<HTMLElement>("[data-admin-report-id]");
   const status = card?.querySelector<HTMLSelectElement>("[data-admin-report-status]")?.value as ReportStatus | undefined;
   const reviewerNote = card?.querySelector<HTMLTextAreaElement>("[data-admin-report-note]")?.value.trim() ?? "";
-  if (!reportId || !status || !adminReportToken) {
+  if (!reportId || !status || !adminReports) {
     adminReportError = "Load the private report queue before updating a report.";
     rerenderProductRoute();
     return;
@@ -4278,7 +4519,7 @@ async function moderateAdminContentFromRoot(button: HTMLButtonElement): Promise<
     (targetType !== "thread" && targetType !== "reply") ||
     !targetId ||
     (action !== "approve" && action !== "hide" && action !== "reject") ||
-    !adminReportToken
+    !adminReports
   ) {
     adminReportError = "Load the private report queue before changing content visibility.";
     rerenderProductRoute();
@@ -4377,11 +4618,32 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (isModerationSurfacePath(normalizedPath)) {
     void refreshModerationVisibility();
   }
-  if (normalizedPath !== "/admin/reports" && (adminReportToken || adminReports || adminReportError)) {
+  const isAdminPath = ["/admin", "/admin/reports", "/admin/moderators", "/admin/audit"].includes(normalizedPath);
+  if (!isAdminPath && (adminReportToken || adminSession || adminReports || adminModerators || adminAuditEvents || adminReportError)) {
     adminReportToken = "";
+    adminSession = undefined;
+    adminSessionLoaded = false;
     adminReports = undefined;
+    adminModerators = undefined;
+    adminModeratorsLoaded = false;
+    adminAuditEvents = undefined;
+    adminAuditLoaded = false;
     adminReportError = "";
     adminReportFilter = "all";
+  }
+  if (normalizedPath === "/admin") {
+    const sessionWasLoaded = adminSessionLoaded;
+    void loadAdminSessionState().then(() => {
+      if (normalizePath(window.location.pathname) === "/admin" && !sessionWasLoaded) {
+        rerenderProductRoute();
+      }
+    });
+  }
+  if (normalizedPath === "/admin/moderators" && !adminModeratorsLoaded) {
+    void loadAdminModerators();
+  }
+  if (normalizedPath === "/admin/audit" && !adminAuditLoaded) {
+    void loadAdminAudit();
   }
   root.querySelector<HTMLSelectElement>('[data-admin-report-filter]')?.addEventListener("change", (event) => {
     const filter = (event.currentTarget as HTMLSelectElement).value;
@@ -4491,6 +4753,15 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         case "admin-report-moderate":
           void moderateAdminContentFromRoot(button);
+          break;
+        case "admin-moderator-create":
+          void createAdminModeratorFromRoot(root);
+          break;
+        case "admin-moderator-update":
+          void updateAdminModeratorFromRoot(button);
+          break;
+        case "admin-moderator-disable":
+          void updateAdminModeratorFromRoot(button, true);
           break;
         case "selection-save":
           void shareSelectedTexts(root, activeTextSelection ? [activeTextSelection] : [], "save");

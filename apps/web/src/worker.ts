@@ -162,6 +162,49 @@ interface AdminReportRow {
   reviewer_note: string;
 }
 
+type AdminRole = "super_admin" | "moderator" | "reviewer";
+type AdminStatus = "active" | "disabled";
+
+interface AdminUserRow {
+  admin_id: string;
+  access_subject_hash: string | null;
+  email: string | null;
+  display_name: string | null;
+  role: AdminRole;
+  status: AdminStatus;
+  created_at: string;
+  last_seen_at: string | null;
+}
+
+interface AdminAuditRow {
+  event_id: string;
+  admin_id: string;
+  admin_email: string | null;
+  action: string;
+  target_type: string;
+  target_id: string;
+  reason: string | null;
+  created_at: string;
+}
+
+interface CloudflareAccessClaims {
+  sub: string;
+  email: string | null;
+  name: string | null;
+  iss: string;
+  aud: string | string[];
+  exp: number;
+  iat?: number;
+}
+
+interface AdminActor {
+  adminId: string;
+  email: string | null;
+  displayName: string | null;
+  role: AdminRole;
+  source: "cloudflare_access" | "legacy_token";
+}
+
 interface RoomPostRow {
   thread_id: string;
   content: string;
@@ -373,6 +416,14 @@ function createModerationEventId(): string {
   return `MOD-${createRandomHex(12).toUpperCase()}`;
 }
 
+function createAdminId(): string {
+  return `ADM-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createAdminAuditEventId(): string {
+  return `AUD-${createRandomHex(12).toUpperCase()}`;
+}
+
 function createActivityEventId(): string {
   return `ACT-${createRandomHex(12).toUpperCase()}`;
 }
@@ -443,6 +494,14 @@ function isModerationTargetType(value: string): value is "thread" | "reply" {
 
 function isModerationAction(value: string): value is ModerationAction {
   return value === "approve" || value === "hide" || value === "reject";
+}
+
+function isAdminRole(value: string): value is AdminRole {
+  return value === "super_admin" || value === "moderator" || value === "reviewer";
+}
+
+function isAdminStatus(value: string): value is AdminStatus {
+  return value === "active" || value === "disabled";
 }
 
 async function hashText(value: string): Promise<string> {
@@ -1454,6 +1513,109 @@ async function submitReport(request: Request, env: HidnWorkerEnv): Promise<Respo
   );
 }
 
+function decodeBase64Url(value: string): ArrayBuffer {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function decodeJwtJson<T>(segment: string): T | null {
+  try {
+    return JSON.parse(new TextDecoder().decode(decodeBase64Url(segment))) as T;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAccessTeamDomain(value: string): string {
+  const candidate = value.trim();
+  if (!candidate) {
+    return "";
+  }
+
+  try {
+    return new URL(candidate.startsWith("http") ? candidate : `https://${candidate}`).origin;
+  } catch {
+    return "";
+  }
+}
+
+function accessAudienceMatches(audience: string | string[], expected: string): boolean {
+  const expectedAudiences = expected
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return Array.isArray(audience)
+    ? audience.some((value) => expectedAudiences.includes(value))
+    : expectedAudiences.includes(audience);
+}
+
+async function validateCloudflareAccessJwt(
+  request: Request,
+  env: HidnWorkerEnv,
+): Promise<CloudflareAccessClaims | null> {
+  const teamDomain = normalizeAccessTeamDomain(env.CLOUDFLARE_ACCESS_TEAM_DOMAIN ?? "");
+  const expectedAudience = env.CLOUDFLARE_ACCESS_AUD?.trim() ?? "";
+  const token = request.headers.get("Cf-Access-Jwt-Assertion")?.trim() ?? "";
+  if (!teamDomain || !expectedAudience || !token) {
+    return null;
+  }
+
+  const segments = token.split(".");
+  if (segments.length !== 3) {
+    return null;
+  }
+
+  const header = decodeJwtJson<{ alg?: unknown; kid?: unknown }>(segments[0]);
+  const claims = decodeJwtJson<Partial<CloudflareAccessClaims>>(segments[1]);
+  if (header?.alg !== "RS256" || typeof header.kid !== "string" || !claims) {
+    return null;
+  }
+  if (
+    typeof claims.sub !== "string" ||
+    typeof claims.iss !== "string" ||
+    (typeof claims.aud !== "string" && !Array.isArray(claims.aud)) ||
+    typeof claims.exp !== "number" ||
+    claims.exp <= Math.floor(Date.now() / 1000) ||
+    normalizeAccessTeamDomain(claims.iss) !== teamDomain ||
+    !accessAudienceMatches(claims.aud, expectedAudience)
+  ) {
+    return null;
+  }
+
+  const certificateResponse = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!certificateResponse.ok) {
+    throw new Error(`Cloudflare Access certificates returned HTTP ${certificateResponse.status}.`);
+  }
+
+  const certificatePayload = (await certificateResponse.json()) as {
+    keys?: Array<JsonWebKey & { kid?: string; alg?: string }>;
+  };
+  const certificate = certificatePayload.keys?.find((key) => key.kid === header.kid);
+  if (!certificate) {
+    return null;
+  }
+
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    certificate,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const validSignature = await crypto.subtle.verify(
+    { name: "RSASSA-PKCS1-v1_5" },
+    publicKey,
+    decodeBase64Url(segments[2]),
+    new TextEncoder().encode(`${segments[0]}.${segments[1]}`),
+  );
+  return validSignature ? (claims as CloudflareAccessClaims) : null;
+}
+
 async function hasValidAdminToken(request: Request, env: HidnWorkerEnv): Promise<boolean> {
   const expected = env.REPORT_ADMIN_TOKEN?.trim() ?? "";
   if (!expected) {
@@ -1478,21 +1640,361 @@ async function hasValidAdminToken(request: Request, env: HidnWorkerEnv): Promise
   return difference === 0;
 }
 
-async function requireAdminToken(request: Request, env: HidnWorkerEnv): Promise<Response | undefined> {
+function serializeAdminActor(actor: AdminActor): Record<string, unknown> {
+  return {
+    adminId: actor.adminId,
+    email: actor.email,
+    displayName: actor.displayName,
+    role: actor.role,
+    source: actor.source,
+  };
+}
+
+async function resolveCloudflareAdminActor(
+  claims: CloudflareAccessClaims,
+  env: HidnWorkerEnv,
+): Promise<AdminActor | null> {
+  if (!env.ROOM_DB) {
+    return null;
+  }
+
+  const email = claims.email?.trim().toLowerCase() || null;
+  const subjectHash = await hashText(`hidn-admin-subject:${claims.sub}`);
+  let row = await env.ROOM_DB.prepare(
+    `SELECT admin_id, access_subject_hash, email, display_name, role, status, created_at, last_seen_at
+     FROM hidn_admin_users
+     WHERE access_subject_hash = ? OR (? IS NOT NULL AND email = ?)
+     LIMIT 1`,
+  )
+    .bind(subjectHash, email, email)
+    .first<AdminUserRow>();
+
+  const configuredSubject = env.HIDN_SUPER_ADMIN_ACCESS_SUBJECT?.trim() ?? "";
+  const configuredEmail = env.HIDN_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
+  const isBootstrapIdentity = (configuredSubject && claims.sub === configuredSubject) ||
+    (configuredEmail && email === configuredEmail);
+
+  if (!row && isBootstrapIdentity) {
+    const now = new Date().toISOString();
+    try {
+      await env.ROOM_DB.prepare(
+        `INSERT INTO hidn_admin_users
+          (admin_id, access_subject_hash, email, display_name, role, status, created_at, last_seen_at)
+         VALUES (?, ?, ?, ?, 'super_admin', 'active', ?, ?)`,
+      )
+        .bind(createAdminId(), subjectHash, email, claims.name?.trim() || null, now, now)
+        .run();
+    } catch {
+      // Another first request may have provisioned the configured identity.
+    }
+    row = await env.ROOM_DB.prepare(
+      `SELECT admin_id, access_subject_hash, email, display_name, role, status, created_at, last_seen_at
+       FROM hidn_admin_users
+       WHERE access_subject_hash = ? OR (? IS NOT NULL AND email = ?)
+       LIMIT 1`,
+    )
+      .bind(subjectHash, email, email)
+      .first<AdminUserRow>();
+  }
+
+  if (!row || row.status !== "active") {
+    return null;
+  }
+
+  await env.ROOM_DB.prepare(
+    `UPDATE hidn_admin_users
+     SET access_subject_hash = COALESCE(access_subject_hash, ?),
+         email = COALESCE(email, ?),
+         display_name = COALESCE(?, display_name),
+         last_seen_at = ?
+     WHERE admin_id = ?`,
+  )
+    .bind(subjectHash, email, claims.name?.trim() || null, new Date().toISOString(), row.admin_id)
+    .run();
+
+  return {
+    adminId: row.admin_id,
+    email: row.email ?? email,
+    displayName: row.display_name ?? claims.name ?? null,
+    role: row.role,
+    source: "cloudflare_access",
+  };
+}
+
+type AdminAuthorization = { actor: AdminActor } | Response;
+
+async function requireAdminRole(
+  request: Request,
+  env: HidnWorkerEnv,
+  roles: readonly AdminRole[],
+): Promise<AdminAuthorization> {
+  const teamDomain = env.CLOUDFLARE_ACCESS_TEAM_DOMAIN?.trim() ?? "";
+  const audience = env.CLOUDFLARE_ACCESS_AUD?.trim() ?? "";
+  if (Boolean(teamDomain) !== Boolean(audience)) {
+    return jsonResponse({ error: "Cloudflare Access admin settings are incomplete." }, 503);
+  }
+
+  if (teamDomain && audience) {
+    let claims: CloudflareAccessClaims | null = null;
+    try {
+      claims = await validateCloudflareAccessJwt(request, env);
+    } catch {
+      return jsonResponse({ error: "Cloudflare Access identity validation failed." }, 503);
+    }
+    if (!claims) {
+      return jsonResponse(
+        { error: "Cloudflare Access login is required." },
+        401,
+        "no-store",
+        { "WWW-Authenticate": "Bearer" },
+      );
+    }
+
+    const actor = await resolveCloudflareAdminActor(claims, env);
+    if (!actor) {
+      return jsonResponse({ error: "This Access identity is not an active HIDN administrator." }, 403);
+    }
+    if (!roles.includes(actor.role)) {
+      return jsonResponse({ error: "This HIDN administrator role cannot perform that action." }, 403);
+    }
+    return { actor };
+  }
+
+  if (await hasValidAdminToken(request, env)) {
+    const actor: AdminActor = {
+      adminId: "legacy-token",
+      email: null,
+      displayName: "Legacy report token",
+      role: "super_admin",
+      source: "legacy_token",
+    };
+    return roles.includes(actor.role) ? { actor } : jsonResponse({ error: "Administrator role required." }, 403);
+  }
+
   if (!env.REPORT_ADMIN_TOKEN?.trim()) {
-    return jsonResponse({ error: "Report administration is not configured." }, 503);
+    return jsonResponse({ error: "Admin authentication is not configured." }, 503);
+  }
+  return jsonResponse(
+    { error: "Admin authorization is required." },
+    401,
+    "no-store",
+    { "WWW-Authenticate": "Bearer" },
+  );
+}
+
+async function recordAdminAuditEvent(
+  actor: AdminActor,
+  action: string,
+  targetType: string,
+  targetId: string,
+  reason: string | null,
+  env: HidnWorkerEnv,
+): Promise<void> {
+  if (!env.ROOM_DB) {
+    return;
+  }
+  try {
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_admin_audit_events
+        (event_id, admin_id, action, target_type, target_id, reason, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(createAdminAuditEventId(), actor.adminId, action, targetType, targetId, reason, new Date().toISOString())
+      .run();
+  } catch {
+    // Moderation remains available during a partial migration; the error is not exposed to users.
+  }
+}
+
+function serializeAdminUser(row: AdminUserRow): Record<string, unknown> {
+  return {
+    adminId: row.admin_id,
+    email: row.email,
+    displayName: row.display_name,
+    role: row.role,
+    status: row.status,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+  };
+}
+
+async function getAdminSession(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
   }
 
-  if (!(await hasValidAdminToken(request, env))) {
-    return jsonResponse(
-      { error: "Admin authorization is required." },
-      401,
-      "no-store",
-      { "WWW-Authenticate": "Bearer" },
-    );
+  const authorization = await requireAdminRole(request, env, ["super_admin", "moderator", "reviewer"]);
+  if (authorization instanceof Response) {
+    return authorization;
   }
 
-  return undefined;
+  return jsonResponse({ admin: serializeAdminActor(authorization.actor) });
+}
+
+async function listAdminUsers(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorization = await requireAdminRole(request, env, ["super_admin"]);
+  if (authorization instanceof Response) {
+    return authorization;
+  }
+
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT admin_id, access_subject_hash, email, display_name, role, status, created_at, last_seen_at
+     FROM hidn_admin_users
+     ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'moderator' THEN 1 ELSE 2 END, created_at ASC`,
+  ).all<AdminUserRow>();
+  return jsonResponse({ admins: result.results.map(serializeAdminUser) });
+}
+
+async function createAdminUser(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorization = await requireAdminRole(request, env, ["super_admin"]);
+  if (authorization instanceof Response) {
+    return authorization;
+  }
+
+  const body = await requestBody(request);
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+  const role = typeof body.role === "string" ? body.role.trim().toLowerCase() : "moderator";
+  const accessSubject = typeof body.accessSubject === "string" ? body.accessSubject.trim() : "";
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
+    return jsonResponse({ error: "Enter a valid administrator email." }, 400);
+  }
+  if (!isAdminRole(role)) {
+    return jsonResponse({ error: "Choose super_admin, moderator, or reviewer." }, 400);
+  }
+  if (displayName.length > 120 || accessSubject.length > 200) {
+    return jsonResponse({ error: "The administrator details are too long." }, 400);
+  }
+
+  const now = new Date().toISOString();
+  try {
+    await env.ROOM_DB!.prepare(
+      `INSERT INTO hidn_admin_users
+        (admin_id, access_subject_hash, email, display_name, role, status, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, NULL)`,
+    )
+      .bind(
+        createAdminId(),
+        accessSubject ? await hashText(`hidn-admin-subject:${accessSubject}`) : null,
+        email,
+        displayName || null,
+        role,
+        now,
+      )
+      .run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (message.includes("unique") || message.includes("constraint")) {
+      return jsonResponse({ error: "That administrator identity is already listed." }, 409);
+    }
+    throw error;
+  }
+
+  await recordAdminAuditEvent(authorization.actor, "admin_created", "admin", email, role, env);
+  return jsonResponse({ status: "created", email, role }, 201);
+}
+
+async function updateAdminUser(adminId: string, request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorization = await requireAdminRole(request, env, ["super_admin"]);
+  if (authorization instanceof Response) {
+    return authorization;
+  }
+
+  const normalizedAdminId = adminId.trim().toUpperCase();
+  if (!/^ADM-[A-F0-9]{24}$/.test(normalizedAdminId)) {
+    return jsonResponse({ error: "The administrator ID is invalid." }, 400);
+  }
+
+  const current = await env.ROOM_DB!.prepare(
+    `SELECT admin_id, access_subject_hash, email, display_name, role, status, created_at, last_seen_at
+     FROM hidn_admin_users WHERE admin_id = ? LIMIT 1`,
+  )
+    .bind(normalizedAdminId)
+    .first<AdminUserRow>();
+  if (!current) {
+    return jsonResponse({ error: "Administrator not found." }, 404);
+  }
+
+  const body = await requestBody(request);
+  const role = typeof body.role === "string" ? body.role.trim().toLowerCase() : current.role;
+  const status = typeof body.status === "string" ? body.status.trim().toLowerCase() : current.status;
+  const displayName = typeof body.displayName === "string" ? body.displayName.trim() : current.display_name;
+  if (!isAdminRole(role) || !isAdminStatus(status)) {
+    return jsonResponse({ error: "Choose a valid role and status." }, 400);
+  }
+  if (typeof displayName === "string" && displayName.length > 120) {
+    return jsonResponse({ error: "The display name is too long." }, 400);
+  }
+  if (current.admin_id === authorization.actor.adminId && (status !== "active" || role !== "super_admin")) {
+    return jsonResponse({ error: "You cannot disable or demote your own super-admin account." }, 400);
+  }
+  if (current.role === "super_admin" && (role !== "super_admin" || status !== "active")) {
+    const count = await env.ROOM_DB!.prepare(
+      "SELECT COUNT(*) AS count FROM hidn_admin_users WHERE role = 'super_admin' AND status = 'active'",
+    ).first<{ count: number }>();
+    if (Number(count?.count ?? 0) <= 1) {
+      return jsonResponse({ error: "Keep at least one active super-admin account." }, 409);
+    }
+  }
+
+  await env.ROOM_DB!.prepare(
+    `UPDATE hidn_admin_users SET role = ?, status = ?, display_name = ? WHERE admin_id = ?`,
+  )
+    .bind(role, status, displayName || null, normalizedAdminId)
+    .run();
+  await recordAdminAuditEvent(authorization.actor, "admin_updated", "admin", normalizedAdminId, `${role}/${status}`, env);
+  return jsonResponse({ status: "updated", adminId: normalizedAdminId, role, accountStatus: status });
+}
+
+async function listAdminAudit(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorization = await requireAdminRole(request, env, ["super_admin"]);
+  if (authorization instanceof Response) {
+    return authorization;
+  }
+
+  const url = new URL(request.url);
+  const requestedLimit = Number(url.searchParams.get("limit") ?? "100");
+  const limit = Number.isSafeInteger(requestedLimit) ? Math.min(200, Math.max(1, requestedLimit)) : 100;
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT a.event_id, a.admin_id, u.email AS admin_email, a.action, a.target_type,
+            a.target_id, a.reason, a.created_at
+     FROM hidn_admin_audit_events a
+     LEFT JOIN hidn_admin_users u ON u.admin_id = a.admin_id
+     ORDER BY a.created_at DESC LIMIT ?`,
+  )
+    .bind(limit)
+    .all<AdminAuditRow>();
+  return jsonResponse({ events: result.results.map((row) => ({
+    eventId: row.event_id,
+    adminId: row.admin_id,
+    adminEmail: row.admin_email,
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    reason: row.reason,
+    createdAt: row.created_at,
+  })) });
 }
 
 function serializeAdminReport(row: AdminReportRow): Record<string, unknown> {
@@ -1525,9 +2027,9 @@ async function listAdminReports(request: Request, env: HidnWorkerEnv): Promise<R
     return unavailable;
   }
 
-  const authorizationFailure = await requireAdminToken(request, env);
-  if (authorizationFailure) {
-    return authorizationFailure;
+  const authorization = await requireAdminRole(request, env, ["super_admin", "moderator", "reviewer"]);
+  if (authorization instanceof Response) {
+    return authorization;
   }
 
   const url = new URL(request.url);
@@ -1563,9 +2065,9 @@ async function updateAdminReport(reportId: string, request: Request, env: HidnWo
     return unavailable;
   }
 
-  const authorizationFailure = await requireAdminToken(request, env);
-  if (authorizationFailure) {
-    return authorizationFailure;
+  const authorization = await requireAdminRole(request, env, ["super_admin", "moderator"]);
+  if (authorization instanceof Response) {
+    return authorization;
   }
 
   const normalizedReportId = reportId.trim().toUpperCase();
@@ -1602,6 +2104,8 @@ async function updateAdminReport(reportId: string, request: Request, env: HidnWo
     return jsonResponse({ error: "Report not found." }, 404);
   }
 
+  await recordAdminAuditEvent(authorization.actor, "report_updated", "report", normalizedReportId, `${status}${reviewerNote ? ` / ${reviewerNote}` : ""}`, env);
+
   return jsonResponse({ report: serializeAdminReport(row) });
 }
 
@@ -1611,9 +2115,9 @@ async function moderateAdminContent(request: Request, env: HidnWorkerEnv): Promi
     return unavailable;
   }
 
-  const authorizationFailure = await requireAdminToken(request, env);
-  if (authorizationFailure) {
-    return authorizationFailure;
+  const authorization = await requireAdminRole(request, env, ["super_admin", "moderator"]);
+  if (authorization instanceof Response) {
+    return authorization;
   }
 
   const body = await requestBody(request);
@@ -1669,6 +2173,8 @@ async function moderateAdminContent(request: Request, env: HidnWorkerEnv): Promi
       .run() as { meta?: { changes?: number } };
     linkedReport = Number(reportUpdate.meta?.changes ?? 0) > 0;
   }
+
+  await recordAdminAuditEvent(authorization.actor, `content_${action}`, targetType, targetId, reason, env);
 
   return jsonResponse({
     action,
@@ -2415,7 +2921,62 @@ const worker = {
       }
     }
 
-    if (url.pathname === "/api/admin/reports") {
+    const adminApiPath = url.pathname.startsWith("/admin/api/admin/")
+      ? url.pathname.slice("/admin".length)
+      : url.pathname;
+
+    if (adminApiPath === "/api/admin/session") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await getAdminSession(request, env);
+      } catch {
+        return jsonResponse({ error: "Admin session could not be loaded." }, 500);
+      }
+    }
+
+    if (adminApiPath === "/api/admin/moderators") {
+      try {
+        if (request.method === "GET") {
+          return await listAdminUsers(request, env);
+        }
+        if (request.method === "POST") {
+          return await createAdminUser(request, env);
+        }
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      } catch {
+        return jsonResponse({ error: "Administrator records could not be updated." }, 500);
+      }
+    }
+
+    const adminUserMatch = adminApiPath.match(/^\/api\/admin\/moderators\/([^/]+)$/);
+    if (adminUserMatch) {
+      if (request.method !== "PATCH") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await updateAdminUser(decodeURIComponent(adminUserMatch[1]), request, env);
+      } catch {
+        return jsonResponse({ error: "Administrator record could not be updated." }, 500);
+      }
+    }
+
+    if (adminApiPath === "/api/admin/audit") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listAdminAudit(request, env);
+      } catch {
+        return jsonResponse({ error: "Admin audit could not be loaded." }, 500);
+      }
+    }
+
+    if (adminApiPath === "/api/admin/reports") {
       if (request.method !== "GET") {
         return jsonResponse({ error: "Method not allowed." }, 405);
       }
@@ -2427,7 +2988,7 @@ const worker = {
       }
     }
 
-    if (url.pathname === "/api/admin/moderation") {
+    if (adminApiPath === "/api/admin/moderation") {
       if (request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed." }, 405);
       }
@@ -2439,7 +3000,7 @@ const worker = {
       }
     }
 
-    const adminReportMatch = url.pathname.match(/^\/api\/admin\/reports\/([^/]+)$/);
+    const adminReportMatch = adminApiPath.match(/^\/api\/admin\/reports\/([^/]+)$/);
     if (adminReportMatch) {
       if (request.method !== "PATCH") {
         return jsonResponse({ error: "Method not allowed." }, 405);
