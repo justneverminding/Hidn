@@ -6,6 +6,8 @@ import {
 
 const CIPHERSCAN_RECENT_BLOCKS_URL =
   "https://api.mainnet.cipherscan.app/api/blocks?limit=1";
+const SHIELDEDSCAN_STATUS_URL = "https://api.shieldedscan.xyz/v1/status";
+const SHIELDEDSCAN_SUPPLY_URL = "https://api.shieldedscan.xyz/v1/supply";
 const COINGECKO_ZEC_PRICE_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd";
 const ROOM_USD_TARGET_CENTS = 100;
@@ -76,6 +78,32 @@ interface HidnWorkerEnv {
   PAYMENT_WATCHER_SECRET?: string;
   REFUND_ENCRYPTION_KEY?: string;
   REPORT_ADMIN_TOKEN?: string;
+  CLOUDFLARE_ACCESS_TEAM_DOMAIN?: string;
+  CLOUDFLARE_ACCESS_AUD?: string;
+  HIDN_SUPER_ADMIN_ACCESS_SUBJECT?: string;
+  HIDN_SUPER_ADMIN_EMAIL?: string;
+}
+
+interface ShieldedScanStatusPayload {
+  height?: unknown;
+  circulatingSupplyZat?: unknown;
+  priceUsd?: unknown;
+  txCount24h?: unknown;
+  asOf?: unknown;
+}
+
+interface ShieldedScanSupplyPayload {
+  shieldedZat?: unknown;
+  asOf?: unknown;
+}
+
+interface ShieldedScanStatsResponse {
+  blockHeight: number;
+  priceUsd: number | null;
+  transactions24h: number | null;
+  shieldedSupplyZec: number | null;
+  marketCapUsd: number | null;
+  asOf: number | null;
 }
 
 interface AuthenticatedUser {
@@ -237,6 +265,54 @@ async function getZecUsdPrice(env: HidnWorkerEnv): Promise<{ price: number; sour
   }
 
   return { price, source: "COINGECKO" };
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function getShieldedScanStats(): Promise<ShieldedScanStatsResponse> {
+  const headers = {
+    Accept: "application/json",
+    Origin: "https://shieldedscan.xyz",
+    Referer: "https://shieldedscan.xyz/",
+  };
+  const [statusResponse, supplyResponse] = await Promise.all([
+    fetch(SHIELDEDSCAN_STATUS_URL, { headers }),
+    fetch(SHIELDEDSCAN_SUPPLY_URL, { headers }),
+  ]);
+
+  if (!statusResponse.ok || !supplyResponse.ok) {
+    throw new Error("ShieldedScan mainnet data is unavailable.");
+  }
+
+  const [status, supply] = (await Promise.all([
+    statusResponse.json(),
+    supplyResponse.json(),
+  ])) as [ShieldedScanStatusPayload, ShieldedScanSupplyPayload];
+  const blockHeight = finiteNumber(status.height);
+  if (blockHeight === null || !Number.isSafeInteger(blockHeight) || blockHeight < 0) {
+    throw new Error("ShieldedScan returned an invalid block height.");
+  }
+
+  const priceUsd = finiteNumber(status.priceUsd);
+  const circulatingSupplyZat = finiteNumber(status.circulatingSupplyZat);
+  const shieldedSupplyZat = finiteNumber(supply.shieldedZat);
+  const circulatingSupplyZec = circulatingSupplyZat !== null ? circulatingSupplyZat / 100_000_000 : null;
+
+  return {
+    blockHeight,
+    priceUsd: priceUsd !== null && priceUsd > 0 ? priceUsd : null,
+    transactions24h: finiteNumber(status.txCount24h),
+    shieldedSupplyZec: shieldedSupplyZat !== null && shieldedSupplyZat >= 0 ? shieldedSupplyZat / 100_000_000 : null,
+    marketCapUsd: priceUsd !== null && circulatingSupplyZec !== null ? priceUsd * circulatingSupplyZec : null,
+    asOf: Math.max(finiteNumber(status.asOf) ?? 0, finiteNumber(supply.asOf) ?? 0) || null,
+  };
 }
 
 async function requestBody(request: Request): Promise<Record<string, unknown>> {
@@ -2473,6 +2549,22 @@ const worker = {
         });
       } catch {
         return jsonResponse({ error: "CipherScan mainnet data is unavailable." }, 502);
+      }
+    }
+
+    if (url.pathname === "/api/zcash-stats") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return jsonResponse(
+          await getShieldedScanStats(),
+          200,
+          "public, max-age=60, stale-while-revalidate=300",
+        );
+      } catch {
+        return jsonResponse({ error: "ShieldedScan mainnet data is unavailable." }, 502);
       }
     }
 

@@ -7226,6 +7226,31 @@
   max-width: 32ch;
 }
 
+.room-mobile-index__status {
+  min-width: 0;
+  width: 100%;
+}
+
+.room-mobile-index__status .zcash-status-carousel {
+  color: var(--hidn-broadcast-amber);
+  font-size: clamp(0.52rem, 2.25vw, 0.68rem);
+  gap: 0.45rem;
+  letter-spacing: 0.1em;
+  max-width: 100%;
+}
+
+.room-mobile-index__status .zcash-status-carousel .ui-status-dot {
+  background: var(--hidn-broadcast-amber);
+}
+
+.room-mobile-index__status [data-zcash-status-label] {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .room-mobile-index__create {
   display: grid;
   gap: 0.65rem;
@@ -7803,5 +7828,31 @@
   .room-directory-title__watcher {
     animation: none;
     filter: drop-shadow(0 0 0.14em rgba(93, 255, 143, 0.68));
+  }
+}
+
+/* Live Zcash network strip — one quiet metric at a time. */
+.public-page--explore .zcash-status-carousel {
+  flex: 0 1 31rem;
+  min-width: 0;
+}
+
+.public-page--explore .zcash-status-carousel [data-zcash-status-label] {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-page--explore .zcash-status-carousel[data-zcash-state="loading"],
+.public-page--explore .zcash-status-carousel[data-zcash-state="unavailable"] {
+  opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .public-page--explore .zcash-status-carousel {
+    align-self: stretch;
+    max-width: 100%;
   }
 }

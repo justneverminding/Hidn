@@ -34,7 +34,7 @@ import {
   type MockConfession,
   type MockIncomingTransmission,
 } from "./mock-data";
-import { fetchCipherScanMainnetTip } from "./cipherscan";
+import { fetchShieldedScanStats, type ShieldedScanStats } from "./shieldedscan";
 import {
   buildZkChallengeMessage,
   credentialFromRecoveryCode,
@@ -224,7 +224,8 @@ const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
-const CIPHERSCAN_CACHE_DURATION_MS = 60_000;
+const SHIELDEDSCAN_CACHE_DURATION_MS = 60_000;
+const ZCASH_STATUS_CAROUSEL_INTERVAL_MS = 4_500;
 const MODERATION_GATE_MIN_DURATION_MS = 800;
 const ROOM_LIVE_ACTIVITY_REFRESH_MS = 10_000;
 const ROOM_RECOVERY_REVEAL_DURATION_MS = 30_000;
@@ -242,9 +243,11 @@ let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_
   }));
 let homeStreamCursor = 0;
 let homeAmbientAudioSession: HomeAmbientAudioSession | undefined;
-let cachedCipherScanHeight: number | undefined;
-let cachedCipherScanAt = 0;
-let cipherScanRequest: Promise<number> | undefined;
+let cachedShieldedScanStats: ShieldedScanStats | undefined;
+let cachedShieldedScanStatsAt = 0;
+let shieldedScanStatsRequest: Promise<ShieldedScanStats> | undefined;
+let zcashStatusCarouselTimer: number | undefined;
+let zcashStatusCarouselRun = 0;
 const roomThreadReplies = new Map<string, AnonymousReply[]>([
   [
     "00417",
@@ -545,64 +548,180 @@ function setHomeReceivingStatus(root: ParentNode, state: "ambient" | "receiving"
         : "LOCAL MOCK / AMBIENT";
 }
 
-function getCipherScanMainnetTip(): Promise<number> {
-  if (cachedCipherScanHeight !== undefined && Date.now() - cachedCipherScanAt < CIPHERSCAN_CACHE_DURATION_MS) {
-    return Promise.resolve(cachedCipherScanHeight);
+type ZcashStatusMetric = "block" | "price" | "transactions" | "shielded" | "market-cap";
+
+const ZCASH_STATUS_METRICS: readonly ZcashStatusMetric[] = [
+  "block",
+  "price",
+  "transactions",
+  "shielded",
+  "market-cap",
+];
+
+function getShieldedScanStats(): Promise<ShieldedScanStats> {
+  if (
+    cachedShieldedScanStats &&
+    Date.now() - cachedShieldedScanStatsAt < SHIELDEDSCAN_CACHE_DURATION_MS
+  ) {
+    return Promise.resolve(cachedShieldedScanStats);
   }
 
-  if (!cipherScanRequest) {
-    cipherScanRequest = fetchCipherScanMainnetTip()
-      .then((height) => {
-        cachedCipherScanHeight = height;
-        cachedCipherScanAt = Date.now();
-        return height;
+  if (!shieldedScanStatsRequest) {
+    shieldedScanStatsRequest = fetchShieldedScanStats()
+      .then((stats) => {
+        cachedShieldedScanStats = stats;
+        cachedShieldedScanStatsAt = Date.now();
+        return stats;
       })
       .finally(() => {
-        cipherScanRequest = undefined;
+        shieldedScanStatsRequest = undefined;
       });
   }
 
-  return cipherScanRequest;
+  return shieldedScanStatsRequest;
+}
+
+function stopZcashStatusCarousel(): void {
+  if (zcashStatusCarouselTimer !== undefined) {
+    window.clearInterval(zcashStatusCarouselTimer);
+    zcashStatusCarouselTimer = undefined;
+  }
+  zcashStatusCarouselRun += 1;
+}
+
+function formatZcashUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits: value < 1 ? 4 : 2,
+    style: "currency",
+  }).format(value);
+}
+
+function formatZcashCompactUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits: 2,
+    notation: "compact",
+    style: "currency",
+  }).format(value);
+}
+
+function formatZcashSupply(value: number): string {
+  return `${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: value >= 1_000_000 ? 2 : 0,
+    notation: value >= 1_000_000 ? "compact" : "standard",
+  }).format(value)} ZEC`;
+}
+
+function zcashStatusLabel(metric: ZcashStatusMetric, stats: ShieldedScanStats): string {
+  switch (metric) {
+    case "price":
+      return stats.priceUsd === null ? "ZEC PRICE / UNAVAILABLE" : `ZEC PRICE / ${formatZcashUsd(stats.priceUsd)}`;
+    case "transactions":
+      return stats.transactions24h === null
+        ? "TRANSACTIONS 24H / UNAVAILABLE"
+        : `TRANSACTIONS 24H / ${new Intl.NumberFormat("en-US").format(stats.transactions24h)}`;
+    case "shielded":
+      return stats.shieldedSupplyZec === null
+        ? "SHIELDED SUPPLY / UNAVAILABLE"
+        : `SHIELDED SUPPLY / ${formatZcashSupply(stats.shieldedSupplyZec)}`;
+    case "market-cap":
+      return stats.marketCapUsd === null
+        ? "ZEC MARKET CAP / UNAVAILABLE"
+        : `ZEC MARKET CAP / ${formatZcashCompactUsd(stats.marketCapUsd)}`;
+    case "block":
+    default:
+      return `BUILT ON ZCASH / BLOCK #${new Intl.NumberFormat("en-US").format(stats.blockHeight)}`;
+  }
+}
+
+function zcashStatusTitle(metric: ZcashStatusMetric, stats: ShieldedScanStats): string {
+  const label = zcashStatusLabel(metric, stats);
+  return `${label} / ShieldedScan mainnet data`;
+}
+
+function setZcashStatusMetric(
+  statuses: HTMLElement[],
+  metric: ZcashStatusMetric,
+  stats: ShieldedScanStats,
+): void {
+  const label = zcashStatusLabel(metric, stats);
+  statuses.forEach((status) => {
+    if (!status.isConnected) {
+      return;
+    }
+
+    const statusLabel = status.querySelector<HTMLElement>("[data-zcash-status-label]");
+    if (statusLabel) {
+      statusLabel.textContent = label;
+    } else {
+      status.textContent = label;
+    }
+    status.dataset.zcashMetric = metric;
+    status.dataset.zcashState = "live";
+    status.title = zcashStatusTitle(metric, stats);
+  });
 }
 
 async function refreshZcashNetworkStatus(root: ParentNode): Promise<void> {
-  const statuses = Array.from(root.querySelectorAll<HTMLElement>(".ui-nav-shell__status, [data-zcash-status]")).filter(
-    (status) => status.textContent?.trim() === "BUILT ON ZCASH",
-  );
+  stopZcashStatusCarousel();
+  const carouselRun = zcashStatusCarouselRun;
+  const statuses = Array.from(root.querySelectorAll<HTMLElement>("[data-zcash-status]"));
   if (!statuses.length) {
     return;
   }
 
   statuses.forEach((status) => {
     status.setAttribute("aria-live", "polite");
-    status.title = "Checking the current Zcash mainnet block with CipherScan.";
+    status.dataset.zcashState = "loading";
+    status.title = "Loading current Zcash network data from ShieldedScan.";
+    status.querySelector<HTMLElement>("[data-zcash-status-label]")?.replaceChildren("LOADING ZCASH DATA...");
   });
 
   try {
-    const height = await getCipherScanMainnetTip();
-    const formattedHeight = new Intl.NumberFormat("en-US").format(height);
-    statuses.forEach((status) => {
-      if (!status.isConnected) {
+    const stats = await getShieldedScanStats();
+    if (carouselRun !== zcashStatusCarouselRun) {
+      return;
+    }
+
+    let metricIndex = 0;
+    setZcashStatusMetric(statuses, ZCASH_STATUS_METRICS[metricIndex], stats);
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const carouselTimer = window.setInterval(() => {
+      if (carouselRun !== zcashStatusCarouselRun) {
+        window.clearInterval(carouselTimer);
         return;
       }
 
-      const label = status.querySelector<HTMLElement>("[data-zcash-status-label]");
-      if (label) {
-        label.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
-      } else {
-        status.textContent = `BUILT ON ZCASH / BLOCK #${formattedHeight}`;
+      if (!statuses.some((status) => status.isConnected)) {
+        stopZcashStatusCarousel();
+        return;
       }
-      status.dataset.zcashState = "live";
-      status.title = `Zcash mainnet block #${formattedHeight} from CipherScan.`;
-    });
+
+      metricIndex = (metricIndex + 1) % ZCASH_STATUS_METRICS.length;
+      setZcashStatusMetric(statuses, ZCASH_STATUS_METRICS[metricIndex], stats);
+    }, ZCASH_STATUS_CAROUSEL_INTERVAL_MS);
+    zcashStatusCarouselTimer = carouselTimer;
   } catch {
+    if (carouselRun !== zcashStatusCarouselRun) {
+      return;
+    }
+
     statuses.forEach((status) => {
       if (!status.isConnected) {
         return;
       }
 
+      const statusLabel = status.querySelector<HTMLElement>("[data-zcash-status-label]");
+      if (statusLabel) {
+        statusLabel.textContent = "ZCASH DATA / UNAVAILABLE";
+      }
       status.dataset.zcashState = "unavailable";
-      status.title = "CipherScan could not provide the current Zcash mainnet block.";
+      status.title = "ShieldedScan could not provide current Zcash network data.";
     });
   }
 }
@@ -2721,7 +2840,7 @@ function isRoomMobileViewport(): boolean {
 }
 
 function renderRoomZcashStatus(): string {
-  return `<span class="ui-status-indicator" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
+  return `<span class="ui-status-indicator zcash-status-carousel" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
 }
 
 function renderMobilePostSurface(): string {
@@ -2764,6 +2883,7 @@ function renderMobileRoomIndex(): string {
           ${TerminalLabel("PRIVATE ROOM / INDEX")}
           <h1>CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
+          <div class="room-mobile-index__status">${renderRoomZcashStatus()}</div>
           ${renderMobilePostSurface()}
         </header>
         <section class="room-mobile-index__list" aria-label="Private rooms">
