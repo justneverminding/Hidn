@@ -55,9 +55,16 @@ export interface RoomComment {
   status: ContentStatus;
 }
 
+export interface AccountHistoryStats {
+  posts: number;
+  comments: number;
+  likes: number;
+}
+
 export interface AccountHistoryResponse {
   posts: AccountHistoryPost[];
   comments: RoomComment[];
+  stats?: AccountHistoryStats;
 }
 
 export type AccountNotificationType = "reaction" | "reply";
@@ -65,6 +72,7 @@ export type AccountNotificationType = "reaction" | "reply";
 export interface AccountNotification {
   id: string;
   type: AccountNotificationType;
+  actorAlias: string;
   targetType: "thread" | "reply";
   targetId: string;
   createdAt: string;

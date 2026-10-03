@@ -165,6 +165,8 @@ let roomRecoveryRevealMode: RoomRecoveryRevealMode = "hidden";
 let roomRecoveryRevealError = "";
 let roomRecoveryRevealTimer: number | undefined;
 let roomRecoveryVerificationSubmitting = false;
+let roomRecoveryUsernameInput = "";
+let roomRecoveryConfirmations: [boolean, boolean] = [false, false];
 let roomPaymentIntentId = "";
 let roomPayment: PaymentIntentResponse | undefined;
 let roomVerificationRequested = false;
@@ -343,6 +345,24 @@ function formatTransmissionTime(value: string): string {
     hour12: false,
     minute: "2-digit",
   }).format(date);
+}
+
+function formatNotificationDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return formatTransmissionTime(value);
+  }
+
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date).toUpperCase();
+  return `${dateLabel} / ${formatTransmissionTime(value)}`;
+}
+
+function formatPrivateTotal(value: number | undefined): string {
+  return value === undefined ? "--" : String(value).padStart(2, "0");
 }
 
 function transmissionViewFromConfession(confession: MockConfession): TransmissionView {
@@ -2939,7 +2959,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
                   <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
                   <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
                 </label>
-                <p class="room-post-composer__note">${roomPostLimitCopy()} Your post is stored without a public name; cooldowns appear only when activity looks automated or repetitive.</p>
+                <p class="room-post-composer__note">${roomPostLimitCopy()} Your post is stored without a public name.</p>
                 <div class="room-post-composer__actions">
                   ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
                   ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -3228,7 +3248,8 @@ function renderRoomZcashStatus(): string {
 }
 
 function roomNotificationLabel(notification: AccountNotification): string {
-  return notification.type === "reaction" ? "LIKE / YOUR THREAD" : "REPLY / YOUR THREAD";
+  const actor = notification.actorAlias || "ANON-SIGNAL";
+  return notification.type === "reaction" ? `${actor} / LIKED YOUR THREAD` : `${actor} / REPLIED TO YOUR THREAD`;
 }
 
 function renderRoomNotifications(): string {
@@ -3246,7 +3267,7 @@ function renderRoomNotifications(): string {
         ? `<ul class="room-notifications__list">${notifications.map((notification) => `<li class="room-notifications__item${notification.readAt ? "" : " room-notifications__item--unread"}">
             <a href="/room/profile" class="room-notifications__link">
               <span class="room-notifications__label">${escapeHtml(roomNotificationLabel(notification))}</span>
-              <span class="room-notifications__meta">PRIVATE ACTIVITY / ${escapeHtml(formatTransmissionTime(notification.createdAt))}</span>
+              <span class="room-notifications__meta">PRIVATE ACTIVITY / ${escapeHtml(formatNotificationDateTime(notification.createdAt))}</span>
             </a>
           </li>`).join("")}</ul>`
         : `<p class="room-notifications__empty">NO PRIVATE ACTIVITY YET.</p>`;
@@ -3285,7 +3306,7 @@ function renderMobilePostSurface(): string {
           <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
         <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
       </label>
-        <p class="room-post-composer__note">${roomPostLimitCopy()} Repeated or automated activity may receive a short cooldown.</p>
+        <p class="room-post-composer__note">${roomPostLimitCopy()}</p>
         <div class="room-post-composer__actions">
           ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
           ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -3426,7 +3447,7 @@ function renderThreadRoom(id: string, quotedText = ""): string {
       </label>
       <div class="thread-room__composer-footer">
         <span>${roomAccess ? "FREE ACCESS / NO HANDLE / NO TRAIL" : "ROOM ACCESS REQUIRED"}</span>
-        ${PrimaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : roomAccess ? "TRANSMIT REPLY →" : "ENTER THE ROOM FIRST", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
+        ${SecondaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : roomAccess ? "TRANSMIT REPLY →" : "ENTER THE ROOM FIRST", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
     ${roomChannelNotice ? `<p class="thread-room__feedback" role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
@@ -3565,6 +3586,8 @@ function resetRoomRecoveryReveal(): void {
   roomRecoveryRevealMode = "hidden";
   roomRecoveryRevealError = "";
   roomRecoveryVerificationSubmitting = false;
+  roomRecoveryUsernameInput = "";
+  roomRecoveryConfirmations = [false, false];
 }
 
 function openRoomRecoveryCheck(): void {
@@ -3581,13 +3604,21 @@ function openRoomRecoveryCheck(): void {
 
   roomRecoveryRevealMode = "prompt";
   roomRecoveryRevealError = "";
+  roomRecoveryUsernameInput = "";
+  roomRecoveryConfirmations = [false, false];
   rerenderProductRoute();
 }
 
 async function verifyRoomRecoveryCheck(root: ParentNode): Promise<void> {
-  const usernameInput = root.querySelector<HTMLInputElement>("#room-recovery-username")?.value ?? "";
-  const username = completeRoomHandle(usernameInput);
-  const answers = [1, 2].map((index) => root.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked ? "yes" : "");
+  if (roomRecoveryVerificationSubmitting) {
+    return;
+  }
+
+  const usernameInput = root.querySelector<HTMLInputElement>("#room-recovery-username");
+  roomRecoveryUsernameInput = usernameInput?.value ?? roomRecoveryUsernameInput;
+  roomRecoveryConfirmations = [1, 2].map((index) => Boolean(root.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
+  const username = completeRoomHandle(roomRecoveryUsernameInput);
+  const answers = roomRecoveryConfirmations.map((confirmed) => confirmed ? "yes" : "");
   if (!ROOM_HANDLE_PATTERN.test(username) || username !== roomAccountUsername || answers.some((answer) => !answer)) {
     roomRecoveryRevealError = "Enter the correct handle and confirm both recovery statements.";
     rerenderProductRoute();
@@ -4098,8 +4129,8 @@ function renderRecoveryConfirmationFields(): string {
   return ROOM_RECOVERY_CONFIRMATIONS.map((question, index) => `<fieldset class="room-recovery-question">
     <legend>CONFIRMATION ${String(index + 1).padStart(2, "0")}</legend>
     <p class="room-recovery-question__prompt">${escapeHtml(question)}</p>
-    <label class="room-recovery-confirmation" for="room-recovery-answer-${index + 1}">
-      <input id="room-recovery-answer-${index + 1}" type="checkbox" value="yes" />
+    <label class="room-recovery-confirmation">
+      <input id="room-recovery-answer-${index + 1}" type="checkbox" value="yes"${roomRecoveryConfirmations[index] ? " checked" : ""} />
       <span>YES, I UNDERSTAND</span>
     </label>
   </fieldset>`).join("");
@@ -4125,13 +4156,13 @@ function renderRoomRecoveryPanel(): string {
   }
 
   if (roomRecoveryRevealMode === "prompt") {
-    return `<form class="room-login-card room-recovery-panel" novalidate>
+    return `<form class="room-login-card room-recovery-panel" data-room-recovery-form novalidate>
       <span class="room-access-key__label">RECOVERY KEY / CONFIRM OWNERSHIP</span>
-      <label class="room-access-field" for="room-recovery-username">
+      <label class="room-access-field">
         <span>USERNAME / HIDN PRIVATE HANDLE</span>
         <div class="room-handle-input">
           <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-recovery-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
+          <input id="room-recovery-username" type="text" value="${escapeHtml(roomRecoveryUsernameInput)}" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
         </div>
       </label>
       ${renderRecoveryConfirmationFields()}
@@ -4238,13 +4269,13 @@ function renderProfileRecoveryKey(): string {
   }
 
   if (roomRecoveryRevealMode === "prompt") {
-    return `<form class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" aria-labelledby="room-profile-key-title" novalidate>
+    return `<form class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" data-room-recovery-form aria-labelledby="room-profile-key-title" novalidate>
       <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / CONFIRM OWNERSHIP</span>
-      <label class="room-access-field" for="room-recovery-username">
+      <label class="room-access-field">
         <span>PRIVATE HANDLE / HIDN HANDLE</span>
         <div class="room-handle-input">
           <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-recovery-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
+          <input id="room-recovery-username" type="text" value="${escapeHtml(roomRecoveryUsernameInput)}" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
         </div>
       </label>
       ${renderRecoveryConfirmationFields()}
@@ -4308,6 +4339,7 @@ function renderRoomProfile(): RenderedProductRoute {
     ...roomLocalComments,
     ...(roomAccountHistory?.comments ?? []).filter((comment) => !localCommentIds.has(comment.id)),
   ];
+  const profileStats = roomAccountHistory?.stats;
   const historyLoading = !roomAccountHistory && !roomAccountHistoryError;
   const historyError = roomAccountHistoryError
     ? AlertMessage("PROFILE HISTORY", roomAccountHistoryError, "danger")
@@ -4345,6 +4377,11 @@ function renderRoomProfile(): RenderedProductRoute {
               ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
             </div>
             <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 200 characters and replies allow 100; optional ZEC verification unlocks higher limits and advanced room privileges."}</p>
+            <div class="room-profile-stats" aria-label="Private account totals">
+              <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats?.posts)}</strong></div>
+              <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats?.comments)}</strong></div>
+              <div><span>LIKES RECEIVED</span><strong>${formatPrivateTotal(profileStats?.likes)}</strong></div>
+            </div>
             ${isFull ? "" : `<div class="room-profile-card__actions">
               ${SecondaryButton({ label: "VERIFY WITH ZEC →", dataAction: "room-open-verification" })}
               ${GhostButton({ label: "CONTINUE FREE →", dataAction: "room-profile-back" })}
@@ -4359,7 +4396,7 @@ function renderRoomProfile(): RenderedProductRoute {
                   ${TerminalLabel("HISTORY / YOUR POSTS")}
                   <h2 id="room-profile-posts-title">POSTS</h2>
                 </div>
-                <span>${posts.length.toString().padStart(2, "0")}</span>
+                <span>${formatPrivateTotal(profileStats?.posts)}</span>
               </header>
               <div class="room-profile-history__list">
                 ${posts.length ? posts.map(renderProfilePost).join("") : historyLoading ? `<p class="room-profile-history__empty">READING PRIVATE HISTORY...</p>` : `<p class="room-profile-history__empty">NO POSTS SAVED HERE YET.</p>`}
@@ -4371,7 +4408,7 @@ function renderRoomProfile(): RenderedProductRoute {
                   ${TerminalLabel("HISTORY / YOUR COMMENTS")}
                   <h2 id="room-profile-comments-title">COMMENTS</h2>
                 </div>
-                <span>${comments.length.toString().padStart(2, "0")}</span>
+                <span>${formatPrivateTotal(profileStats?.comments)}</span>
               </header>
               <div class="room-profile-history__list">
                 ${comments.length ? comments.map(renderProfileComment).join("") : historyLoading ? `<p class="room-profile-history__empty">READING PRIVATE HISTORY...</p>` : `<p class="room-profile-history__empty">NO COMMENTS SAVED HERE YET.</p>`}
@@ -4650,8 +4687,71 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   return renderNotFound();
 }
 
+interface RoomRecoveryInteractionState {
+  username: string;
+  confirmations: [boolean, boolean];
+  activeControlId?: string;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+}
+
+function captureRoomRecoveryInteractionState(): RoomRecoveryInteractionState | undefined {
+  const form = document.querySelector<HTMLFormElement>("[data-room-recovery-form]");
+  if (!form) {
+    return undefined;
+  }
+
+  const usernameInput = form.querySelector<HTMLInputElement>("#room-recovery-username");
+  const activeElement = document.activeElement;
+  const activeInput = activeElement instanceof HTMLInputElement && form.contains(activeElement) ? activeElement : undefined;
+  const confirmations = [1, 2].map((index) => Boolean(form.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
+
+  return {
+    username: usernameInput?.value ?? roomRecoveryUsernameInput,
+    confirmations,
+    activeControlId: activeInput?.id,
+    selectionStart: activeInput?.selectionStart ?? null,
+    selectionEnd: activeInput?.selectionEnd ?? null,
+  };
+}
+
+function restoreRoomRecoveryInteractionState(state: RoomRecoveryInteractionState | undefined): void {
+  if (!state) {
+    return;
+  }
+
+  const form = document.querySelector<HTMLFormElement>("[data-room-recovery-form]");
+  if (!form) {
+    return;
+  }
+
+  const usernameInput = form.querySelector<HTMLInputElement>("#room-recovery-username");
+  if (usernameInput) {
+    usernameInput.value = state.username;
+  }
+
+  state.confirmations.forEach((checked, index) => {
+    const checkbox = form.querySelector<HTMLInputElement>(`#room-recovery-answer-${index + 1}`);
+    if (checkbox) {
+      checkbox.checked = checked;
+    }
+  });
+
+  if (state.activeControlId) {
+    const activeInput = form.querySelector<HTMLInputElement>(`#${state.activeControlId}`);
+    if (activeInput) {
+      activeInput.focus({ preventScroll: true });
+      if (activeInput.type !== "checkbox" && state.selectionStart !== null && state.selectionEnd !== null) {
+        activeInput.setSelectionRange(state.selectionStart, state.selectionEnd);
+      }
+    }
+  }
+}
+
 function rerenderProductRoute(): void {
+  const recoveryState = captureRoomRecoveryInteractionState();
   window.dispatchEvent(new CustomEvent("hidn:rerender"));
+  restoreRoomRecoveryInteractionState(recoveryState);
 }
 
 function navigateProductRoute(path: string): void {
@@ -5028,12 +5128,40 @@ function bindPointerSpotlightInteractions(root: ParentNode): void {
   });
 }
 
+function bindRoomRecoveryInteractions(root: ParentNode): void {
+  const form = root.querySelector<HTMLFormElement>("[data-room-recovery-form]");
+  if (!form) {
+    return;
+  }
+
+  const usernameInput = form.querySelector<HTMLInputElement>("#room-recovery-username");
+  usernameInput?.addEventListener("input", () => {
+    roomRecoveryUsernameInput = usernameInput.value;
+  });
+
+  form.querySelectorAll<HTMLInputElement>("input[id^='room-recovery-answer-']").forEach((checkbox, index) => {
+    checkbox.addEventListener("change", () => {
+      if (index < roomRecoveryConfirmations.length) {
+        roomRecoveryConfirmations[index] = checkbox.checked;
+      }
+    });
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!roomRecoveryVerificationSubmitting) {
+      void verifyRoomRecoveryCheck(root);
+    }
+  });
+}
+
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
   bindRoomLikeInteractions(root);
   bindRoomChannelInteractions(root);
   bindRoomFolderInteractions(root);
   bindPointerSpotlightInteractions(root);
+  bindRoomRecoveryInteractions(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
   const isRoomAccessPath = normalizePath(window.location.pathname) === "/room/access";

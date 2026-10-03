@@ -36,6 +36,7 @@ const ABUSE_COOLDOWN_BASE_MS = 30 * 1000;
 const ABUSE_COOLDOWN_MAX_MS = 15 * 60 * 1000;
 const LIVE_ACTIVITY_LIMIT = 8;
 const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
+const NOTIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AMBIENT_ROOM_THREAD_IDS = new Set([
   "00417",
   "00416",
@@ -248,6 +249,12 @@ interface AccountHistoryPostRow extends RoomPostRow {
   moderation_state: "visible" | "pending" | "hidden" | "rejected";
 }
 
+interface AccountHistoryStatsRow {
+  post_count: number;
+  comment_count: number;
+  like_count: number;
+}
+
 interface RoomReplyRow {
   reply_id: string;
   thread_id: string;
@@ -262,6 +269,7 @@ interface RoomReplyRow {
 interface RoomNotificationRow {
   notification_id: string;
   event_type: NotificationEventType;
+  actor_alias: string | null;
   target_type: "thread" | "reply";
   target_id: string;
   created_at: string;
@@ -472,6 +480,10 @@ function createActivityEventId(): string {
 
 function createNotificationId(): string {
   return `NTF-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createNotificationAlias(): string {
+  return `ANON-${createRandomHex(4).toUpperCase()}`;
 }
 
 function createActivitySignalRef(): string {
@@ -1137,6 +1149,7 @@ function serializeRoomNotification(row: RoomNotificationRow): Record<string, unk
   return {
     id: row.notification_id,
     type: row.event_type,
+    actorAlias: row.actor_alias ?? "ANON-SIGNAL",
     targetType: row.target_type,
     targetId: row.target_id,
     createdAt: row.created_at,
@@ -1158,14 +1171,45 @@ async function createAccountNotification(
   try {
     await env.ROOM_DB.prepare(
       `INSERT INTO hidn_notifications
-        (notification_id, recipient_user_id, event_type, target_type, target_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (notification_id, recipient_user_id, event_type, actor_alias, target_type, target_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(createNotificationId(), recipientUserId, eventType, targetType, targetId, new Date().toISOString())
+      .bind(createNotificationId(), recipientUserId, eventType, createNotificationAlias(), targetType, targetId, new Date().toISOString())
       .run();
   } catch {
     // A notification must never turn a successful post, reply, or reaction into a retry.
   }
+}
+
+async function hydrateNotificationAliases(
+  env: HidnWorkerEnv,
+  notifications: RoomNotificationRow[],
+): Promise<RoomNotificationRow[]> {
+  const missingAliases = notifications.filter((notification) => !notification.actor_alias);
+  if (!missingAliases.length) {
+    return notifications;
+  }
+
+  const aliases = new Map<string, string>();
+  await Promise.all(
+    missingAliases.map(async (notification) => {
+      const alias = createNotificationAlias();
+      aliases.set(notification.notification_id, alias);
+      await env.ROOM_DB!
+        .prepare(
+          `UPDATE hidn_notifications
+           SET actor_alias = COALESCE(actor_alias, ?)
+           WHERE notification_id = ?`,
+        )
+        .bind(alias, notification.notification_id)
+        .run();
+    }),
+  );
+
+  return notifications.map((notification) => ({
+    ...notification,
+    actor_alias: notification.actor_alias ?? aliases.get(notification.notification_id) ?? "ANON-SIGNAL",
+  }));
 }
 
 async function listAccountNotifications(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -1179,32 +1223,42 @@ async function listAccountNotifications(request: Request, env: HidnWorkerEnv): P
     return jsonResponse({ error: "Log in before reading private notifications." }, 401);
   }
 
+  const notificationCutoff = new Date(Date.now() - NOTIFICATION_RETENTION_MS).toISOString();
+  await env.ROOM_DB!.prepare(
+    `DELETE FROM hidn_notifications
+     WHERE recipient_user_id = ? AND created_at < ?`,
+  )
+    .bind(user.userId, notificationCutoff)
+    .run();
+
   const requestedLimit = Number(new URL(request.url).searchParams.get("limit") ?? "30");
   const limit = Number.isInteger(requestedLimit)
     ? Math.min(Math.max(requestedLimit, 1), 50)
     : 30;
   const [notifications, unread] = await Promise.all([
     env.ROOM_DB!.prepare(
-      `SELECT notification_id, event_type, target_type, target_id, created_at, read_at
+      `SELECT notification_id, event_type, actor_alias, target_type, target_id, created_at, read_at
        FROM hidn_notifications
-       WHERE recipient_user_id = ?
+       WHERE recipient_user_id = ? AND created_at >= ?
        ORDER BY created_at DESC
        LIMIT ${limit}`,
     )
-      .bind(user.userId)
+      .bind(user.userId, notificationCutoff)
       .all<RoomNotificationRow>(),
     env.ROOM_DB!.prepare(
       `SELECT COUNT(*) AS count
        FROM hidn_notifications
-       WHERE recipient_user_id = ? AND read_at IS NULL`,
+       WHERE recipient_user_id = ? AND created_at >= ? AND read_at IS NULL`,
     )
-      .bind(user.userId)
+      .bind(user.userId, notificationCutoff)
       .first<{ count: number }>(),
   ]);
 
+  const hydratedNotifications = await hydrateNotificationAliases(env, notifications.results);
+
   return jsonResponse(
     {
-      notifications: notifications.results.map(serializeRoomNotification),
+      notifications: hydratedNotifications.map(serializeRoomNotification),
       unreadCount: Number(unread?.count ?? 0),
     },
     200,
@@ -1399,7 +1453,7 @@ async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise
     return jsonResponse({ error: "Log in before reading private history." }, 401);
   }
 
-  const [posts, comments] = await Promise.all([
+  const [posts, comments, stats] = await Promise.all([
     env.ROOM_DB!.prepare(
       `SELECT thread_id, content, category, channel, created_at, moderation_state,
               (SELECT COUNT(*)
@@ -1424,11 +1478,50 @@ async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise
     )
       .bind(MAIN_ROOM_ID, user.userId)
       .all<RoomReplyRow>(),
+    env.ROOM_DB!.prepare(
+      `SELECT
+         (SELECT COUNT(*)
+          FROM hidn_threads
+          WHERE room_id = ? AND author_user_id = ?) AS post_count,
+         (SELECT COUNT(*)
+          FROM hidn_replies r
+          JOIN hidn_threads t ON t.thread_id = r.thread_id
+          WHERE t.room_id = ? AND r.author_user_id = ?) AS comment_count,
+         (SELECT COUNT(*)
+          FROM hidn_reactions reaction
+          WHERE reaction.reaction_type = 'like'
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM hidn_threads t
+                WHERE reaction.target_type = 'thread'
+                  AND t.thread_id = reaction.target_id
+                  AND t.room_id = ?
+                  AND t.author_user_id = ?
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM hidn_replies r
+                JOIN hidn_threads t ON t.thread_id = r.thread_id
+                WHERE reaction.target_type = 'reply'
+                  AND r.reply_id = reaction.target_id
+                  AND t.room_id = ?
+                  AND r.author_user_id = ?
+              )
+            )) AS like_count`,
+    )
+      .bind(MAIN_ROOM_ID, user.userId, MAIN_ROOM_ID, user.userId, MAIN_ROOM_ID, user.userId, MAIN_ROOM_ID, user.userId)
+      .first<AccountHistoryStatsRow>(),
   ]);
 
   return jsonResponse({
     posts: posts.results.map(serializeAccountHistoryPost),
     comments: comments.results.map(serializeRoomComment),
+    stats: {
+      posts: Number(stats?.post_count ?? 0),
+      comments: Number(stats?.comment_count ?? 0),
+      likes: Number(stats?.like_count ?? 0),
+    },
   });
 }
 

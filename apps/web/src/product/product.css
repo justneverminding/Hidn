@@ -3580,6 +3580,7 @@
   overflow: hidden;
   place-items: center;
   position: fixed;
+  pointer-events: none;
   z-index: 50;
   animation: hidn-room-entry-fade 2.5s ease both;
 }
@@ -4703,6 +4704,39 @@
   max-width: 48rem;
 }
 
+.room-profile-stats {
+  border-bottom: 1px solid rgba(93, 255, 143, 0.12);
+  border-top: 1px solid rgba(93, 255, 143, 0.12);
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 1.2rem;
+  padding-block: 0.85rem;
+}
+
+.room-profile-stats > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.room-profile-stats span {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.room-profile-stats strong {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-mono);
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+}
+
 .room-profile-card__actions {
   align-items: center;
   display: flex;
@@ -4795,6 +4829,7 @@
 }
 
 .room-recovery-panel {
+  isolation: isolate;
   margin-top: 2rem;
 }
 
@@ -4855,6 +4890,7 @@
   gap: 0.6rem;
   letter-spacing: 0.08em;
   line-height: 1.5;
+  touch-action: manipulation;
   text-transform: uppercase;
 }
 
@@ -4863,6 +4899,8 @@
   flex: 0 0 auto;
   height: 1rem;
   margin: 0.05rem 0 0;
+  position: relative;
+  z-index: 1;
   width: 1rem;
 }
 
@@ -7602,6 +7640,14 @@
 
   .public-page--room-profile .room-profile-card--key {
     margin-bottom: 1.75rem;
+  }
+
+  .public-page--room-profile .room-profile-stats {
+    gap: 0.5rem;
+  }
+
+  .public-page--room-profile .room-profile-stats span {
+    font-size: 0.46rem;
   }
 
   .public-page--room-profile .room-profile-history-grid {
