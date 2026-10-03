@@ -15,6 +15,7 @@ import {
   SystemMessage,
   TerminalLabel,
   TransmissionDivider,
+  LoadingState,
   bindComponentInteractions,
   escapeHtml,
 } from "@hidn/ui";
@@ -513,11 +514,10 @@ function roomReactionTargetIds(path: string): string[] {
     return [];
   }
 
-  const mockIds = feedForRoomChannel(MOCK_CONFESSIONS).map((confession) => confession.id);
   const persistedIds = roomPosts
-    .filter((post) => post.channel === activeRoomChannel)
+    .filter((post) => post.channel === activeRoomChannel && !isModerationHidden("thread", post.id))
     .map((post) => post.id);
-  return [...new Set([...persistedIds, ...mockIds])];
+  return [...new Set(persistedIds)];
 }
 
 function roomReactionStateSignature(path: string): string {
@@ -2639,39 +2639,38 @@ function roomChannelOption(key: RoomChannel): (typeof roomChannelOptions)[number
   return roomChannelOptions.find((channel) => channel.key === key) ?? roomChannelOptions[0];
 }
 
-function feedForRoomChannel(confessions: MockConfession[]): MockConfession[] {
-  const channel = roomChannelOption(activeRoomChannel);
-  const visibleConfessions = confessions.filter((confession) => !isModerationHidden("thread", confession.id));
-  if (!channel.categories) {
-    return visibleConfessions;
+function roomPostRandomKey(id: string): number {
+  let hash = 0;
+  for (const character of id) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
-
-  return visibleConfessions.filter((confession) => channel.categories?.includes(confession.category));
+  return hash;
 }
 
-function feedForTab(tab: FeedTab): MockConfession[] {
-  let confessions: MockConfession[];
+function liveRoomPostsForTab(tab: FeedTab): RoomPost[] {
+  const posts = roomPosts.filter(
+    (post) => post.channel === activeRoomChannel && !isModerationHidden("thread", post.id),
+  );
+
   if (tab === "felt") {
-    confessions = [...MOCK_CONFESSIONS].sort((left, right) => right.reactions - left.reactions);
-  } else if (tab === "random") {
-    confessions = [...MOCK_CONFESSIONS.slice(4), ...MOCK_CONFESSIONS.slice(0, 4)];
-  } else {
-    confessions = MOCK_CONFESSIONS;
+    return [...posts].sort((left, right) => right.reactions - left.reactions || right.time.localeCompare(left.time));
   }
 
-  return feedForRoomChannel(confessions);
+  if (tab === "random") {
+    return [...posts].sort((left, right) => roomPostRandomKey(left.id) - roomPostRandomKey(right.id));
+  }
+
+  return posts;
 }
 
 function renderTransmissionRows(tab: FeedTab): string {
-  const mockRows = feedForTab(tab).map(transmissionViewFromConfession);
-  const persistedRows = tab === "latest"
-    ? roomPosts
-        .filter((post) => post.channel === activeRoomChannel)
-        .map(transmissionViewFromRoomPost)
-    : [];
-  const rows = [...persistedRows, ...mockRows];
+  if (roomPostsLoadedChannel !== activeRoomChannel) {
+    return LoadingState("LISTENING TO LIVE ROOM", "Connecting to the current room feed.");
+  }
+
+  const rows = liveRoomPostsForTab(tab).map(transmissionViewFromRoomPost);
   if (!rows.length) {
-    return EmptyState("NO TRANSMISSIONS", "Nothing is visible here yet.");
+    return EmptyState("NO LIVE TRANSMISSIONS", "No posts have been published in this room yet.");
   }
 
   return rows
