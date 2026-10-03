@@ -292,6 +292,7 @@ const HOME_AUDIO_MASTER_GAIN = 0.50587;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
+const ROOM_ENTRY_SIGNAL_VOLUME = 0.16;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const SHIELDEDSCAN_CACHE_DURATION_MS = 60_000;
@@ -1533,6 +1534,70 @@ function stopHomeAudio(root?: ParentNode, rememberChoice = false): void {
 
   if (root) {
     setHomeAudioState(root, false);
+  }
+}
+
+function playRoomEntrySignal(): void {
+  // Respect an explicit ambient-sound opt-out while keeping the first visit
+  // eligible for a small, user-triggered interface signal.
+  if (hasHomeAudioPreference() && !readHomeAudioPreference()) {
+    return;
+  }
+
+  const AudioContextConstructor = window.AudioContext
+    ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return;
+  }
+
+  try {
+    const context = new AudioContextConstructor();
+    const output = context.createGain();
+    const filter = context.createBiquadFilter();
+    const echo = context.createDelay(0.5);
+    const echoGain = context.createGain();
+    const toneGain = context.createGain();
+    const carrier = context.createOscillator();
+    const undertone = context.createOscillator();
+    const now = context.currentTime;
+
+    output.gain.value = ROOM_ENTRY_SIGNAL_VOLUME;
+    filter.type = "lowpass";
+    filter.frequency.value = 1850;
+    filter.Q.value = 0.6;
+    echo.delayTime.value = 0.18;
+    echoGain.gain.value = 0.16;
+    toneGain.gain.setValueAtTime(0.0001, now);
+    toneGain.gain.exponentialRampToValueAtTime(0.22, now + 0.018);
+    toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+
+    carrier.type = "triangle";
+    carrier.frequency.setValueAtTime(680, now);
+    carrier.frequency.exponentialRampToValueAtTime(255, now + 0.28);
+    carrier.detune.setValueAtTime(-4, now);
+    undertone.type = "sine";
+    undertone.frequency.setValueAtTime(190, now);
+    undertone.frequency.exponentialRampToValueAtTime(112, now + 0.3);
+    undertone.detune.setValueAtTime(5, now);
+
+    carrier.connect(toneGain);
+    undertone.connect(toneGain);
+    toneGain.connect(filter);
+    filter.connect(output);
+    filter.connect(echo);
+    echo.connect(echoGain);
+    echoGain.connect(output);
+    output.connect(context.destination);
+    carrier.start(now);
+    undertone.start(now);
+    carrier.stop(now + 0.38);
+    undertone.stop(now + 0.38);
+    void context.resume().catch(() => undefined);
+    window.setTimeout(() => {
+      void context.close();
+    }, 850);
+  } catch {
+    // The room transition should never be blocked by an unavailable audio API.
   }
 }
 
@@ -5347,6 +5412,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   root.querySelectorAll<HTMLAnchorElement>("[data-room-enter]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
+      playRoomEntrySignal();
       const returning = hasRoomSession();
       startRoomEntryTransition(returning ? "/room" : "/room/access", returning ? "return" : "first");
     });
