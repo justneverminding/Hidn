@@ -36,6 +36,8 @@ export interface RoomPost {
   channel: string;
   time: string;
   reactions: number;
+  replies: number;
+  liked?: boolean;
 }
 
 export type ContentStatus = "visible" | "pending" | "hidden" | "rejected";
@@ -56,6 +58,22 @@ export interface RoomComment {
 export interface AccountHistoryResponse {
   posts: AccountHistoryPost[];
   comments: RoomComment[];
+}
+
+export type AccountNotificationType = "reaction" | "reply";
+
+export interface AccountNotification {
+  id: string;
+  type: AccountNotificationType;
+  targetType: "thread" | "reply";
+  targetId: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface AccountNotificationsResponse {
+  notifications: AccountNotification[];
+  unreadCount: number;
 }
 
 export interface RoomPostsResponse {
@@ -298,6 +316,14 @@ export function fetchAccountHistory(): Promise<AccountHistoryResponse> {
   return roomGet<AccountHistoryResponse>("/api/account/history");
 }
 
+export function fetchAccountNotifications(): Promise<AccountNotificationsResponse> {
+  return roomGet<AccountNotificationsResponse>("/api/account/notifications?limit=30");
+}
+
+export function markAccountNotificationsRead(notificationIds: string[] = []): Promise<{ status: "read" }> {
+  return accountRequest<{ status: "read" }>("/api/account/notifications/read", { notificationIds });
+}
+
 export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
   return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
 }
@@ -317,8 +343,16 @@ export function createRoomPost(input: {
 export function createRoomReply(input: {
   threadId: string;
   content: string;
-}): Promise<{ comment: RoomComment; status: "created" }> {
-  return accountRequest<{ comment: RoomComment; status: "created" }>("/api/room/replies", input);
+  submissionId: string;
+}): Promise<{ comment: RoomComment; status: "created" | "already_saved" }> {
+  return accountRequest<{ comment: RoomComment; status: "created" | "already_saved" }>("/api/room/replies", input);
+}
+
+export function toggleRoomReaction(input: {
+  targetType: "thread" | "reply";
+  targetId: string;
+}): Promise<{ targetType: "thread" | "reply"; targetId: string; liked: boolean; reactions: number }> {
+  return accountRequest<{ targetType: "thread" | "reply"; targetId: string; liked: boolean; reactions: number }>("/api/room/reactions", input);
 }
 
 export function submitReport(input: {

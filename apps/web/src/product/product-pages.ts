@@ -48,6 +48,7 @@ import {
   createRoomReply,
   createRoomSession,
   fetchAccountHistory,
+  fetchAccountNotifications,
   fetchAdminAudit,
   fetchAdminModerators,
   fetchAdminSession,
@@ -61,10 +62,12 @@ import {
   loginAccount,
   loginRoomSession,
   logoutAccount,
+  markAccountNotificationsRead,
   moderateAdminContent,
   requestZkChallenge,
   signupZkAccount,
   submitReport,
+  toggleRoomReaction,
   updateAdminModerator,
   updateAdminReport,
   verifyZkLogin,
@@ -76,6 +79,8 @@ import {
   type AdminSession,
   type AccountAccessLevel,
   type AccountHistoryResponse,
+  type AccountNotification,
+  type AccountNotificationsResponse,
   type AccountResponse,
   type ModerationTargetType,
   type PaymentIntentResponse,
@@ -140,6 +145,12 @@ let roomLoginSubmitting = false;
 let roomAccountHistory: AccountHistoryResponse | undefined;
 let roomAccountHistoryRequest: Promise<void> | undefined;
 let roomAccountHistoryError = "";
+let roomNotifications: AccountNotificationsResponse | undefined;
+let roomNotificationsRequest: Promise<void> | undefined;
+let roomNotificationsTimer: number | undefined;
+let roomNotificationsOpen = false;
+let roomNotificationsError = "";
+let roomNotificationsMarkingRead = false;
 let roomReplySubmitting = false;
 let roomLocalComments: RoomComment[] = [];
 let roomRecoveryRevealMode: RoomRecoveryRevealMode = "hidden";
@@ -209,6 +220,7 @@ interface TransmissionView {
   time: string;
   category?: string;
   reactions?: number;
+  replies?: number;
 }
 
 interface SelectedTextItem {
@@ -268,7 +280,8 @@ const SHIELDEDSCAN_CACHE_DURATION_MS = 60_000;
 const ZCASH_STATUS_CAROUSEL_INTERVAL_MS = 4_500;
 const MODERATION_GATE_MIN_DURATION_MS = 800;
 const ROOM_LIVE_ACTIVITY_REFRESH_MS = 10_000;
-const ROOM_RECOVERY_REVEAL_DURATION_MS = 30_000;
+const ROOM_NOTIFICATION_REFRESH_MS = 5_000;
+const ROOM_RECOVERY_REVEAL_DURATION_MS = 20_000;
 
 function completeRoomHandle(value: string): string {
   const normalized = value.trim().toUpperCase();
@@ -340,6 +353,7 @@ function transmissionViewFromRoomPost(post: RoomPost): TransmissionView {
     time: post.time,
     category: post.category,
     reactions: post.reactions,
+    replies: post.replies,
   };
 }
 
@@ -378,6 +392,11 @@ function repliesForThread(id: string): AnonymousReply[] {
   const emptyReplies: AnonymousReply[] = [];
   roomThreadReplies.set(id, emptyReplies);
   return emptyReplies;
+}
+
+function replyCountForThread(id: string, fallback = 0): number {
+  const persistedPost = roomPosts.find((post) => post.id === id);
+  return Math.max(persistedPost?.replies ?? fallback, repliesForThread(id).length);
 }
 
 function moderationTargetKey(targetType: ModerationTargetType, targetId: string): string {
@@ -502,10 +521,11 @@ function renderTransmissionRow(
   const shareTextAttributes = threadId
     ? `data-share-text data-share-id="${escapeHtml(threadId)}" data-share-kind="thread" data-share-label="${escapeHtml(transmission.reference ?? "ANONYMOUS THREAD")}" data-share-category="${escapeHtml(transmission.category ?? "IDENTITY")}" data-share-time="${escapeHtml(transmission.time)}"`
     : "";
+  const replyCount = threadId ? replyCountForThread(threadId, transmission.replies) : 0;
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasRoomSession() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
-        <a class="room-message__action" href="${escapeHtml(options.href)}">REPLIES ${repliesForThread(threadId).length}</a>
+        <a class="room-message__action" href="${escapeHtml(options.href)}">REPLIES ${replyCount}</a>
         <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
         <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
         <a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>
@@ -2524,6 +2544,12 @@ async function refreshRoomPosts(): Promise<void> {
       ];
       for (const post of response.posts) {
         roomPendingPostIds.delete(post.id);
+        roomLikeCounts.set(post.id, post.reactions);
+        if (post.liked) {
+          roomLikedIds.add(post.id);
+        } else {
+          roomLikedIds.delete(post.id);
+        }
       }
       roomPostsLoadedChannel = requestedChannel;
       roomPostError = "";
@@ -2567,6 +2593,99 @@ async function refreshAccountHistory(): Promise<void> {
   return roomAccountHistoryRequest;
 }
 
+function isRoomNotificationSurface(path = normalizePath(window.location.pathname)): boolean {
+  return path === "/room"
+    || path === "/room/profile"
+    || Boolean(roomChannelFromPath(path))
+    || path.startsWith("/c/");
+}
+
+function notificationStateSignature(value: AccountNotificationsResponse | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  return `${value.unreadCount}|${value.notifications.map((notification) => `${notification.id}:${notification.readAt ?? ""}`).join(",")}`;
+}
+
+async function refreshAccountNotifications(): Promise<void> {
+  if (!hasRoomSession() || roomNotificationsRequest) {
+    return;
+  }
+
+  const previousSignature = notificationStateSignature(roomNotifications);
+  roomNotificationsRequest = fetchAccountNotifications()
+    .then((response) => {
+      if (!hasRoomSession()) {
+        return;
+      }
+
+      roomNotifications = response;
+      roomNotificationsError = "";
+      if (previousSignature !== notificationStateSignature(response) && isRoomNotificationSurface()) {
+        rerenderProductRoute();
+      }
+    })
+    .catch((error) => {
+      roomNotificationsError = error instanceof Error ? error.message : "Private notifications could not be loaded.";
+      if (roomNotificationsOpen && isRoomNotificationSurface()) {
+        rerenderProductRoute();
+      }
+    })
+    .finally(() => {
+      roomNotificationsRequest = undefined;
+    });
+
+  return roomNotificationsRequest;
+}
+
+async function markRoomNotificationsRead(): Promise<void> {
+  if (!roomNotifications?.unreadCount || roomNotificationsMarkingRead) {
+    return;
+  }
+
+  roomNotificationsMarkingRead = true;
+  roomNotificationsError = "";
+  rerenderProductRoute();
+  try {
+    const unreadIds = roomNotifications.notifications
+      .filter((notification) => !notification.readAt)
+      .map((notification) => notification.id);
+    await markAccountNotificationsRead(unreadIds);
+    const readAt = new Date().toISOString();
+    roomNotifications = {
+      ...roomNotifications,
+      unreadCount: 0,
+      notifications: roomNotifications.notifications.map((notification) => ({ ...notification, readAt: notification.readAt ?? readAt })),
+    };
+  } catch (error) {
+    roomNotificationsError = error instanceof Error ? error.message : "Private notifications could not be updated.";
+  } finally {
+    roomNotificationsMarkingRead = false;
+    if (isRoomNotificationSurface()) {
+      rerenderProductRoute();
+    }
+  }
+}
+
+function stopRoomNotificationPolling(): void {
+  if (roomNotificationsTimer !== undefined) {
+    window.clearInterval(roomNotificationsTimer);
+    roomNotificationsTimer = undefined;
+  }
+}
+
+function startRoomNotificationPolling(): void {
+  if (roomNotificationsTimer !== undefined) {
+    return;
+  }
+
+  void refreshAccountNotifications();
+  roomNotificationsTimer = window.setInterval(() => {
+    void refreshAccountNotifications();
+  }, ROOM_NOTIFICATION_REFRESH_MS);
+}
+
 async function submitRoomPost(): Promise<void> {
   const content = roomPostText.trim();
   if (!content) {
@@ -2599,6 +2718,8 @@ async function submitRoomPost(): Promise<void> {
     });
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
+    roomLikeCounts.set(response.post.id, response.post.reactions);
+    roomLikedIds.delete(response.post.id);
     roomPostsLoadedChannel = activeRoomChannel;
     roomPostComposerOpen = false;
     roomPostText = "";
@@ -2613,7 +2734,7 @@ async function submitRoomPost(): Promise<void> {
 }
 
 async function submitRoomReply(threadId: string, content: string): Promise<void> {
-  if (!threadId || !content) {
+  if (roomReplySubmitting || !threadId || !content) {
     return;
   }
   const maxLength = roomReplyCharacterLimit();
@@ -2649,13 +2770,20 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   rerenderProductRoute();
 
   try {
-    const response = await createRoomReply({ threadId, content });
+    const response = await createRoomReply({ threadId, content, submissionId: createRoomReplySubmissionId() });
     roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
     roomAccountHistory = roomAccountHistory
       ? { ...roomAccountHistory, comments: [response.comment, ...roomAccountHistory.comments.filter((comment) => comment.id !== response.comment.id)] }
       : roomAccountHistory;
-    repliesForThread(threadId).push({ text: response.comment.text, time: "JUST NOW" });
-    roomChannelNotice = "REPLY SAVED / PRIVATE HISTORY UPDATED";
+    if (response.status === "created") {
+      repliesForThread(threadId).push({ text: response.comment.text, time: "JUST NOW" });
+      roomPosts = roomPosts.map((post) => post.id === threadId ? { ...post, replies: post.replies + 1 } : post);
+      roomPostsLoadedChannel = undefined;
+      void refreshRoomPosts();
+      roomChannelNotice = "REPLY SAVED / PRIVATE HISTORY UPDATED";
+    } else {
+      roomChannelNotice = "YOU'VE SAID THAT ALREADY / REPLY NOT SENT TWICE";
+    }
   } catch (error) {
     roomPostError = error instanceof Error ? error.message : "The reply could not be created.";
     roomChannelNotice = "";
@@ -3017,6 +3145,56 @@ function renderRoomZcashStatus(): string {
   return `<span class="ui-status-indicator zcash-status-carousel" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
 }
 
+function roomNotificationLabel(notification: AccountNotification): string {
+  return notification.type === "reaction" ? "REACTION / YOUR THREAD" : "REPLY / YOUR THREAD";
+}
+
+function renderRoomNotifications(): string {
+  if (!hasRoomSession()) {
+    return "";
+  }
+
+  const notifications = roomNotifications?.notifications ?? [];
+  const unreadCount = roomNotifications?.unreadCount ?? 0;
+  const content = roomNotificationsError
+    ? `<p class="room-notifications__empty" role="status">${escapeHtml(roomNotificationsError)}</p>`
+    : !roomNotifications
+      ? `<p class="room-notifications__empty" role="status">READING PRIVATE ACTIVITY...</p>`
+      : notifications.length
+        ? `<ul class="room-notifications__list">${notifications.map((notification) => `<li class="room-notifications__item${notification.readAt ? "" : " room-notifications__item--unread"}">
+            <a href="/room/profile" class="room-notifications__link">
+              <span class="room-notifications__label">${escapeHtml(roomNotificationLabel(notification))}</span>
+              <span class="room-notifications__meta">PRIVATE ACTIVITY / ${escapeHtml(formatTransmissionTime(notification.createdAt))}</span>
+            </a>
+          </li>`).join("")}</ul>`
+        : `<p class="room-notifications__empty">NO PRIVATE ACTIVITY YET.</p>`;
+
+  const hasUnreadActivity = unreadCount > 0;
+  const notificationLabel = hasUnreadActivity
+    ? `${unreadCount} unread private activity notification${unreadCount === 1 ? "" : "s"}`
+    : "Open private activity notifications";
+
+  return `<section class="room-notifications${roomNotificationsOpen ? " room-notifications--open" : ""}${hasUnreadActivity ? " room-notifications--unread" : ""}" aria-label="Private activity notifications">
+    <button class="room-notifications__toggle" type="button" data-action="room-notifications-toggle" aria-label="${notificationLabel}" aria-expanded="${roomNotificationsOpen}" aria-controls="room-notifications-panel">
+      <span class="room-notifications__bell" aria-hidden="true">
+        <svg class="room-notifications__bell-icon" viewBox="0 0 24 24" focusable="false">
+          <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path>
+        </svg>
+        ${hasUnreadActivity ? `<span class="room-notifications__badge">${unreadCount > 99 ? "99+" : unreadCount}</span>` : ""}
+      </span>
+      <span class="room-notifications__toggle-copy">PRIVATE ACTIVITY${unreadCount ? ` / ${unreadCount} NEW` : ""}</span>
+    </button>
+    ${roomNotificationsOpen ? `<div class="room-notifications__panel" id="room-notifications-panel">
+      <header class="room-notifications__header">
+        <span>ACCOUNT SIGNALS / PRIVATE</span>
+        ${unreadCount ? `<span>${unreadCount.toString().padStart(2, "0")} UNREAD</span>` : "<span>CAUGHT UP</span>"}
+      </header>
+      ${content}
+      ${unreadCount ? `<div class="room-notifications__actions">${SecondaryButton({ label: roomNotificationsMarkingRead ? "MARKING READ..." : "MARK ALL READ", disabled: roomNotificationsMarkingRead, dataAction: "room-notifications-read" })}</div>` : ""}
+    </div>` : ""}
+  </section>`;
+}
+
 function renderMobilePostSurface(): string {
   const activeChannel = roomChannelOption(activeRoomChannel);
   const content = roomPostComposerOpen && hasRoomSession()
@@ -3057,7 +3235,7 @@ function renderMobileRoomIndex(): string {
           ${TerminalLabel("PRIVATE ROOM / INDEX")}
           <h1>CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
-          <div class="room-mobile-index__status">${renderRoomZcashStatus()}</div>
+          <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
           ${renderMobilePostSurface()}
         </header>
         <section class="room-mobile-index__list" aria-label="Private rooms">
@@ -3112,7 +3290,7 @@ function renderExplore(path = "/room"): string {
         ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
                 <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
-              ${renderRoomZcashStatus()}
+              <div class="explore-feed__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
             </div>
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
@@ -3169,6 +3347,8 @@ function renderThreadRoom(id: string, quotedText = ""): string {
         ${PrimaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : roomAccess ? "TRANSMIT REPLY →" : "ENTER THE ROOM FIRST", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
+    ${roomChannelNotice ? `<p class="thread-room__feedback" role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
+    ${roomPostError ? `<p class="thread-room__feedback thread-room__feedback--error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
     <p class="thread-room__note">${roomAccess ? `${roomReplyLimitCopy()} Suspicious bursts or repeated messages may receive a short signal cooldown.` : "Enter the private room to reply without a public name."}</p>
   </section>`;
 }
@@ -3178,6 +3358,7 @@ function renderDetail(id: string): RenderedProductRoute {
   const livePost = roomPosts.find((post) => post.id === id);
   const confession = mockConfession ?? (livePost ? mockConfessionFromRoomPost(livePost) : undefined);
   const isLivePost = Boolean(livePost);
+  const detailReplyCount = replyCountForThread(id, livePost?.replies);
   const metadata: HidnMetadata = {
     kind: "anonymous-confession",
     title: "HIDN — Anonymous confession",
@@ -3242,7 +3423,7 @@ function renderDetail(id: string): RenderedProductRoute {
           </article>
           <div class="detail-meta-grid">
             <div><span>LIKES</span><strong>${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</strong></div>
-            <div><span>COMMENTS</span><strong>${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</strong></div>
+            <div><span>COMMENTS</span><strong>${escapeHtml(String(detailReplyCount))}</strong></div>
             <div><span>POSTED</span><strong>${escapeHtml(confession.relativeTime)}</strong></div>
           </div>
           ${isLivePost
@@ -3250,7 +3431,7 @@ function renderDetail(id: string): RenderedProductRoute {
             : SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
             <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasRoomSession() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
-            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(repliesForThread(confession.id).filter((_, index) => !isModerationHidden("reply", `${confession.id}:reply:${index}`)).length))}</a>
+            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(detailReplyCount))}</a>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
             <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
             <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">SHARE IMAGE</button>
@@ -3283,6 +3464,16 @@ function createRoomDemoId(): string {
   return `HIDN-DEMO-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
+function createRoomReplySubmissionId(): string {
+  if (window.crypto?.randomUUID) {
+    return `HIDN-REPLY-${window.crypto.randomUUID().toUpperCase()}`;
+  }
+
+  const bytes = new Uint8Array(16);
+  window.crypto?.getRandomValues(bytes);
+  return `HIDN-REPLY-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
 function resetRoomRecoveryReveal(): void {
   if (roomRecoveryRevealTimer !== undefined) {
     window.clearTimeout(roomRecoveryRevealTimer);
@@ -3303,7 +3494,7 @@ function revealRoomRecoveryKeyTemporarily(): void {
   roomRecoveryRevealTimer = window.setTimeout(() => {
     roomRecoveryRevealMode = "hidden";
     roomRecoveryRevealTimer = undefined;
-    if (normalizePath(window.location.pathname) === "/room/access") {
+    if (["/room/access", "/room/profile"].includes(normalizePath(window.location.pathname))) {
       rerenderProductRoute();
     }
   }, ROOM_RECOVERY_REVEAL_DURATION_MS);
@@ -3369,6 +3560,7 @@ async function copyRoomRecoveryKey(button: HTMLButtonElement): Promise<void> {
 
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
+  stopRoomNotificationPolling();
   if (roomEntryTimer !== undefined) {
     window.clearTimeout(roomEntryTimer);
     roomEntryTimer = undefined;
@@ -3402,9 +3594,16 @@ function clearRoomSession(): void {
   roomPosts = [];
   roomPendingPostIds.clear();
   roomPostsLoadedChannel = undefined;
+  roomLikeCounts.clear();
+  roomLikedIds.clear();
   roomAccountRecoveryCode = "";
   roomAccountHistory = undefined;
   roomAccountHistoryError = "";
+  roomNotifications = undefined;
+  roomNotificationsRequest = undefined;
+  roomNotificationsOpen = false;
+  roomNotificationsError = "";
+  roomNotificationsMarkingRead = false;
   roomLocalComments = [];
   roomReplySubmitting = false;
   roomPaymentIntentId = "";
@@ -3784,7 +3983,7 @@ function renderRoomRecoveryPanel(): string {
         </div>
       </label>
       ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
-      <p class="room-payment-card__note">Confirm the handle used for this account. The recovery key will be visible for 30 seconds only.</p>
+      <p class="room-payment-card__note">Confirm the handle used for this account. The recovery key will be visible for 20 seconds only.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
         ${SecondaryButton({ label: "SHOW RECOVERY KEY →", dataAction: "room-recovery-submit" })}
@@ -3867,19 +4066,47 @@ function contentStatusLabel(status: RoomComment["status"]): string {
 }
 
 function renderProfileRecoveryKey(): string {
-  if (roomAccountRecoveryCode) {
+  if (!roomAccountRecoveryCode) {
     return `<section class="room-profile-card room-profile-card--key" aria-labelledby="room-profile-key-title">
+      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / NOT IN MEMORY</span>
+      <p class="room-profile-card__note">The recovery key is never stored in your profile or sent to HIDN. Refreshing or closing this browser removes it from the current session; use the key you saved to return.</p>
+    </section>`;
+  }
+
+  if (roomRecoveryRevealMode === "visible") {
+    return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--visible" aria-labelledby="room-profile-key-title" aria-live="polite">
       <span class="room-access-key__label" id="room-profile-key-title" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
       <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
         <code>${escapeHtml(roomAccountRecoveryCode)}</code>
       </button>
-      <p class="room-profile-card__note">This key is held only in this browser session. It is not stored in D1 and cannot be reconstructed by HIDN.</p>
+      <span class="room-access-key__warning">VISIBLE FOR 20 SECONDS / REPEAT THE HANDLE CHECK TO REVEAL IT AGAIN.</span>
     </section>`;
   }
 
-  return `<section class="room-profile-card room-profile-card--key" aria-labelledby="room-profile-key-title">
-    <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / NOT IN MEMORY</span>
-    <p class="room-profile-card__note">The recovery key is never stored in your profile or sent to HIDN. Refreshing or closing this browser removes it from the current session; use the key you saved to return.</p>
+  if (roomRecoveryRevealMode === "prompt") {
+    return `<form class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" aria-labelledby="room-profile-key-title" novalidate>
+      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / CONFIRM PRIVATE HANDLE</span>
+      <label class="room-access-field" for="room-recovery-username">
+        <span>PRIVATE HANDLE / HIDN HANDLE</span>
+        <div class="room-handle-input">
+          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
+          <input id="room-recovery-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
+        </div>
+      </label>
+      ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
+      <p class="room-profile-card__note">Enter the private handle used for this account. The recovery key will be visible for 20 seconds only.</p>
+      <div class="room-access-actions">
+        ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
+        ${SecondaryButton({ label: "SHOW RECOVERY KEY →", dataAction: "room-recovery-submit" })}
+      </div>
+    </form>`;
+  }
+
+  return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--hidden" aria-labelledby="room-profile-key-title">
+    <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / HIDDEN</span>
+    <p class="room-profile-card__note">The recovery key is hidden by default. Confirm your private handle to reveal it for 20 seconds.</p>
+    ${SecondaryButton({ label: "RECOVER KEY", dataAction: "room-recovery-open" })}
+    <span class="room-access-key__warning">THIS BROWSER-HELD KEY CANNOT BE RECOVERED FROM HIDN AFTER THIS SESSION IS LOST.</span>
   </section>`;
 }
 
@@ -3946,6 +4173,7 @@ function renderRoomProfile(): RenderedProductRoute {
             ${TerminalLabel("PRIVATE ROOM / PROFILE")}
             <h1 class="type-display-lg room-access-header__title">YOUR SIGNALS<br /><em>STAY WITH YOU.</em></h1>
             <p class="room-access-header__copy">${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key and history stay behind this session.</p>
+            ${renderRoomNotifications()}
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
@@ -4266,6 +4494,7 @@ function rerenderProductRoute(): void {
 }
 
 function navigateProductRoute(path: string): void {
+  resetRoomRecoveryReveal();
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
 }
@@ -4284,35 +4513,61 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
   bindRoomLikeInteractions(list);
 }
 
+async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Promise<void> {
+  if (!hasRoomSession() || button.dataset.pending === "true") {
+    return;
+  }
+
+  const threadId = button.dataset.threadId;
+  if (!threadId) {
+    return;
+  }
+
+  const normalizedPath = normalizePath(window.location.pathname);
+  const isPersistedThread = /^THR-[A-F0-9]{24}$/i.test(threadId);
+  if (!isPersistedThread) {
+    const liked = roomLikedIds.has(threadId);
+    const displayedCount = Number(button.textContent?.match(/\d+/)?.[0] ?? "0");
+    const currentCount = reactionCountForThread(threadId, displayedCount);
+    const nextCount = currentCount + (liked ? -1 : 1);
+    if (liked) {
+      roomLikedIds.delete(threadId);
+    } else {
+      roomLikedIds.add(threadId);
+    }
+    roomLikeCounts.set(threadId, Math.max(0, nextCount));
+  } else {
+    button.dataset.pending = "true";
+    button.disabled = true;
+    try {
+      const response = await toggleRoomReaction({ targetType: "thread", targetId: threadId });
+      roomLikeCounts.set(threadId, response.reactions);
+      if (response.liked) {
+        roomLikedIds.add(threadId);
+      } else {
+        roomLikedIds.delete(threadId);
+      }
+      roomChannelNotice = response.liked ? "REACTION SAVED / PRIVATE" : "REACTION REMOVED / PRIVATE";
+      roomPostError = "";
+    } catch (error) {
+      roomPostError = error instanceof Error ? error.message : "The reaction could not be saved.";
+      roomChannelNotice = "";
+    } finally {
+      delete button.dataset.pending;
+    }
+  }
+
+  if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelFromPath(normalizedPath))) {
+    renderExploreFeed(root, activeFeedTab);
+  } else {
+    rerenderProductRoute();
+  }
+}
+
 function bindRoomLikeInteractions(root: ParentNode): void {
   root.querySelectorAll<HTMLButtonElement>('[data-action="room-like"]').forEach((button) => {
     button.addEventListener("click", () => {
-      if (!hasRoomSession()) {
-        return;
-      }
-
-      const threadId = button.dataset.threadId;
-      if (!threadId) {
-        return;
-      }
-
-      const liked = roomLikedIds.has(threadId);
-      const displayedCount = Number(button.textContent?.match(/\d+/)?.[0] ?? "0");
-      const currentCount = reactionCountForThread(threadId, displayedCount);
-      const nextCount = currentCount + (liked ? -1 : 1);
-      if (liked) {
-        roomLikedIds.delete(threadId);
-      } else {
-        roomLikedIds.add(threadId);
-      }
-      roomLikeCounts.set(threadId, Math.max(0, nextCount));
-
-      const normalizedPath = normalizePath(window.location.pathname);
-      if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelFromPath(normalizedPath))) {
-        renderExploreFeed(root, activeFeedTab);
-      } else {
-        rerenderProductRoute();
-      }
+      void toggleRoomLike(root, button);
     });
   });
 }
@@ -4646,6 +4901,11 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
+  if (isRoomNotificationSurface(normalizedPath) && hasRoomSession()) {
+    startRoomNotificationPolling();
+  } else {
+    stopRoomNotificationPolling();
+  }
   if ((normalizedPath === "/room" || Boolean(roomChannelFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
   }
@@ -4854,6 +5114,16 @@ export function bindProductRoute(root: ParentNode = document): void {
           menu?.classList.toggle("room-menu--open", !isOpen);
           break;
         }
+        case "room-notifications-toggle":
+          roomNotificationsOpen = !roomNotificationsOpen;
+          if (roomNotificationsOpen) {
+            void refreshAccountNotifications();
+          }
+          rerenderProductRoute();
+          break;
+        case "room-notifications-read":
+          void markRoomNotificationsRead();
+          break;
         case "room-recovery-open":
           if (!roomAccountRecoveryCode) {
             break;

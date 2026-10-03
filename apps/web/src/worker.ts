@@ -40,6 +40,7 @@ type LegacyRoomStatus = "pending" | "verified";
 type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
 type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED" | "JUST REPLIED";
 type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT" | "A THREAD";
+type NotificationEventType = "reaction" | "reply";
 type ReportTargetType = "thread" | "reply" | "account";
 type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
 type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
@@ -221,6 +222,9 @@ interface RoomPostRow {
   category: string;
   channel: RoomChannel;
   created_at: string;
+  reactions?: number;
+  reply_count?: number;
+  liked_by_current_user?: number;
 }
 
 interface AccountHistoryPostRow extends RoomPostRow {
@@ -234,6 +238,17 @@ interface RoomReplyRow {
   channel: RoomChannel;
   moderation_state: "visible" | "pending" | "hidden" | "rejected";
   created_at: string;
+  author_user_id?: string | null;
+  submission_id?: string | null;
+}
+
+interface RoomNotificationRow {
+  notification_id: string;
+  event_type: NotificationEventType;
+  target_type: "thread" | "reply";
+  target_id: string;
+  created_at: string;
+  read_at: string | null;
 }
 
 interface ActivityEventRow {
@@ -436,6 +451,10 @@ function createAdminAuditEventId(): string {
 
 function createActivityEventId(): string {
   return `ACT-${createRandomHex(12).toUpperCase()}`;
+}
+
+function createNotificationId(): string {
+  return `NTF-${createRandomHex(12).toUpperCase()}`;
 }
 
 function createActivitySignalRef(): string {
@@ -1008,7 +1027,9 @@ function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
     category: row.category,
     channel: row.channel,
     time: row.created_at,
-    reactions: 0,
+    reactions: Number(row.reactions ?? 0),
+    replies: Number(row.reply_count ?? 0),
+    liked: row.liked_by_current_user === 1,
   };
 }
 
@@ -1030,6 +1051,205 @@ function serializeRoomComment(row: RoomReplyRow): Record<string, unknown> {
   };
 }
 
+function serializeRoomNotification(row: RoomNotificationRow): Record<string, unknown> {
+  return {
+    id: row.notification_id,
+    type: row.event_type,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    createdAt: row.created_at,
+    readAt: row.read_at,
+  };
+}
+
+async function createAccountNotification(
+  env: HidnWorkerEnv,
+  recipientUserId: string | null | undefined,
+  eventType: NotificationEventType,
+  targetType: "thread" | "reply",
+  targetId: string,
+): Promise<void> {
+  if (!env.ROOM_DB || !recipientUserId) {
+    return;
+  }
+
+  try {
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_notifications
+        (notification_id, recipient_user_id, event_type, target_type, target_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(createNotificationId(), recipientUserId, eventType, targetType, targetId, new Date().toISOString())
+      .run();
+  } catch {
+    // A notification must never turn a successful post, reply, or reaction into a retry.
+  }
+}
+
+async function listAccountNotifications(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reading private notifications." }, 401);
+  }
+
+  const requestedLimit = Number(new URL(request.url).searchParams.get("limit") ?? "30");
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 50)
+    : 30;
+  const [notifications, unread] = await Promise.all([
+    env.ROOM_DB!.prepare(
+      `SELECT notification_id, event_type, target_type, target_id, created_at, read_at
+       FROM hidn_notifications
+       WHERE recipient_user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ${limit}`,
+    )
+      .bind(user.userId)
+      .all<RoomNotificationRow>(),
+    env.ROOM_DB!.prepare(
+      `SELECT COUNT(*) AS count
+       FROM hidn_notifications
+       WHERE recipient_user_id = ? AND read_at IS NULL`,
+    )
+      .bind(user.userId)
+      .first<{ count: number }>(),
+  ]);
+
+  return jsonResponse(
+    {
+      notifications: notifications.results.map(serializeRoomNotification),
+      unreadCount: Number(unread?.count ?? 0),
+    },
+    200,
+    "no-store",
+  );
+}
+
+async function markAccountNotificationsRead(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before updating private notifications." }, 401);
+  }
+
+  const body = await requestBody(request);
+  const notificationIds = Array.isArray(body.notificationIds)
+    ? body.notificationIds
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 50)
+    : [];
+  const readAt = new Date().toISOString();
+  if (notificationIds.length) {
+    const placeholders = notificationIds.map(() => "?").join(", ");
+    await env.ROOM_DB!.prepare(
+      `UPDATE hidn_notifications
+       SET read_at = ?
+       WHERE recipient_user_id = ? AND read_at IS NULL AND notification_id IN (${placeholders})`,
+    )
+      .bind(readAt, user.userId, ...notificationIds)
+      .run();
+  } else {
+    await env.ROOM_DB!.prepare(
+      `UPDATE hidn_notifications
+       SET read_at = ?
+       WHERE recipient_user_id = ? AND read_at IS NULL`,
+    )
+      .bind(readAt, user.userId)
+      .run();
+  }
+
+  return jsonResponse({ status: "read" });
+}
+
+async function toggleRoomReaction(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reacting in the room." }, 401);
+  }
+
+  const body = await requestBody(request);
+  const targetType = body.targetType === "reply" ? "reply" : body.targetType === "thread" ? "thread" : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId.trim().toUpperCase() : "";
+  const targetPattern = targetType === "reply" ? /^RPL-[A-F0-9]{24}$/ : /^THR-[A-F0-9]{24}$/;
+  if (!targetType || !targetPattern.test(targetId)) {
+    return jsonResponse({ error: "Choose a valid room signal." }, 400);
+  }
+
+  const target = targetType === "thread"
+    ? await env.ROOM_DB!.prepare(
+      `SELECT thread_id AS target_id, author_user_id
+       FROM hidn_threads
+       WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
+       LIMIT 1`,
+    )
+      .bind(targetId, MAIN_ROOM_ID)
+      .first<{ target_id: string; author_user_id: string | null }>()
+    : await env.ROOM_DB!.prepare(
+      `SELECT r.reply_id AS target_id, r.author_user_id
+       FROM hidn_replies r
+       JOIN hidn_threads t ON t.thread_id = r.thread_id
+       WHERE r.reply_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
+       LIMIT 1`,
+    )
+      .bind(targetId, MAIN_ROOM_ID)
+      .first<{ target_id: string; author_user_id: string | null }>();
+  if (!target) {
+    return jsonResponse({ error: "That signal is no longer available." }, 404);
+  }
+
+  const existing = await env.ROOM_DB!.prepare(
+    `SELECT reaction_id
+     FROM hidn_reactions
+     WHERE target_type = ? AND target_id = ? AND reaction_type = 'like' AND actor_user_id = ?
+     LIMIT 1`,
+  )
+    .bind(targetType, targetId, user.userId)
+    .first<{ reaction_id: string }>();
+  const liked = !existing;
+  if (existing) {
+    await env.ROOM_DB!.prepare("DELETE FROM hidn_reactions WHERE reaction_id = ? AND actor_user_id = ?")
+      .bind(existing.reaction_id, user.userId)
+      .run();
+  } else {
+    await env.ROOM_DB!.prepare(
+      `INSERT INTO hidn_reactions
+        (reaction_id, target_type, target_id, reaction_type, actor_user_id, created_at)
+       VALUES (?, ?, ?, 'like', ?, ?)`,
+    )
+      .bind(`REA-${createRandomHex(12).toUpperCase()}`, targetType, targetId, user.userId, new Date().toISOString())
+      .run();
+  }
+
+  const count = await env.ROOM_DB!.prepare(
+    `SELECT COUNT(*) AS count
+     FROM hidn_reactions
+     WHERE target_type = ? AND target_id = ? AND reaction_type = 'like'`,
+  )
+    .bind(targetType, targetId)
+    .first<{ count: number }>();
+  if (liked && target.author_user_id && target.author_user_id !== user.userId) {
+    await createAccountNotification(env, target.author_user_id, "reaction", targetType, targetId);
+  }
+
+  return jsonResponse({ targetType, targetId, liked, reactions: Number(count?.count ?? 0) });
+}
+
 async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise<Response> {
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
@@ -1043,7 +1263,11 @@ async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise
 
   const [posts, comments] = await Promise.all([
     env.ROOM_DB!.prepare(
-      `SELECT thread_id, content, category, channel, created_at, moderation_state
+      `SELECT thread_id, content, category, channel, created_at, moderation_state,
+              (SELECT COUNT(*)
+               FROM hidn_replies reply_count
+               WHERE reply_count.thread_id = hidn_threads.thread_id
+                 AND reply_count.moderation_state = 'visible') AS reply_count
        FROM hidn_threads
        WHERE room_id = ? AND author_user_id = ?
        ORDER BY created_at DESC
@@ -1084,11 +1308,15 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
   const body = await requestBody(request);
   const threadId = typeof body.threadId === "string" ? body.threadId.trim().toUpperCase() : "";
   const content = typeof body.content === "string" ? body.content.trim() : "";
+  const submissionId = typeof body.submissionId === "string" ? body.submissionId.trim().toUpperCase() : "";
   if (!/^THR-[A-F0-9]{24}$/.test(threadId)) {
     return jsonResponse({ error: "Choose a valid private-room thread." }, 400);
   }
   if (!content) {
     return jsonResponse({ error: "Write something before replying." }, 400);
+  }
+  if (submissionId && !/^HIDN-REPLY-[A-F0-9-]{16,80}$/.test(submissionId)) {
+    return jsonResponse({ error: "This reply could not be uniquely identified. Try again." }, 400);
   }
   const maxLength = roomReplyMaxLength(user);
   if (content.length > maxLength) {
@@ -1096,15 +1324,49 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
   }
 
   const thread = await env.ROOM_DB!.prepare(
-    `SELECT thread_id, channel
+    `SELECT thread_id, channel, author_user_id
      FROM hidn_threads
      WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
      LIMIT 1`,
   )
     .bind(threadId, MAIN_ROOM_ID)
-    .first<{ thread_id: string; channel: RoomChannel }>();
+    .first<{ thread_id: string; channel: RoomChannel; author_user_id: string | null }>();
   if (!thread) {
     return jsonResponse({ error: "That thread is no longer available for replies." }, 404);
+  }
+
+  if (submissionId) {
+    const existingSubmission = await env.ROOM_DB!.prepare(
+      `SELECT r.reply_id, r.thread_id, r.content, t.channel,
+              r.moderation_state, r.created_at
+       FROM hidn_replies r
+       JOIN hidn_threads t ON t.thread_id = r.thread_id
+       WHERE r.author_user_id = ? AND r.submission_id = ?
+       LIMIT 1`,
+    )
+      .bind(user.userId, submissionId)
+      .first<RoomReplyRow>();
+    if (existingSubmission) {
+      return jsonResponse({ comment: serializeRoomComment(existingSubmission), status: "already_saved" }, 200, "no-store");
+    }
+  }
+
+  const existingContent = await env.ROOM_DB!.prepare(
+    `SELECT r.reply_id, r.thread_id, r.content, t.channel,
+            r.moderation_state, r.created_at
+     FROM hidn_replies r
+     JOIN hidn_threads t ON t.thread_id = r.thread_id
+     WHERE r.thread_id = ?
+       AND r.author_user_id = ?
+       AND r.content = ?
+       AND r.moderation_state = 'visible'
+     ORDER BY r.created_at DESC
+     LIMIT 1`,
+  )
+    .bind(thread.thread_id, user.userId, content)
+    .first<RoomReplyRow>();
+  if (existingContent) {
+    return jsonResponse({ error: "You've said that already in this thread. The reply was not sent twice." }, 409);
   }
 
   const abuseResponse = await assessRoomAbuse(request, env, user, content);
@@ -1119,14 +1381,19 @@ async function createRoomReply(request: Request, env: HidnWorkerEnv): Promise<Re
     channel: thread.channel,
     moderation_state: "visible",
     created_at: new Date().toISOString(),
+    submission_id: submissionId || null,
   };
   await env.ROOM_DB!.prepare(
     `INSERT INTO hidn_replies
-      (reply_id, thread_id, content, moderation_state, created_at, hidden_at, author_user_id)
-     VALUES (?, ?, ?, 'visible', ?, NULL, ?)`,
+      (reply_id, thread_id, content, moderation_state, created_at, hidden_at, author_user_id, submission_id)
+     VALUES (?, ?, ?, 'visible', ?, NULL, ?, ?)`,
   )
-    .bind(reply.reply_id, reply.thread_id, reply.content, reply.created_at, user.userId)
+    .bind(reply.reply_id, reply.thread_id, reply.content, reply.created_at, user.userId, reply.submission_id)
     .run();
+
+  if (thread.author_user_id && thread.author_user_id !== user.userId) {
+    await createAccountNotification(env, thread.author_user_id, "reply", "thread", thread.thread_id);
+  }
 
   await recordActivityEvent(env, "JUST REPLIED", "A THREAD");
 
@@ -1150,13 +1417,31 @@ async function listRoomPosts(request: Request, env: HidnWorkerEnv): Promise<Resp
   }
 
   const result = await env.ROOM_DB!.prepare(
-    `SELECT thread_id, content, category, channel, created_at
-     FROM hidn_threads
-     WHERE room_id = ? AND channel = ? AND moderation_state = 'visible'
-     ORDER BY created_at DESC
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+            COUNT(r.reaction_id) AS reactions,
+            (SELECT COUNT(*)
+             FROM hidn_replies reply_count
+             WHERE reply_count.thread_id = t.thread_id
+               AND reply_count.moderation_state = 'visible') AS reply_count,
+            EXISTS (
+              SELECT 1
+              FROM hidn_reactions current_reaction
+              WHERE current_reaction.target_type = 'thread'
+                AND current_reaction.target_id = t.thread_id
+                AND current_reaction.reaction_type = 'like'
+                AND current_reaction.actor_user_id = ?
+            ) AS liked_by_current_user
+     FROM hidn_threads t
+     LEFT JOIN hidn_reactions r
+       ON r.target_type = 'thread'
+      AND r.target_id = t.thread_id
+      AND r.reaction_type = 'like'
+     WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible'
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     ORDER BY t.created_at DESC
      LIMIT 100`,
   )
-    .bind(MAIN_ROOM_ID, channel)
+    .bind(user.userId, MAIN_ROOM_ID, channel)
     .all<RoomPostRow>();
 
   return jsonResponse({ posts: result.results.map(serializeRoomPost), channel });
@@ -2859,6 +3144,30 @@ const worker = {
       }
     }
 
+    if (url.pathname === "/api/account/notifications") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listAccountNotifications(request, env);
+      } catch {
+        return jsonResponse({ error: "Private notifications could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/notifications/read") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await markAccountNotificationsRead(request, env);
+      } catch {
+        return jsonResponse({ error: "Private notifications could not be updated." }, 500);
+      }
+    }
+
     if (url.pathname === "/api/account/logout") {
       if (request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed." }, 405);
@@ -2892,6 +3201,18 @@ const worker = {
         return await createRoomReply(request, env);
       } catch {
         return jsonResponse({ error: "Reply could not be created." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/reactions") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await toggleRoomReaction(request, env);
+      } catch {
+        return jsonResponse({ error: "Reaction could not be saved." }, 500);
       }
     }
 
