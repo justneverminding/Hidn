@@ -86,6 +86,17 @@ export interface RoomPostsResponse {
   channel: string;
 }
 
+export interface RoomReactionState {
+  targetId: string;
+  reactions: number;
+  liked: boolean;
+}
+
+export interface RoomReactionStateResponse {
+  targetType: "thread" | "reply";
+  reactions: RoomReactionState[];
+}
+
 export interface RoomActivityEvent {
   actor: string;
   action: string;
@@ -343,6 +354,14 @@ export function verifyRecoveryQuestions(username: string, answers: string[]): Pr
 
 export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
   return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
+}
+
+export function fetchRoomReactionState(
+  targetType: "thread" | "reply",
+  targetIds: string[],
+): Promise<RoomReactionStateResponse> {
+  const params = new URLSearchParams({ targetType, ids: targetIds.join(",") });
+  return roomGet<RoomReactionStateResponse>(`/api/room/reactions?${params.toString()}`);
 }
 
 export function fetchRoomActivity(): Promise<RoomActivityResponse> {

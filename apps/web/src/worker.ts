@@ -21,6 +21,11 @@ const ROOM_FREE_POST_MAX_LENGTH = 200;
 const ROOM_FREE_REPLY_MAX_LENGTH = 100;
 const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
 const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
+const RECOVERY_CONFIRMATION_QUESTIONS = [
+  "Do you understand that this is your recovery key to the private room?",
+  "Do you understand that HIDN cannot recover this key if you lose it?",
+] as const;
+const RECOVERY_CONFIRMATION_ANSWER = "yes";
 const ABUSE_WINDOW_MS = 10 * 60 * 1000;
 const ABUSE_REPEAT_WINDOW_MS = 30 * 60 * 1000;
 const ABUSE_SIGNAL_TTL_MS = 2 * 60 * 60 * 1000;
@@ -31,6 +36,18 @@ const ABUSE_COOLDOWN_BASE_MS = 30 * 1000;
 const ABUSE_COOLDOWN_MAX_MS = 15 * 60 * 1000;
 const LIVE_ACTIVITY_LIMIT = 8;
 const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
+const AMBIENT_ROOM_THREAD_IDS = new Set([
+  "00417",
+  "00416",
+  "00415",
+  "00414",
+  "00413",
+  "00412",
+  "00411",
+  "00410",
+  "00409",
+  "00408",
+]);
 
 // `read_only` is the historical database value for free room access. It no
 // longer blocks ordinary posts or replies; `full` is optional verified access.
@@ -493,20 +510,22 @@ function isValidUsername(username: string): boolean {
   return /^HIDN-[A-Z0-9]{1,20}$/.test(username);
 }
 
-function normalizeRecoveryQuestion(value: string): string {
-  return value.replace(/\s+/g, " ").trim().slice(0, 160);
-}
-
 function normalizeRecoveryAnswer(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 200);
 }
 
-async function hashRecoveryAnswer(userId: string, answer: string): Promise<string> {
-  return hashText(`hidn-recovery-answer-v1:${userId}:${normalizeRecoveryAnswer(answer)}`);
-}
-
 function isRoomChannel(value: string): value is RoomChannel {
   return ROOM_CHANNELS.includes(value as RoomChannel);
+}
+
+function isAmbientRoomThreadId(value: string): boolean {
+  return AMBIENT_ROOM_THREAD_IDS.has(value);
+}
+
+function isAllowedRoomReactionTarget(targetType: "thread" | "reply", targetId: string): boolean {
+  return targetType === "thread"
+    ? /^THR-[A-F0-9]{24}$/.test(targetId) || isAmbientRoomThreadId(targetId)
+    : /^RPL-[A-F0-9]{24}$/.test(targetId);
 }
 
 function createThreadId(): string {
@@ -862,19 +881,7 @@ async function listRecoveryQuestions(request: Request, env: HidnWorkerEnv): Prom
     return jsonResponse({ error: "Log in before reading the recovery security check." }, 401);
   }
 
-  const row = await env.ROOM_DB!.prepare(
-    `SELECT recovery_question_1, recovery_question_2
-     FROM hidn_users
-     WHERE user_id = ?
-     LIMIT 1`,
-  )
-    .bind(user.userId)
-    .first<{ recovery_question_1: string | null; recovery_question_2: string | null }>();
-  const questions = [row?.recovery_question_1, row?.recovery_question_2].filter(
-    (question): question is string => Boolean(question),
-  );
-
-  return jsonResponse({ configured: questions.length === 2, questions }, 200, "no-store");
+  return jsonResponse({ configured: true, questions: [...RECOVERY_CONFIRMATION_QUESTIONS] }, 200, "no-store");
 }
 
 async function saveRecoveryQuestions(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -888,57 +895,7 @@ async function saveRecoveryQuestions(request: Request, env: HidnWorkerEnv): Prom
     return jsonResponse({ error: "Log in before setting the recovery security check." }, 401);
   }
 
-  const body = await requestBody(request);
-  const rawQuestions = Array.isArray(body.questions) ? body.questions : [];
-  const questions = rawQuestions.map((entry) => {
-    const value = typeof entry === "object" && entry !== null ? entry as Record<string, unknown> : {};
-    return {
-      question: normalizeRecoveryQuestion(typeof value.question === "string" ? value.question : ""),
-      answer: normalizeRecoveryAnswer(typeof value.answer === "string" ? value.answer : ""),
-    };
-  });
-  if (
-    questions.length !== 2
-    || questions.some((entry) => entry.question.length < 8 || entry.answer.length < 3)
-    || questions[0].question === questions[1].question
-  ) {
-    return jsonResponse({ error: "Add two different security questions and answers before continuing." }, 400);
-  }
-
-  const existing = await env.ROOM_DB!.prepare(
-    `SELECT recovery_question_1, recovery_question_2
-     FROM hidn_users
-     WHERE user_id = ?
-     LIMIT 1`,
-  )
-    .bind(user.userId)
-    .first<{ recovery_question_1: string | null; recovery_question_2: string | null }>();
-  if (existing?.recovery_question_1 || existing?.recovery_question_2) {
-    return jsonResponse({ error: "Security questions are already set. Verify them to reveal the key." }, 409);
-  }
-
-  const [answerOneHash, answerTwoHash] = await Promise.all([
-    hashRecoveryAnswer(user.userId, questions[0].answer),
-    hashRecoveryAnswer(user.userId, questions[1].answer),
-  ]);
-  await env.ROOM_DB!.prepare(
-    `UPDATE hidn_users
-     SET recovery_question_1 = ?, recovery_answer_1_hash = ?,
-         recovery_question_2 = ?, recovery_answer_2_hash = ?
-     WHERE user_id = ?
-       AND recovery_question_1 IS NULL
-       AND recovery_question_2 IS NULL`,
-  )
-    .bind(
-      questions[0].question,
-      answerOneHash,
-      questions[1].question,
-      answerTwoHash,
-      user.userId,
-    )
-    .run();
-
-  return jsonResponse({ configured: true, questions: questions.map((entry) => entry.question) }, 201, "no-store");
+  return jsonResponse({ configured: true, questions: [...RECOVERY_CONFIRMATION_QUESTIONS] }, 200, "no-store");
 }
 
 async function verifyRecoveryQuestions(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -957,28 +914,8 @@ async function verifyRecoveryQuestions(request: Request, env: HidnWorkerEnv): Pr
   const answers = Array.isArray(body.answers)
     ? body.answers.filter((answer): answer is string => typeof answer === "string").map(normalizeRecoveryAnswer)
     : [];
-  if (!isValidUsername(username) || username !== normalizeUsername(user.username) || answers.length !== 2 || answers.some((answer) => answer.length < 3)) {
-    return jsonResponse({ error: "The handle or security answers did not match." }, 401);
-  }
-
-  const row = await env.ROOM_DB!.prepare(
-    `SELECT recovery_answer_1_hash, recovery_answer_2_hash
-     FROM hidn_users
-     WHERE user_id = ?
-     LIMIT 1`,
-  )
-    .bind(user.userId)
-    .first<{ recovery_answer_1_hash: string | null; recovery_answer_2_hash: string | null }>();
-  if (!row?.recovery_answer_1_hash || !row.recovery_answer_2_hash) {
-    return jsonResponse({ error: "Set up the security questions before revealing this key." }, 409);
-  }
-
-  const [answerOneHash, answerTwoHash] = await Promise.all([
-    hashRecoveryAnswer(user.userId, answers[0]),
-    hashRecoveryAnswer(user.userId, answers[1]),
-  ]);
-  if (answerOneHash !== row.recovery_answer_1_hash || answerTwoHash !== row.recovery_answer_2_hash) {
-    return jsonResponse({ error: "The handle or security answers did not match." }, 401);
+  if (!isValidUsername(username) || username !== normalizeUsername(user.username) || answers.length !== 2 || answers.some((answer) => answer !== RECOVERY_CONFIRMATION_ANSWER)) {
+    return jsonResponse({ error: "The handle or recovery confirmations did not match." }, 401);
   }
 
   return jsonResponse({ verified: true }, 200, "no-store");
@@ -1331,29 +1268,30 @@ async function toggleRoomReaction(request: Request, env: HidnWorkerEnv): Promise
   const body = await requestBody(request);
   const targetType = body.targetType === "reply" ? "reply" : body.targetType === "thread" ? "thread" : "";
   const targetId = typeof body.targetId === "string" ? body.targetId.trim().toUpperCase() : "";
-  const targetPattern = targetType === "reply" ? /^RPL-[A-F0-9]{24}$/ : /^THR-[A-F0-9]{24}$/;
-  if (!targetType || !targetPattern.test(targetId)) {
+  if (!targetType || !isAllowedRoomReactionTarget(targetType, targetId)) {
     return jsonResponse({ error: "Choose a valid room signal." }, 400);
   }
 
-  const target = targetType === "thread"
-    ? await env.ROOM_DB!.prepare(
-      `SELECT thread_id AS target_id, author_user_id
-       FROM hidn_threads
-       WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
-       LIMIT 1`,
-    )
-      .bind(targetId, MAIN_ROOM_ID)
-      .first<{ target_id: string; author_user_id: string | null }>()
-    : await env.ROOM_DB!.prepare(
-      `SELECT r.reply_id AS target_id, r.author_user_id
-       FROM hidn_replies r
-       JOIN hidn_threads t ON t.thread_id = r.thread_id
-       WHERE r.reply_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
-       LIMIT 1`,
-    )
-      .bind(targetId, MAIN_ROOM_ID)
-      .first<{ target_id: string; author_user_id: string | null }>();
+  const target = targetType === "thread" && isAmbientRoomThreadId(targetId)
+    ? { target_id: targetId, author_user_id: null }
+    : targetType === "thread"
+      ? await env.ROOM_DB!.prepare(
+        `SELECT thread_id AS target_id, author_user_id
+         FROM hidn_threads
+         WHERE thread_id = ? AND room_id = ? AND moderation_state = 'visible'
+         LIMIT 1`,
+      )
+        .bind(targetId, MAIN_ROOM_ID)
+        .first<{ target_id: string; author_user_id: string | null }>()
+      : await env.ROOM_DB!.prepare(
+        `SELECT r.reply_id AS target_id, r.author_user_id
+         FROM hidn_replies r
+         JOIN hidn_threads t ON t.thread_id = r.thread_id
+         WHERE r.reply_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
+         LIMIT 1`,
+      )
+        .bind(targetId, MAIN_ROOM_ID)
+        .first<{ target_id: string; author_user_id: string | null }>();
   if (!target) {
     return jsonResponse({ error: "That signal is no longer available." }, 404);
   }
@@ -1393,6 +1331,61 @@ async function toggleRoomReaction(request: Request, env: HidnWorkerEnv): Promise
   }
 
   return jsonResponse({ targetType, targetId, liked, reactions: Number(count?.count ?? 0) });
+}
+
+async function listRoomReactionState(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reading room reactions." }, 401);
+  }
+
+  const url = new URL(request.url);
+  const targetType = url.searchParams.get("targetType") === "reply" ? "reply" : "thread";
+  const targetIds = [...new Set(
+    (url.searchParams.get("ids") ?? "")
+      .split(",")
+      .map((value) => value.trim().toUpperCase())
+      .filter((value) => value && isAllowedRoomReactionTarget(targetType, value))
+      .slice(0, 100),
+  )];
+  if (!targetIds.length) {
+    return jsonResponse({ targetType, reactions: [] }, 200, "no-store");
+  }
+
+  const placeholders = targetIds.map(() => "?").join(", ");
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT target_id,
+            COUNT(*) AS reactions,
+            EXISTS (
+              SELECT 1
+              FROM hidn_reactions current_reaction
+              WHERE current_reaction.target_type = ?
+                AND current_reaction.target_id = hidn_reactions.target_id
+                AND current_reaction.reaction_type = 'like'
+                AND current_reaction.actor_user_id = ?
+            ) AS liked_by_current_user
+     FROM hidn_reactions
+     WHERE target_type = ?
+       AND reaction_type = 'like'
+       AND target_id IN (${placeholders})
+     GROUP BY target_id`,
+  )
+    .bind(targetType, user.userId, targetType, ...targetIds)
+    .all<{ target_id: string; reactions: number; liked_by_current_user: number }>();
+
+  return jsonResponse({
+    targetType,
+    reactions: result.results.map((row) => ({
+      targetId: row.target_id,
+      reactions: Number(row.reactions ?? 0),
+      liked: row.liked_by_current_user === 1,
+    })),
+  }, 200, "no-store");
 }
 
 async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -3299,7 +3292,7 @@ const worker = {
           ? await listRecoveryQuestions(request, env)
           : await saveRecoveryQuestions(request, env);
       } catch {
-        return jsonResponse({ error: "Recovery security questions could not be completed." }, 500);
+        return jsonResponse({ error: "Recovery confirmations could not be completed." }, 500);
       }
     }
 
@@ -3376,14 +3369,16 @@ const worker = {
     }
 
     if (url.pathname === "/api/room/reactions") {
-      if (request.method !== "POST") {
+      if (request.method !== "GET" && request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed." }, 405);
       }
 
       try {
-        return await toggleRoomReaction(request, env);
+        return request.method === "GET"
+          ? await listRoomReactionState(request, env)
+          : await toggleRoomReaction(request, env);
       } catch {
-        return jsonResponse({ error: "Reaction could not be saved." }, 500);
+        return jsonResponse({ error: request.method === "GET" ? "Reactions could not be loaded." : "Reaction could not be saved." }, 500);
       }
     }
 

@@ -4845,6 +4845,31 @@
   margin: 0;
 }
 
+.room-recovery-confirmation {
+  align-items: flex-start;
+  color: var(--hidn-text-muted);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--hidn-font-mono);
+  font-size: 0.62rem;
+  gap: 0.6rem;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.room-recovery-confirmation input {
+  accent-color: var(--hidn-signal);
+  flex: 0 0 auto;
+  height: 1rem;
+  margin: 0.05rem 0 0;
+  width: 1rem;
+}
+
+.room-recovery-confirmation:has(input:checked) {
+  color: var(--hidn-signal);
+}
+
 @media (max-width: 760px) {
   .public-page--room .public-main {
     min-height: 0;
@@ -6014,20 +6039,24 @@
 
 .room-post-composer__note,
 .room-post-composer__error {
-  font-family: var(--hidn-font-mono);
-  font-size: 0.54rem;
-  letter-spacing: 0.08em;
-  line-height: 1.5;
   margin: 0;
-  text-transform: uppercase;
 }
 
 .room-post-composer__note {
-  color: var(--hidn-text-dim);
+  color: var(--hidn-text-muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(0.92rem, 1vw, 1.05rem);
+  letter-spacing: 0;
+  line-height: 1.65;
 }
 
 .room-post-composer__error {
   color: var(--hidn-broadcast-amber) !important;
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: uppercase;
 }
 
 .room-post-composer__actions {
@@ -8214,8 +8243,19 @@
     flex: 1 1 12rem;
   }
 
+  /* When the status row wraps, keep the notification control on the right so
+     its anchored panel stays inside the reading column instead of hanging off
+     the left edge of the viewport. */
+  .room-mobile-index__status .room-notifications {
+    margin-inline-start: auto;
+    max-width: 100%;
+  }
+
   .room-notifications__panel {
+    box-sizing: border-box;
     max-width: calc(100vw - 2rem);
+    min-width: 0;
     right: 0;
+    width: min(22rem, calc(100vw - 2rem));
   }
 }
