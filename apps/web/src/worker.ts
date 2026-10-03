@@ -272,6 +272,7 @@ interface RoomNotificationRow {
   actor_alias: string | null;
   target_type: "thread" | "reply";
   target_id: string;
+  thread_id: string | null;
   created_at: string;
   read_at: string | null;
 }
@@ -1152,6 +1153,7 @@ function serializeRoomNotification(row: RoomNotificationRow): Record<string, unk
     actorAlias: row.actor_alias ?? "ANON-SIGNAL",
     targetType: row.target_type,
     targetId: row.target_id,
+    ...(row.thread_id ? { threadId: row.thread_id } : {}),
     createdAt: row.created_at,
     readAt: row.read_at,
   };
@@ -1237,7 +1239,17 @@ async function listAccountNotifications(request: Request, env: HidnWorkerEnv): P
     : 30;
   const [notifications, unread] = await Promise.all([
     env.ROOM_DB!.prepare(
-      `SELECT notification_id, event_type, actor_alias, target_type, target_id, created_at, read_at
+      `SELECT notification_id, event_type, actor_alias, target_type, target_id,
+              CASE
+                WHEN target_type = 'thread' THEN target_id
+                ELSE (
+                  SELECT reply.thread_id
+                  FROM hidn_replies reply
+                  WHERE reply.reply_id = hidn_notifications.target_id
+                  LIMIT 1
+                )
+              END AS thread_id,
+              created_at, read_at
        FROM hidn_notifications
        WHERE recipient_user_id = ? AND created_at >= ?
        ORDER BY created_at DESC
@@ -1676,6 +1688,71 @@ async function listRoomPosts(request: Request, env: HidnWorkerEnv): Promise<Resp
     .all<RoomPostRow>();
 
   return jsonResponse({ posts: result.results.map(serializeRoomPost), channel });
+}
+
+async function listRoomThread(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reading a private thread." }, 401);
+  }
+
+  const threadId = new URL(request.url).searchParams.get("threadId")?.trim().toUpperCase() ?? "";
+  if (!/^THR-[A-F0-9]{24}$/.test(threadId)) {
+    return jsonResponse({ error: "Choose a valid private-room thread." }, 400);
+  }
+
+  const post = await env.ROOM_DB!.prepare(
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+            COUNT(r.reaction_id) AS reactions,
+            (SELECT COUNT(*)
+             FROM hidn_replies reply_count
+             WHERE reply_count.thread_id = t.thread_id
+               AND reply_count.moderation_state = 'visible') AS reply_count,
+            EXISTS (
+              SELECT 1
+              FROM hidn_reactions current_reaction
+              WHERE current_reaction.target_type = 'thread'
+                AND current_reaction.target_id = t.thread_id
+                AND current_reaction.reaction_type = 'like'
+                AND current_reaction.actor_user_id = ?
+            ) AS liked_by_current_user
+     FROM hidn_threads t
+     LEFT JOIN hidn_reactions r
+       ON r.target_type = 'thread'
+      AND r.target_id = t.thread_id
+      AND r.reaction_type = 'like'
+     WHERE t.thread_id = ? AND t.room_id = ? AND t.moderation_state = 'visible'
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     LIMIT 1`,
+  )
+    .bind(user.userId, threadId, MAIN_ROOM_ID)
+    .first<RoomPostRow>();
+
+  if (!post) {
+    return jsonResponse({ error: "That private thread is no longer available." }, 404);
+  }
+
+  const replies = await env.ROOM_DB!.prepare(
+    `SELECT r.reply_id, r.thread_id, r.content, t.channel,
+            r.moderation_state, r.created_at
+     FROM hidn_replies r
+     JOIN hidn_threads t ON t.thread_id = r.thread_id
+     WHERE r.thread_id = ? AND t.room_id = ? AND r.moderation_state = 'visible'
+     ORDER BY r.created_at ASC
+     LIMIT 200`,
+  )
+    .bind(threadId, MAIN_ROOM_ID)
+    .all<RoomReplyRow>();
+
+  return jsonResponse({
+    post: serializeRoomPost(post),
+    replies: replies.results.map(serializeRoomComment),
+  }, 200, "no-store");
 }
 
 async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -3486,6 +3563,18 @@ const worker = {
           : await createRoomPost(request, env);
       } catch {
         return jsonResponse({ error: request.method === "GET" ? "Room posts could not be loaded." : "Post could not be created." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/thread") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await listRoomThread(request, env);
+      } catch {
+        return jsonResponse({ error: "Private thread could not be loaded." }, 500);
       }
     }
 

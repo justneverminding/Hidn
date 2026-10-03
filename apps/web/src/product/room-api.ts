@@ -75,6 +75,7 @@ export interface AccountNotification {
   actorAlias: string;
   targetType: "thread" | "reply";
   targetId: string;
+  threadId?: string;
   createdAt: string;
   readAt: string | null;
 }
@@ -92,6 +93,11 @@ export interface RecoveryQuestionsResponse {
 export interface RoomPostsResponse {
   posts: RoomPost[];
   channel: string;
+}
+
+export interface RoomThreadResponse {
+  post: RoomPost;
+  replies: RoomComment[];
 }
 
 export interface RoomReactionState {
@@ -362,6 +368,10 @@ export function verifyRecoveryQuestions(username: string, answers: string[]): Pr
 
 export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
   return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
+}
+
+export function fetchRoomThread(threadId: string): Promise<RoomThreadResponse> {
+  return roomGet<RoomThreadResponse>(`/api/room/thread?threadId=${encodeURIComponent(threadId)}`);
 }
 
 export function fetchRoomReactionState(

@@ -55,6 +55,7 @@ import {
   createAdminModerator,
   fetchRoomActivity,
   fetchRoomPosts,
+  fetchRoomThread,
   fetchRoomReactionState,
   fetchAdminReports,
   fetchModerationVisibility,
@@ -170,6 +171,7 @@ let roomRecoveryConfirmations: [boolean, boolean] = [false, false];
 let roomPaymentIntentId = "";
 let roomPayment: PaymentIntentResponse | undefined;
 let roomVerificationRequested = false;
+let roomVerificationNoticeOpen = false;
 let activeRoomChannel: RoomChannel = "general";
 let roomChannelNotice = "";
 let roomPostComposerOpen = false;
@@ -180,6 +182,9 @@ let roomPosts: RoomPost[] = [];
 let roomPendingPostIds = new Set<string>();
 let roomPostsLoadedChannel: RoomChannel | undefined;
 let roomPostsRequest: Promise<void> | undefined;
+const roomThreadDetailRequests = new Map<string, Promise<void>>();
+const roomThreadDetailLoaded = new Set<string>();
+const roomThreadDetailErrors = new Map<string, string>();
 let roomReactionStateKey = "";
 let roomReactionStateRequest: Promise<void> | undefined;
 let roomLiveActivityEvents: RoomActivityEvent[] = [];
@@ -2671,6 +2676,61 @@ async function refreshRoomPosts(): Promise<void> {
   return roomPostsRequest;
 }
 
+async function refreshRoomThread(threadId: string): Promise<void> {
+  if (!hasRoomSession() || roomThreadDetailLoaded.has(threadId)) {
+    return;
+  }
+
+  const existingRequest = roomThreadDetailRequests.get(threadId);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const sessionUsername = roomAccountUsername;
+  const request = fetchRoomThread(threadId)
+    .then((response) => {
+      if (!hasRoomSession() || roomAccountUsername !== sessionUsername) {
+        return;
+      }
+
+      roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
+      roomPendingPostIds.delete(response.post.id);
+      roomLikeCounts.set(response.post.id, response.post.reactions);
+      if (response.post.liked) {
+        roomLikedIds.add(response.post.id);
+      } else {
+        roomLikedIds.delete(response.post.id);
+      }
+      roomThreadReplies.set(
+        response.post.id,
+        response.replies.map((reply) => ({
+          text: reply.text,
+          time: formatTransmissionTime(reply.time),
+        })),
+      );
+      roomThreadDetailLoaded.add(response.post.id);
+      roomThreadDetailErrors.delete(response.post.id);
+      if (roomThreadIdFromPath(normalizePath(window.location.pathname)) === response.post.id) {
+        rerenderProductRoute();
+      }
+    })
+    .catch((error) => {
+      roomThreadDetailErrors.set(
+        threadId,
+        error instanceof Error ? error.message : "The private thread could not be opened.",
+      );
+      if (roomThreadIdFromPath(normalizePath(window.location.pathname)) === threadId) {
+        rerenderProductRoute();
+      }
+    })
+    .finally(() => {
+      roomThreadDetailRequests.delete(threadId);
+    });
+
+  roomThreadDetailRequests.set(threadId, request);
+  return request;
+}
+
 async function refreshAccountHistory(): Promise<void> {
   if (!hasRoomSession() || roomAccountHistoryRequest) {
     return;
@@ -2707,7 +2767,7 @@ function notificationStateSignature(value: AccountNotificationsResponse | undefi
     return "";
   }
 
-  return `${value.unreadCount}|${value.notifications.map((notification) => `${notification.id}:${notification.readAt ?? ""}`).join(",")}`;
+  return `${value.unreadCount}|${value.notifications.map((notification) => `${notification.id}:${notification.readAt ?? ""}:${notification.threadId ?? ""}`).join(",")}`;
 }
 
 async function refreshAccountNotifications(): Promise<void> {
@@ -2767,6 +2827,33 @@ async function markRoomNotificationsRead(): Promise<void> {
     if (isRoomNotificationSurface()) {
       rerenderProductRoute();
     }
+  }
+}
+
+async function markRoomNotificationRead(notificationId: string): Promise<void> {
+  if (!notificationId || !roomNotifications?.notifications.some((notification) => notification.id === notificationId)) {
+    return;
+  }
+
+  try {
+    await markAccountNotificationsRead([notificationId]);
+    const readAt = new Date().toISOString();
+    if (roomNotifications) {
+      const wasUnread = roomNotifications.notifications.some(
+        (notification) => notification.id === notificationId && !notification.readAt,
+      );
+      roomNotifications = {
+        ...roomNotifications,
+        unreadCount: Math.max(0, roomNotifications.unreadCount - (wasUnread ? 1 : 0)),
+        notifications: roomNotifications.notifications.map((notification) => (
+          notification.id === notificationId
+            ? { ...notification, readAt: notification.readAt ?? readAt }
+            : notification
+        )),
+      };
+    }
+  } catch {
+    // Opening a notification should still navigate if the read receipt cannot be saved.
   }
 }
 
@@ -3239,6 +3326,20 @@ function roomChannelFromPath(path: string): RoomChannel | undefined {
   return roomChannelOptions.some((channel) => channel.key === key) ? key : undefined;
 }
 
+function roomThreadIdFromPath(path: string): string | undefined {
+  const normalizedPath = normalizePath(path);
+  if (!normalizedPath.startsWith("/c/")) {
+    return undefined;
+  }
+
+  try {
+    const id = decodeURIComponent(normalizedPath.slice(3).split("/")[0]).trim().toUpperCase();
+    return /^THR-[A-F0-9]{24}$/.test(id) ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isRoomMobileViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
 }
@@ -3252,6 +3353,12 @@ function roomNotificationLabel(notification: AccountNotification): string {
   return notification.type === "reaction" ? `${actor} / LIKED YOUR THREAD` : `${actor} / REPLIED TO YOUR THREAD`;
 }
 
+function roomNotificationTargetPath(notification: AccountNotification): string {
+  const threadId = notification.threadId
+    ?? (notification.targetType === "thread" ? notification.targetId : "");
+  return threadId ? `/c/${encodeURIComponent(threadId)}` : "/room/profile";
+}
+
 function renderRoomNotifications(): string {
   if (!hasRoomSession()) {
     return "";
@@ -3261,11 +3368,11 @@ function renderRoomNotifications(): string {
   const unreadCount = roomNotifications?.unreadCount ?? 0;
   const content = roomNotificationsError
     ? `<p class="room-notifications__empty" role="status">${escapeHtml(roomNotificationsError)}</p>`
-    : !roomNotifications
-      ? `<p class="room-notifications__empty" role="status">READING PRIVATE ACTIVITY...</p>`
-      : notifications.length
-        ? `<ul class="room-notifications__list">${notifications.map((notification) => `<li class="room-notifications__item${notification.readAt ? "" : " room-notifications__item--unread"}">
-            <a href="/room/profile" class="room-notifications__link">
+      : !roomNotifications
+        ? `<p class="room-notifications__empty" role="status">READING PRIVATE ACTIVITY...</p>`
+        : notifications.length
+          ? `<ul class="room-notifications__list">${notifications.map((notification) => `<li class="room-notifications__item${notification.readAt ? "" : " room-notifications__item--unread"}">
+            <a href="${escapeHtml(roomNotificationTargetPath(notification))}" class="room-notifications__link" data-room-notification-link data-notification-id="${escapeHtml(notification.id)}" aria-label="Open ${escapeHtml(roomNotificationLabel(notification))}">
               <span class="room-notifications__label">${escapeHtml(roomNotificationLabel(notification))}</span>
               <span class="room-notifications__meta">PRIVATE ACTIVITY / ${escapeHtml(formatNotificationDateTime(notification.createdAt))}</span>
             </a>
@@ -3470,6 +3577,27 @@ function renderDetail(id: string): RenderedProductRoute {
       : "An anonymous HIDN confession. No public identity or confession history is attached.",
     canonicalPath: `/c/${encodeURIComponent(id)}`,
   };
+
+  if (!confession && hasRoomSession() && /^THR-[A-F0-9]{24}$/i.test(id)) {
+    const threadDetailError = roomThreadDetailErrors.get(id);
+    return {
+      metadata,
+      html: publicFrame(
+        `/c/${id}`,
+        `<main id="main-content" class="public-main detail-main">
+          <div class="hidn-container--reading detail-page">
+            ${TerminalLabel(threadDetailError ? "PRIVATE THREAD / UNAVAILABLE" : "PRIVATE THREAD / OPENING")}
+            <h1 class="detail-page__title">${threadDetailError ? "THREAD NOT AVAILABLE" : "OPENING THE THREAD."}</h1>
+            ${threadDetailError
+              ? ErrorState("THREAD NOT AVAILABLE", "This private thread is no longer available in the room feed.")
+              : SystemMessage("PRIVATE THREAD", "Reading the exact post and replies for this notification.", "INFO")}
+            ${actionLink("BACK TO THE ROOM", "/room", "secondary")}
+          </div>
+        </main>`,
+        "public-page--detail",
+      ),
+    };
+  }
 
   if (!confession) {
     return {
@@ -3750,6 +3878,9 @@ function clearRoomSession(): void {
   roomPosts = [];
   roomPendingPostIds.clear();
   roomPostsLoadedChannel = undefined;
+  roomThreadDetailRequests.clear();
+  roomThreadDetailLoaded.clear();
+  roomThreadDetailErrors.clear();
   roomReactionStateKey = "";
   roomReactionStateRequest = undefined;
   roomLikeCounts.clear();
@@ -3768,6 +3899,7 @@ function clearRoomSession(): void {
   roomPaymentIntentId = "";
   roomPayment = undefined;
   roomVerificationRequested = false;
+  roomVerificationNoticeOpen = false;
 }
 
 function restoreRoomAccountState(): void {
@@ -4312,6 +4444,30 @@ function renderProfileComment(comment: RoomComment): string {
   </article>`;
 }
 
+function renderZecVerificationNotice(): string {
+  if (!roomVerificationNoticeOpen) {
+    return "";
+  }
+
+  return `<div class="hidn-verification-notice" data-zec-verification-notice role="dialog" aria-modal="true" aria-labelledby="hidn-verification-notice-title">
+    <button class="hidn-verification-notice__backdrop" type="button" data-action="room-verification-notice-close" aria-label="Close Zcash verification notice"></button>
+    <section class="hidn-verification-notice__panel">
+      <span class="hidn-verification-notice__signal">ZEC SIGNAL / STANDBY</span>
+      <div class="hidn-verification-notice__sky" aria-hidden="true">
+        <div class="hidn-verification-notice__flight">
+          <span class="hidn-verification-notice__banner">COMING SOON</span>
+          <span class="hidn-verification-notice__towline"></span>
+          <span class="hidn-verification-notice__plane">✈</span>
+        </div>
+      </div>
+      <h2 id="hidn-verification-notice-title">HOLD TIGHT,<br /><em>ANON.</em></h2>
+      <p>Zcash verification is on its way.</p>
+      <span class="hidn-verification-notice__subline">ZEC VERIFICATION / IN TRANSIT</span>
+      ${GhostButton({ label: "CLOSE →", dataAction: "room-verification-notice-close" })}
+    </section>
+  </div>`;
+}
+
 function renderRoomProfile(): RenderedProductRoute {
   restoreRoomAccountState();
   if (!hasRoomSession() || !roomAccountUsername) {
@@ -4419,6 +4575,7 @@ function renderRoomProfile(): RenderedProductRoute {
             ${GhostButton({ label: "← BACK TO THE ROOM", dataAction: "room-profile-back" })}
           </div>
         </div>
+        ${renderZecVerificationNotice()}
       </main>`,
       "public-page--room public-page--room-profile",
     ),
@@ -4756,6 +4913,7 @@ function rerenderProductRoute(): void {
 
 function navigateProductRoute(path: string): void {
   resetRoomRecoveryReveal();
+  roomVerificationNoticeOpen = false;
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
 }
@@ -5191,6 +5349,11 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
+  root.querySelectorAll<HTMLAnchorElement>("[data-room-notification-link]").forEach((link) => {
+    link.addEventListener("click", () => {
+      void markRoomNotificationRead(link.dataset.notificationId ?? "");
+    });
+  });
   if (isRoomNotificationSurface(normalizedPath) && hasRoomSession()) {
     startRoomNotificationPolling();
   } else {
@@ -5201,6 +5364,10 @@ export function bindProductRoute(root: ParentNode = document): void {
   }
   if ((normalizedPath === "/room" || Boolean(roomChannelFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
+  }
+  const notificationThreadId = roomThreadIdFromPath(normalizedPath);
+  if (notificationThreadId && hasRoomSession()) {
+    void refreshRoomThread(notificationThreadId);
   }
   if (normalizedPath === "/room/profile" && hasRoomSession()) {
     void refreshAccountHistory();
@@ -5433,10 +5600,12 @@ export function bindProductRoute(root: ParentNode = document): void {
             break;
           }
 
-          roomVerificationRequested = true;
-          roomAccessMode = "ready";
-          sessionStorage.setItem("hidn:account:verification-requested", "true");
-          navigateProductRoute("/room/access");
+          roomVerificationNoticeOpen = true;
+          rerenderProductRoute();
+          break;
+        case "room-verification-notice-close":
+          roomVerificationNoticeOpen = false;
+          rerenderProductRoute();
           break;
         case "room-create":
           roomAccessMode = "create";

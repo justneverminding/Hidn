@@ -4828,6 +4828,220 @@
   margin-top: 2rem;
 }
 
+.hidn-verification-notice {
+  align-items: center;
+  background: rgba(0, 2, 1, 0.78);
+  display: grid;
+  inset: 0;
+  isolation: isolate;
+  padding: clamp(1rem, 4vw, 3rem);
+  position: fixed;
+  z-index: 80;
+  animation: hidn-verification-notice-fade 260ms ease both;
+}
+
+.hidn-verification-notice::before {
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(93, 255, 143, 0.05) 3px 4px);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+.hidn-verification-notice__backdrop {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(18, 68, 42, 0.16), transparent 42rem),
+    rgba(0, 2, 1, 0.62);
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.hidn-verification-notice__panel {
+  background:
+    repeating-linear-gradient(0deg, rgba(93, 255, 143, 0.028) 0 1px, transparent 1px 4px),
+    linear-gradient(145deg, rgba(15, 50, 29, 0.88), rgba(2, 10, 5, 0.97));
+  border: 1px solid rgba(200, 145, 74, 0.56);
+  box-shadow:
+    0 0 2rem rgba(200, 145, 74, 0.08),
+    0 1.5rem 4rem rgba(0, 0, 0, 0.5),
+    inset 0 0 2rem rgba(93, 255, 143, 0.05);
+  max-width: 34rem;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1.25rem, 6vw, 4rem);
+  position: relative;
+  text-align: center;
+  width: 100%;
+  z-index: 1;
+  animation: hidn-verification-notice-rise 420ms var(--hidn-ease-sharp) both;
+}
+
+.hidn-verification-notice__panel::after {
+  background: linear-gradient(90deg, transparent, rgba(93, 255, 143, 0.35), transparent);
+  content: "";
+  height: 1px;
+  left: 10%;
+  position: absolute;
+  right: 10%;
+  top: 0;
+  animation: hidn-verification-notice-scan 1.8s ease-in-out infinite;
+}
+
+.hidn-verification-notice__signal,
+.hidn-verification-notice__subline {
+  display: block;
+  font-family: var(--hidn-font-mono);
+  text-transform: uppercase;
+}
+
+.hidn-verification-notice__signal {
+  color: var(--hidn-broadcast-amber);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+}
+
+.hidn-verification-notice__mark {
+  align-items: end;
+  display: inline-flex;
+  gap: 0.22rem;
+  height: 2rem;
+  margin: 1.5rem auto 0.75rem;
+}
+
+.hidn-verification-notice__mark i {
+  animation: hidn-verification-notice-signal 0.8s steps(2, end) infinite;
+  background: var(--hidn-signal);
+  box-shadow: 0 0 0.7rem rgba(93, 255, 143, 0.4);
+  display: block;
+  height: 0.5rem;
+  width: 0.18rem;
+}
+
+.hidn-verification-notice__mark i:nth-child(1) {
+  height: 0.9rem;
+}
+
+.hidn-verification-notice__mark i:nth-child(2) {
+  animation-delay: -0.2s;
+  height: 1.5rem;
+}
+
+.hidn-verification-notice__mark i:nth-child(3) {
+  animation-delay: -0.4s;
+  height: 1.1rem;
+}
+
+.hidn-verification-notice__panel h2 {
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(2.2rem, 8vw, 4rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.hidn-verification-notice__panel h2 em {
+  color: var(--hidn-signal);
+  font-style: normal;
+}
+
+.hidn-verification-notice__panel p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.76rem;
+  line-height: 1.7;
+  margin: 1.35rem auto 0;
+  max-width: 26ch;
+}
+
+.hidn-verification-notice__subline {
+  color: var(--hidn-text-dim);
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+  margin: 1.25rem auto 0;
+  max-width: 28rem;
+}
+
+.hidn-verification-notice__panel .ui-button {
+  margin: 1.5rem auto 0;
+}
+
+@keyframes hidn-verification-notice-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hidn-verification-notice-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.8rem) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hidn-verification-notice-scan {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateX(-12%);
+  }
+
+  50% {
+    opacity: 0.75;
+    transform: translateX(12%);
+  }
+}
+
+@keyframes hidn-verification-notice-signal {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scaleY(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@media (max-width: 760px) {
+  .hidn-verification-notice {
+    padding: 1rem;
+  }
+
+  .hidn-verification-notice__panel {
+    padding: 2.2rem 1.25rem;
+  }
+
+  .hidn-verification-notice__panel h2 {
+    font-size: clamp(2.35rem, 15vw, 3.6rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hidn-verification-notice,
+  .hidn-verification-notice__panel,
+  .hidn-verification-notice__panel::after,
+  .hidn-verification-notice__mark i {
+    animation: none;
+  }
+}
+
 .room-recovery-panel {
   isolation: isolate;
   margin-top: 2rem;
