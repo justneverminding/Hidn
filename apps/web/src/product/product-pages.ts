@@ -55,6 +55,7 @@ import {
   createAdminModerator,
   fetchRoomActivity,
   fetchRoomPosts,
+  fetchRecoveryQuestions,
   fetchAdminReports,
   fetchModerationVisibility,
   fetchPaymentIntent,
@@ -67,9 +68,11 @@ import {
   requestZkChallenge,
   signupZkAccount,
   submitReport,
+  saveRecoveryQuestions,
   toggleRoomReaction,
   updateAdminModerator,
   updateAdminReport,
+  verifyRecoveryQuestions,
   verifyZkLogin,
   verifyRoomDemoPayment,
   type AdminAuditEvent,
@@ -100,7 +103,7 @@ export interface RenderedProductRoute {
 type FeedTab = "latest" | "random" | "felt";
 type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
-type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
+type RoomRecoveryRevealMode = "hidden" | "loading" | "setup" | "prompt" | "visible";
 type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 
@@ -156,6 +159,9 @@ let roomLocalComments: RoomComment[] = [];
 let roomRecoveryRevealMode: RoomRecoveryRevealMode = "hidden";
 let roomRecoveryRevealError = "";
 let roomRecoveryRevealTimer: number | undefined;
+let roomRecoveryQuestions: string[] = [];
+let roomRecoveryQuestionsRequest: Promise<void> | undefined;
+let roomRecoveryVerificationSubmitting = false;
 let roomPaymentIntentId = "";
 let roomPayment: PaymentIntentResponse | undefined;
 let roomVerificationRequested = false;
@@ -3482,6 +3488,102 @@ function resetRoomRecoveryReveal(): void {
 
   roomRecoveryRevealMode = "hidden";
   roomRecoveryRevealError = "";
+  roomRecoveryQuestions = [];
+  roomRecoveryQuestionsRequest = undefined;
+  roomRecoveryVerificationSubmitting = false;
+}
+
+function isRoomProfilePath(): boolean {
+  return normalizePath(window.location.pathname) === "/room/profile";
+}
+
+async function openRoomProfileRecoveryCheck(): Promise<void> {
+  if (!roomAccountRecoveryCode || roomRecoveryQuestionsRequest) {
+    return;
+  }
+
+  roomRecoveryRevealMode = "loading";
+  roomRecoveryRevealError = "";
+  roomRecoveryQuestions = [];
+  rerenderProductRoute();
+  roomRecoveryQuestionsRequest = fetchRecoveryQuestions()
+    .then((response) => {
+      if (!isRoomProfilePath() || roomRecoveryRevealMode !== "loading") {
+        return;
+      }
+
+      roomRecoveryQuestions = response.questions;
+      roomRecoveryRevealMode = response.configured ? "prompt" : "setup";
+    })
+    .catch((error) => {
+      if (!isRoomProfilePath()) {
+        return;
+      }
+
+      roomRecoveryRevealError = error instanceof Error ? error.message : "The security check could not be loaded.";
+    })
+    .finally(() => {
+      roomRecoveryQuestionsRequest = undefined;
+      if (isRoomProfilePath()) {
+        rerenderProductRoute();
+      }
+    });
+
+  await roomRecoveryQuestionsRequest;
+}
+
+async function setupRoomProfileRecoveryCheck(root: ParentNode): Promise<void> {
+  const questionOne = root.querySelector<HTMLInputElement>("#room-recovery-question-1")?.value.trim() ?? "";
+  const answerOne = root.querySelector<HTMLInputElement>("#room-recovery-setup-answer-1")?.value.trim() ?? "";
+  const questionTwo = root.querySelector<HTMLInputElement>("#room-recovery-question-2")?.value.trim() ?? "";
+  const answerTwo = root.querySelector<HTMLInputElement>("#room-recovery-setup-answer-2")?.value.trim() ?? "";
+  if (questionOne.length < 8 || answerOne.length < 3 || questionTwo.length < 8 || answerTwo.length < 3 || questionOne.toLowerCase() === questionTwo.toLowerCase()) {
+    roomRecoveryRevealError = "Add two different questions and answers before continuing.";
+    rerenderProductRoute();
+    return;
+  }
+
+  roomRecoveryVerificationSubmitting = true;
+  roomRecoveryRevealError = "";
+  rerenderProductRoute();
+  try {
+    const response = await saveRecoveryQuestions([
+      { question: questionOne, answer: answerOne },
+      { question: questionTwo, answer: answerTwo },
+    ]);
+    roomRecoveryQuestions = response.questions;
+    roomRecoveryRevealMode = "prompt";
+    roomRecoveryRevealError = "SECURITY CHECK SAVED. ENTER BOTH ANSWERS AGAIN TO REVEAL THE KEY.";
+  } catch (error) {
+    roomRecoveryRevealError = error instanceof Error ? error.message : "The security check could not be saved.";
+  } finally {
+    roomRecoveryVerificationSubmitting = false;
+    rerenderProductRoute();
+  }
+}
+
+async function verifyRoomProfileRecoveryCheck(root: ParentNode): Promise<void> {
+  const usernameInput = root.querySelector<HTMLInputElement>("#room-recovery-username")?.value ?? "";
+  const username = completeRoomHandle(usernameInput);
+  const answers = [1, 2].map((index) => root.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.value.trim() ?? "");
+  if (!ROOM_HANDLE_PATTERN.test(username) || username !== roomAccountUsername || answers.some((answer) => answer.length < 3)) {
+    roomRecoveryRevealError = "Enter the correct handle and both security answers.";
+    rerenderProductRoute();
+    return;
+  }
+
+  roomRecoveryVerificationSubmitting = true;
+  roomRecoveryRevealError = "";
+  rerenderProductRoute();
+  try {
+    await verifyRecoveryQuestions(username, answers);
+    revealRoomRecoveryKeyTemporarily();
+  } catch (error) {
+    roomRecoveryRevealError = error instanceof Error ? error.message : "The security answers did not match.";
+  } finally {
+    roomRecoveryVerificationSubmitting = false;
+    rerenderProductRoute();
+  }
 }
 
 function revealRoomRecoveryKeyTemporarily(): void {
@@ -4083,9 +4185,54 @@ function renderProfileRecoveryKey(): string {
     </section>`;
   }
 
+  if (roomRecoveryRevealMode === "loading") {
+    return `<section class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" aria-labelledby="room-profile-key-title" aria-live="polite">
+      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / SECURITY CHECK</span>
+      ${roomRecoveryRevealError ? AlertMessage("SECURITY CHECK", roomRecoveryRevealError, "danger") : `<p class="room-profile-card__note">Loading the private security questions...</p>`}
+      <div class="room-access-actions">
+        ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
+        ${roomRecoveryRevealError ? SecondaryButton({ label: "TRY AGAIN →", dataAction: "room-recovery-open" }) : ""}
+      </div>
+    </section>`;
+  }
+
+  if (roomRecoveryRevealMode === "setup") {
+    return `<form class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" aria-labelledby="room-profile-key-title" novalidate>
+      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / SET SECURITY CHECK</span>
+      <p class="room-profile-card__note">Set two questions only you can answer. Answers are stored as hashes and must be entered again before the key is revealed.</p>
+      <fieldset class="room-recovery-question">
+        <legend>SECURITY QUESTION 01</legend>
+        <label class="room-access-field" for="room-recovery-question-1">
+          <span>QUESTION</span>
+          <input id="room-recovery-question-1" type="text" maxlength="160" autocomplete="off" placeholder="A private question only you can answer" />
+        </label>
+        <label class="room-access-field" for="room-recovery-setup-answer-1">
+          <span>ANSWER</span>
+          <input id="room-recovery-setup-answer-1" type="password" maxlength="200" autocomplete="off" placeholder="Your private answer" />
+        </label>
+      </fieldset>
+      <fieldset class="room-recovery-question">
+        <legend>SECURITY QUESTION 02</legend>
+        <label class="room-access-field" for="room-recovery-question-2">
+          <span>QUESTION</span>
+          <input id="room-recovery-question-2" type="text" maxlength="160" autocomplete="off" placeholder="A second private question" />
+        </label>
+        <label class="room-access-field" for="room-recovery-setup-answer-2">
+          <span>ANSWER</span>
+          <input id="room-recovery-setup-answer-2" type="password" maxlength="200" autocomplete="off" placeholder="Your private answer" />
+        </label>
+      </fieldset>
+      ${roomRecoveryRevealError ? AlertMessage("SECURITY CHECK", roomRecoveryRevealError, "danger") : ""}
+      <div class="room-access-actions">
+        ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
+        ${SecondaryButton({ label: roomRecoveryVerificationSubmitting ? "SAVING CHECK..." : "SAVE SECURITY CHECK →", disabled: roomRecoveryVerificationSubmitting, dataAction: "room-recovery-setup-submit" })}
+      </div>
+    </form>`;
+  }
+
   if (roomRecoveryRevealMode === "prompt") {
     return `<form class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" aria-labelledby="room-profile-key-title" novalidate>
-      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / CONFIRM PRIVATE HANDLE</span>
+      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / SECURITY CHECK</span>
       <label class="room-access-field" for="room-recovery-username">
         <span>PRIVATE HANDLE / HIDN HANDLE</span>
         <div class="room-handle-input">
@@ -4093,18 +4240,26 @@ function renderProfileRecoveryKey(): string {
           <input id="room-recovery-username" type="text" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
         </div>
       </label>
+      ${roomRecoveryQuestions.map((question, index) => `<fieldset class="room-recovery-question">
+        <legend>SECURITY QUESTION ${String(index + 1).padStart(2, "0")}</legend>
+        <p class="room-recovery-question__prompt">${escapeHtml(question)}</p>
+        <label class="room-access-field" for="room-recovery-answer-${index + 1}">
+          <span>ANSWER</span>
+          <input id="room-recovery-answer-${index + 1}" type="password" maxlength="200" autocomplete="off" placeholder="Enter your answer" />
+        </label>
+      </fieldset>`).join("")}
       ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
-      <p class="room-profile-card__note">Enter the private handle used for this account. The recovery key will be visible for 20 seconds only.</p>
+      <p class="room-profile-card__note">Enter the private handle and both answers. The recovery key will be visible for 20 seconds only.</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
-        ${SecondaryButton({ label: "SHOW RECOVERY KEY →", dataAction: "room-recovery-submit" })}
+        ${SecondaryButton({ label: roomRecoveryVerificationSubmitting ? "CHECKING ANSWERS..." : "SHOW RECOVERY KEY →", disabled: roomRecoveryVerificationSubmitting, dataAction: "room-recovery-submit" })}
       </div>
     </form>`;
   }
 
   return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--hidden" aria-labelledby="room-profile-key-title">
     <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / HIDDEN</span>
-    <p class="room-profile-card__note">The recovery key is hidden by default. Confirm your private handle to reveal it for 20 seconds.</p>
+    <p class="room-profile-card__note">The recovery key is hidden by default. Confirm your private handle and security questions to reveal it for 20 seconds.</p>
     ${SecondaryButton({ label: "RECOVER KEY", dataAction: "room-recovery-open" })}
     <span class="room-access-key__warning">THIS BROWSER-HELD KEY CANNOT BE RECOVERED FROM HIDN AFTER THIS SESSION IS LOST.</span>
   </section>`;
@@ -4170,10 +4325,16 @@ function renderRoomProfile(): RenderedProductRoute {
       `<main id="main-content" class="public-main room-main room-profile-main">
         <div class="room-profile-page">
           <header class="room-access-header room-access-header--compact room-profile-page__header">
-            ${TerminalLabel("PRIVATE ROOM / PROFILE")}
+            <div class="room-profile-signal-lockup">
+              <span class="room-profile-signal-icon" aria-hidden="true">
+                <span class="room-profile-signal-icon__wave room-profile-signal-icon__wave--outer"></span>
+                <span class="room-profile-signal-icon__wave room-profile-signal-icon__wave--inner"></span>
+                <span class="room-profile-signal-icon__mast"></span>
+              </span>
+              ${TerminalLabel("PRIVATE SIGNAL / PROFILE")}
+            </div>
             <h1 class="type-display-lg room-access-header__title">YOUR SIGNALS<br /><em>STAY WITH YOU.</em></h1>
             <p class="room-access-header__copy">${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key and history stay behind this session.</p>
-            ${renderRoomNotifications()}
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
@@ -5129,15 +5290,27 @@ export function bindProductRoute(root: ParentNode = document): void {
             break;
           }
 
-          roomRecoveryRevealMode = "prompt";
-          roomRecoveryRevealError = "";
-          rerenderProductRoute();
+          if (isRoomProfilePath()) {
+            void openRoomProfileRecoveryCheck();
+          } else {
+            roomRecoveryRevealMode = "prompt";
+            roomRecoveryRevealError = "";
+            rerenderProductRoute();
+          }
           break;
         case "room-recovery-cancel":
           resetRoomRecoveryReveal();
           rerenderProductRoute();
           break;
+        case "room-recovery-setup-submit":
+          void setupRoomProfileRecoveryCheck(root);
+          break;
         case "room-recovery-submit": {
+          if (isRoomProfilePath()) {
+            void verifyRoomProfileRecoveryCheck(root);
+            break;
+          }
+
           const usernameInput = root.querySelector<HTMLInputElement>("#room-recovery-username");
           const username = completeRoomHandle(usernameInput?.value ?? "");
           if (!ROOM_HANDLE_PATTERN.test(username) || username !== roomAccountUsername) {

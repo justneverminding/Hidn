@@ -76,6 +76,11 @@ export interface AccountNotificationsResponse {
   unreadCount: number;
 }
 
+export interface RecoveryQuestionsResponse {
+  configured: boolean;
+  questions: string[];
+}
+
 export interface RoomPostsResponse {
   posts: RoomPost[];
   channel: string;
@@ -322,6 +327,18 @@ export function fetchAccountNotifications(): Promise<AccountNotificationsRespons
 
 export function markAccountNotificationsRead(notificationIds: string[] = []): Promise<{ status: "read" }> {
   return accountRequest<{ status: "read" }>("/api/account/notifications/read", { notificationIds });
+}
+
+export function fetchRecoveryQuestions(): Promise<RecoveryQuestionsResponse> {
+  return roomGet<RecoveryQuestionsResponse>("/api/account/recovery/questions");
+}
+
+export function saveRecoveryQuestions(questions: Array<{ question: string; answer: string }>): Promise<RecoveryQuestionsResponse> {
+  return accountRequest<RecoveryQuestionsResponse>("/api/account/recovery/questions", { questions });
+}
+
+export function verifyRecoveryQuestions(username: string, answers: string[]): Promise<{ verified: boolean }> {
+  return accountRequest<{ verified: boolean }>("/api/account/recovery/verify", { username, answers });
 }
 
 export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {

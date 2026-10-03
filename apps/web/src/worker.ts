@@ -493,6 +493,18 @@ function isValidUsername(username: string): boolean {
   return /^HIDN-[A-Z0-9]{1,20}$/.test(username);
 }
 
+function normalizeRecoveryQuestion(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function normalizeRecoveryAnswer(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 200);
+}
+
+async function hashRecoveryAnswer(userId: string, answer: string): Promise<string> {
+  return hashText(`hidn-recovery-answer-v1:${userId}:${normalizeRecoveryAnswer(answer)}`);
+}
+
 function isRoomChannel(value: string): value is RoomChannel {
   return ROOM_CHANNELS.includes(value as RoomChannel);
 }
@@ -837,6 +849,139 @@ async function getAuthenticatedUser(request: Request, env: HidnWorkerEnv): Promi
     username: row.username,
     accessLevel: row.access_level,
   };
+}
+
+async function listRecoveryQuestions(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before reading the recovery security check." }, 401);
+  }
+
+  const row = await env.ROOM_DB!.prepare(
+    `SELECT recovery_question_1, recovery_question_2
+     FROM hidn_users
+     WHERE user_id = ?
+     LIMIT 1`,
+  )
+    .bind(user.userId)
+    .first<{ recovery_question_1: string | null; recovery_question_2: string | null }>();
+  const questions = [row?.recovery_question_1, row?.recovery_question_2].filter(
+    (question): question is string => Boolean(question),
+  );
+
+  return jsonResponse({ configured: questions.length === 2, questions }, 200, "no-store");
+}
+
+async function saveRecoveryQuestions(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before setting the recovery security check." }, 401);
+  }
+
+  const body = await requestBody(request);
+  const rawQuestions = Array.isArray(body.questions) ? body.questions : [];
+  const questions = rawQuestions.map((entry) => {
+    const value = typeof entry === "object" && entry !== null ? entry as Record<string, unknown> : {};
+    return {
+      question: normalizeRecoveryQuestion(typeof value.question === "string" ? value.question : ""),
+      answer: normalizeRecoveryAnswer(typeof value.answer === "string" ? value.answer : ""),
+    };
+  });
+  if (
+    questions.length !== 2
+    || questions.some((entry) => entry.question.length < 8 || entry.answer.length < 3)
+    || questions[0].question === questions[1].question
+  ) {
+    return jsonResponse({ error: "Add two different security questions and answers before continuing." }, 400);
+  }
+
+  const existing = await env.ROOM_DB!.prepare(
+    `SELECT recovery_question_1, recovery_question_2
+     FROM hidn_users
+     WHERE user_id = ?
+     LIMIT 1`,
+  )
+    .bind(user.userId)
+    .first<{ recovery_question_1: string | null; recovery_question_2: string | null }>();
+  if (existing?.recovery_question_1 || existing?.recovery_question_2) {
+    return jsonResponse({ error: "Security questions are already set. Verify them to reveal the key." }, 409);
+  }
+
+  const [answerOneHash, answerTwoHash] = await Promise.all([
+    hashRecoveryAnswer(user.userId, questions[0].answer),
+    hashRecoveryAnswer(user.userId, questions[1].answer),
+  ]);
+  await env.ROOM_DB!.prepare(
+    `UPDATE hidn_users
+     SET recovery_question_1 = ?, recovery_answer_1_hash = ?,
+         recovery_question_2 = ?, recovery_answer_2_hash = ?
+     WHERE user_id = ?
+       AND recovery_question_1 IS NULL
+       AND recovery_question_2 IS NULL`,
+  )
+    .bind(
+      questions[0].question,
+      answerOneHash,
+      questions[1].question,
+      answerTwoHash,
+      user.userId,
+    )
+    .run();
+
+  return jsonResponse({ configured: true, questions: questions.map((entry) => entry.question) }, 201, "no-store");
+}
+
+async function verifyRecoveryQuestions(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before verifying the recovery security check." }, 401);
+  }
+
+  const body = await requestBody(request);
+  const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
+  const answers = Array.isArray(body.answers)
+    ? body.answers.filter((answer): answer is string => typeof answer === "string").map(normalizeRecoveryAnswer)
+    : [];
+  if (!isValidUsername(username) || username !== normalizeUsername(user.username) || answers.length !== 2 || answers.some((answer) => answer.length < 3)) {
+    return jsonResponse({ error: "The handle or security answers did not match." }, 401);
+  }
+
+  const row = await env.ROOM_DB!.prepare(
+    `SELECT recovery_answer_1_hash, recovery_answer_2_hash
+     FROM hidn_users
+     WHERE user_id = ?
+     LIMIT 1`,
+  )
+    .bind(user.userId)
+    .first<{ recovery_answer_1_hash: string | null; recovery_answer_2_hash: string | null }>();
+  if (!row?.recovery_answer_1_hash || !row.recovery_answer_2_hash) {
+    return jsonResponse({ error: "Set up the security questions before revealing this key." }, 409);
+  }
+
+  const [answerOneHash, answerTwoHash] = await Promise.all([
+    hashRecoveryAnswer(user.userId, answers[0]),
+    hashRecoveryAnswer(user.userId, answers[1]),
+  ]);
+  if (answerOneHash !== row.recovery_answer_1_hash || answerTwoHash !== row.recovery_answer_2_hash) {
+    return jsonResponse({ error: "The handle or security answers did not match." }, 401);
+  }
+
+  return jsonResponse({ verified: true }, 200, "no-store");
 }
 
 async function signupAccount(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -3141,6 +3286,32 @@ const worker = {
         return await listAccountHistory(request, env);
       } catch {
         return jsonResponse({ error: "Private account history could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/recovery/questions") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return request.method === "GET"
+          ? await listRecoveryQuestions(request, env)
+          : await saveRecoveryQuestions(request, env);
+      } catch {
+        return jsonResponse({ error: "Recovery security questions could not be completed." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/recovery/verify") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await verifyRecoveryQuestions(request, env);
+      } catch {
+        return jsonResponse({ error: "Recovery security check could not be completed." }, 500);
       }
     }
 

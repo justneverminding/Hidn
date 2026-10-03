@@ -3493,6 +3493,12 @@
   .hidn-local-time-signal__dot::after {
     animation: none;
   }
+
+  .room-profile-signal-icon__wave {
+    animation: none;
+    opacity: 0.72;
+    transform: translateX(-50%);
+  }
 }
 
 .public-page--room .ui-nav-shell {
@@ -4563,6 +4569,81 @@
   margin-bottom: 2rem;
 }
 
+.room-profile-signal-lockup {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.65rem;
+}
+
+.room-profile-signal-icon {
+  color: var(--hidn-signal);
+  display: inline-block;
+  filter: drop-shadow(0 0 0.35rem rgba(93, 255, 143, 0.34));
+  height: 1.05rem;
+  position: relative;
+  width: 1.55rem;
+}
+
+.room-profile-signal-icon__mast {
+  background: currentColor;
+  bottom: 0.05rem;
+  height: 0.42rem;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 1px;
+}
+
+.room-profile-signal-icon__mast::after {
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0.3rem currentColor;
+  content: "";
+  height: 0.2rem;
+  left: 50%;
+  position: absolute;
+  top: -0.08rem;
+  transform: translateX(-50%);
+  width: 0.2rem;
+}
+
+.room-profile-signal-icon__wave {
+  border: 1px solid currentColor;
+  border-bottom: 0;
+  border-left-color: transparent;
+  border-radius: 50% 50% 0 0;
+  border-right-color: transparent;
+  bottom: 0.25rem;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%) scale(0.9);
+}
+
+.room-profile-signal-icon__wave--inner {
+  animation: hidn-profile-signal-wave 2.6s ease-in-out infinite;
+  height: 0.28rem;
+  width: 0.62rem;
+}
+
+.room-profile-signal-icon__wave--outer {
+  animation: hidn-profile-signal-wave 2.6s ease-in-out -1.1s infinite;
+  height: 0.52rem;
+  width: 1.18rem;
+}
+
+@keyframes hidn-profile-signal-wave {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateX(-50%) scale(0.88);
+  }
+
+  50% {
+    opacity: 0.92;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
 .room-profile-card {
   background:
     linear-gradient(rgba(93, 255, 143, 0.018) 1px, transparent 1px),
@@ -4736,6 +4817,32 @@
 
 .room-recovery-panel .room-access-actions {
   margin-top: 0.75rem;
+}
+
+.room-recovery-question {
+  border: 1px solid rgba(93, 255, 143, 0.14);
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0 0;
+  padding: 0.9rem;
+  text-align: left;
+}
+
+.room-recovery-question legend {
+  color: var(--hidn-broadcast-amber);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.12em;
+  padding: 0 0.4rem;
+  text-transform: uppercase;
+}
+
+.room-recovery-question__prompt {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.68rem;
+  line-height: 1.55;
+  margin: 0;
 }
 
 @media (max-width: 760px) {
