@@ -1930,15 +1930,37 @@ async function createThreadImage(
 
   const channelKey = typeof confession.channel === "string" ? confession.channel.toLowerCase() : "";
   const channel = roomChannelOptions.find((option) => option.key === channelKey);
-  const roomPath = channel ? `/room/channel/${channel.key}` : "/room";
   const roomLabel = channel?.label ?? "THE ROOM";
-  const roomEntryLabel = channel ? `${channel.label} ROOM` : "THE ROOM";
-  const roomUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}${roomPath}`;
+  const threadUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(confession.id)}`;
   const messageItems = focusReply
     ? [confession.text, focusReply.reply.text]
     : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
   const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
   const messageCount = Math.max(visibleMessageItems.length, 1);
+  const inset = 92;
+  const contentX = inset;
+  const contentWidth = canvas.width - inset * 2;
+  const maxLines = messageCount === 1 ? 9 : Math.max(2, Math.floor(10 / messageCount));
+  const fontSize = messageCount === 1 ? 58 : 44;
+
+  // Editorial share template: use a consistent 4:5 canvas so every shared
+  // thought has the same recognizable shape across social feeds.
+  const measuringContext = ctx;
+  measuringContext.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  const messageLayouts = visibleMessageItems.map((text) => {
+    const normalizedText = text.replace(/\s+/g, " ").trim();
+    const lines = wrapCanvasText(measuringContext, `“${normalizedText}”`, contentWidth - 74, maxLines);
+    const lineHeight = Math.round(fontSize * 1.35);
+    return { lines, lineHeight, blockHeight: lines.length * lineHeight };
+  });
+  const messageBlockHeight = messageLayouts.reduce(
+    (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 58 : 0),
+    0,
+  );
+  const footerLineY = 1080;
+  const contentTopY = 292;
+  const contentBottomY = footerLineY - 100;
+  const contentGroupY = contentTopY + Math.max(0, (contentBottomY - contentTopY - (60 + messageBlockHeight)) / 2);
 
   const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   background.addColorStop(0, "#020604");
@@ -1969,7 +1991,6 @@ async function createThreadImage(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  const inset = 92;
   ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -2007,28 +2028,20 @@ async function createThreadImage(
   ctx.fillStyle = "#5dff8f";
   ctx.textAlign = "right";
   ctx.font = "700 17px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`PRIVATE ROOM / ${roomLabel}`, canvas.width - inset, 111);
+  ctx.fillText(`${roomLabel} / PRIVATE ROOM`, canvas.width - inset, 111);
   ctx.fillStyle = "#789681";
   ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("ANONYMOUS SIGNAL", canvas.width - inset, 139);
+  ctx.fillText("ANONYMOUS / NO IDENTITY", canvas.width - inset, 139);
   ctx.textAlign = "left";
 
-  const contentX = inset;
-  const contentWidth = canvas.width - inset * 2;
-  let cursorY = 292;
+  let cursorY = contentGroupY;
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("// ANONYMOUS MESSAGE", contentX, cursorY);
-  cursorY += 66;
+  ctx.fillText("// ANONYMOUS THOUGHT", contentX, cursorY);
+  cursorY += 60;
 
-  const maxLines = messageCount === 1 ? 9 : Math.max(2, Math.floor(10 / messageCount));
-  const fontSize = messageCount === 1 ? 58 : 44;
-  visibleMessageItems.forEach((text, index) => {
-    const normalizedText = text.replace(/\s+/g, " ").trim();
-    ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
-    const lines = wrapCanvasText(ctx, `“${normalizedText}”`, contentWidth - 74, maxLines);
-    const lineHeight = Math.round(fontSize * 1.35);
-    const blockHeight = lines.length * lineHeight;
+  ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  messageLayouts.forEach(({ lines, lineHeight, blockHeight }, index) => {
     ctx.fillStyle = index === 0 ? "#5dff8f" : "#789681";
     ctx.fillRect(contentX, cursorY - 10, 6, blockHeight + 18);
     ctx.fillStyle = "#e8f0e6";
@@ -2038,7 +2051,6 @@ async function createThreadImage(
     cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 58 : 0);
   });
 
-  const footerLineY = 1194;
   ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -2047,17 +2059,17 @@ async function createThreadImage(
   ctx.stroke();
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 18px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`ENTER ${roomEntryLabel}`, contentX, footerLineY + 52);
+  ctx.fillText("READ THIS SIGNAL →", contentX, footerLineY + 52);
   ctx.fillStyle = "#a1bca7";
   ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(roomUrl, contentX, footerLineY + 92);
+  ctx.fillText(threadUrl, contentX, footerLineY + 92);
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "right";
-  ctx.fillText("HIDN / PRIVATE ROOM", canvas.width - contentX, footerLineY + 52);
+  ctx.fillText("HIDN / NO NAME REQUIRED", canvas.width - contentX, footerLineY + 52);
   ctx.fillStyle = "#789681";
   ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("SHARE A THOUGHT WITHOUT A NAME", canvas.width - contentX, footerLineY + 92);
+  ctx.fillText("ANONYMOUS BY DESIGN", canvas.width - contentX, footerLineY + 92);
   ctx.textAlign = "left";
 
   return new Promise((resolve, reject) => {
@@ -4020,8 +4032,10 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
     roomVerificationRequested = false;
     roomLoginError = "";
     persistAnonymousSession();
-    roomAccessMode = "ready";
-    if (!recoveryCode) {
+    if (recoveryCode) {
+      startRoomEntryTransition("/room", "return");
+    } else {
+      roomAccessMode = "ready";
       revealRoomRecoveryKeyTemporarily();
     }
   } catch (error) {
