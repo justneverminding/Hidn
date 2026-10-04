@@ -12,6 +12,10 @@
   "dependencies": {
     "@hidn/anonymous-zk": "file:../../packages/anonymous-zk",
     "@hidn/ui": "file:../../packages/ui",
-    "@hidn/zk": "file:../../packages/zk"
+    "@hidn/zk": "file:../../packages/zk",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6"
   }
 }

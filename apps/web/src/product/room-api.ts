@@ -28,6 +28,11 @@ export interface AccountResponse {
   recoveryCode?: string;
 }
 
+export interface AccountTipAddressResponse {
+  network: "testnet";
+  tipAddress: string | null;
+}
+
 export interface RoomPost {
   id: string;
   reference: string;
@@ -38,6 +43,7 @@ export interface RoomPost {
   reactions: number;
   replies: number;
   liked?: boolean;
+  tipAddress?: string | null;
 }
 
 export type ContentStatus = "visible" | "pending" | "hidden" | "rejected";
@@ -403,6 +409,7 @@ export function createAnonymousPost(input: {
   content: string;
   channel: string;
   category: string;
+  tipAddress?: string;
 }): Promise<{ post: RoomPost; status: "created"; anonymousAlias: string }> {
   return anonymousRequest<{ post: RoomPost; status: "created"; anonymousAlias: string }>("/api/anonymous/posts", {
     ...input.proof,
@@ -412,6 +419,7 @@ export function createAnonymousPost(input: {
     content: input.content,
     channel: input.channel,
     category: input.category,
+    tipAddress: input.tipAddress ?? "",
   });
 }
 
@@ -517,6 +525,14 @@ export function fetchAccountNotifications(): Promise<AccountNotificationsRespons
   return roomGet<AccountNotificationsResponse>("/api/account/notifications?limit=30");
 }
 
+export function fetchAccountTipAddress(): Promise<AccountTipAddressResponse> {
+  return roomGet<AccountTipAddressResponse>("/api/account/tip-address");
+}
+
+export function saveAccountTipAddress(tipAddress: string): Promise<AccountTipAddressResponse> {
+  return accountRequest<AccountTipAddressResponse>("/api/account/tip-address", { tipAddress });
+}
+
 export function markAccountNotificationsRead(notificationIds: string[] = []): Promise<{ status: "read" }> {
   return accountRequest<{ status: "read" }>("/api/account/notifications/read", { notificationIds });
 }
@@ -557,6 +573,7 @@ export function createRoomPost(input: {
   content: string;
   channel: string;
   category: string;
+  tipAddress?: string | null;
 }): Promise<{ post: RoomPost; status: "created" }> {
   return accountRequest<{ post: RoomPost; status: "created" }>("/api/room/posts", input);
 }

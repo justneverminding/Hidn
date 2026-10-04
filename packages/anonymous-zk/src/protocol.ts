@@ -120,8 +120,16 @@ export function canonicalAnonymousMessage(
   targetType: "thread" | "reply" | "room",
   targetId: string,
   content: string,
+  tipAddress = "",
 ): string {
-  return [ANONYMOUS_PROTOCOL_VERSION, action, targetType, targetId.trim().toUpperCase(), content.trim()].join("\n");
+  const message = [ANONYMOUS_PROTOCOL_VERSION, action, targetType, targetId.trim().toUpperCase(), content.trim()];
+  const normalizedTipAddress = tipAddress.trim().toLowerCase();
+  if (normalizedTipAddress) {
+    // The public destination is bound to the post action for integrity. It is
+    // not a privacy mechanism and does not strengthen the ZK proof.
+    message.push(normalizedTipAddress);
+  }
+  return message.join("\n");
 }
 
 export function anonymousMessageHash(message: string): bigint {

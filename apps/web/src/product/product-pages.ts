@@ -55,6 +55,7 @@ import {
   type AnonymousIdentity,
   type AnonymousMerkleWitness,
 } from "@hidn/anonymous-zk";
+import * as QRCode from "qrcode";
 import {
   createPaymentIntent,
   createAnonymousPost,
@@ -67,6 +68,7 @@ import {
   fetchAnonymousStatus,
   fetchAccountHistory,
   fetchAccountNotifications,
+  fetchAccountTipAddress,
   fetchAnonymousNotifications,
   fetchAnonymousPosts,
   fetchAnonymousThread,
@@ -89,6 +91,7 @@ import {
   markAnonymousNotificationsRead,
   moderateAdminContent,
   requestZkChallenge,
+  saveAccountTipAddress,
   signupZkAccount,
   submitReport,
   toggleRoomReaction,
@@ -137,6 +140,7 @@ const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
 const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ROOM_ACCOUNT_RECOVERY_KEY_STORAGE = "hidn:account:recovery-key";
 const ROOM_ANONYMOUS_SESSION_STORAGE = "hidn:anonymous:session";
+const ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE = "hidn:anonymous:tip-address";
 const ROOM_RECOVERY_CONFIRMATIONS = [
   "Do you understand that this is your recovery key to the private room?",
   "Do you understand that HIDN cannot recover this key if you lose it?",
@@ -183,6 +187,16 @@ let roomLoginSubmitting = false;
 let roomAccountHistory: AccountHistoryResponse | undefined;
 let roomAccountHistoryRequest: Promise<void> | undefined;
 let roomAccountHistoryError = "";
+let roomTipAddress = "";
+let roomTipAddressDraft = "";
+let roomTipAddressLoaded = false;
+let roomTipAddressRequest: Promise<void> | undefined;
+let roomTipAddressSaving = false;
+let roomTipAddressFeedback = "";
+let roomTipAddressError = "";
+let roomTipPostId = "";
+let roomTipCopyFeedback = "";
+let roomTipAddressCopyFeedback = "";
 let roomNotifications: AccountNotificationsResponse | undefined;
 let roomNotificationsRequest: Promise<void> | undefined;
 let roomNotificationsTimer: number | undefined;
@@ -205,6 +219,9 @@ let activeRoomChannel: RoomChannel = "general";
 let roomChannelNotice = "";
 let roomPostComposerOpen = false;
 let roomPostText = "";
+let roomPostTipsEnabled = false;
+let roomPostTipAddressDraft = "";
+let roomPostTipAddressEdited = false;
 let roomPostError = "";
 let roomPostSubmitting = false;
 let roomPosts: RoomPost[] = [];
@@ -268,6 +285,7 @@ interface TransmissionView {
   category?: string;
   reactions?: number;
   replies?: number;
+  tipAddress?: string | null;
 }
 
 interface SelectedTextItem {
@@ -396,13 +414,14 @@ async function createAnonymousRoomProof(
   targetType: "room" | "thread" | "reply",
   targetId: string,
   content: string,
+  tipAddress = "",
 ): Promise<{ scope: string; proof: AnonymousProofEnvelope }> {
   if (!roomAnonymousIdentity || !roomAnonymousWitness) {
     throw new Error("The anonymous room session is not available. Return with your recovery key first.");
   }
 
   const scope = createAnonymousScope();
-  const message = canonicalAnonymousMessage(action, targetType, targetId, content);
+  const message = canonicalAnonymousMessage(action, targetType, targetId, content, tipAddress);
   const input = createAnonymousCircuitInput(roomAnonymousIdentity.secret, roomAnonymousWitness, scope, message);
   const proof = await createAnonymousProofInWorker(input);
   return { scope, proof };
@@ -463,6 +482,7 @@ function transmissionViewFromRoomPost(post: RoomPost): TransmissionView {
     category: post.category,
     reactions: post.reactions,
     replies: post.replies,
+    tipAddress: post.tipAddress,
   };
 }
 
@@ -491,6 +511,143 @@ function shareableConfessionForId(id: string): MockConfession | undefined {
   }
 
   return mockConfessionFromRoomPost(post);
+}
+
+function roomTipPost(): RoomPost | undefined {
+  return roomTipPostId ? roomPosts.find((post) => post.id === roomTipPostId) : undefined;
+}
+
+function roomTipPaymentUri(post: RoomPost): string {
+  return `zcash:${post.tipAddress}`;
+}
+
+function renderRoomTipDialog(): string {
+  const post = roomTipPost();
+  if (!post?.tipAddress) {
+    return "";
+  }
+
+  const paymentUri = roomTipPaymentUri(post);
+  return `<div class="room-tip-dialog" role="dialog" aria-modal="true" aria-labelledby="room-tip-dialog-title">
+    <button class="room-tip-dialog__backdrop" type="button" data-action="room-tip-close" aria-label="Close testnet tip dialog"></button>
+    <section class="room-tip-dialog__panel">
+      <header class="room-tip-dialog__header">
+        <div>
+          ${TerminalLabel("TESTNET / DIRECT TIP")}
+          <h2 id="room-tip-dialog-title">SUPPORT THIS<br /><em>THOUGHT.</em></h2>
+        </div>
+        <button class="room-tip-dialog__close" type="button" data-action="room-tip-close" aria-label="Close testnet tip dialog">×</button>
+      </header>
+      <p class="room-tip-dialog__intro">Send any amount of TAZ directly from your shielded testnet wallet to the post author. Choose the amount in your wallet. HIDN never holds the funds.</p>
+      <div class="room-tip-dialog__request">
+        <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code for a direct Zcash testnet tip"></canvas>
+        <div class="room-tip-dialog__details">
+          <span class="room-tip-dialog__label">SHIELDED TESTNET DESTINATION</span>
+          <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy shielded testnet destination">
+            <code>${escapeHtml(post.tipAddress)}</code>
+            <span>${roomTipAddressCopyFeedback || "TAP TO COPY ADDRESS"}</span>
+          </button>
+          <span class="room-tip-dialog__label">PAYMENT REQUEST</span>
+          <code class="room-tip-dialog__uri">${escapeHtml(paymentUri)}</code>
+        </div>
+      </div>
+      <div class="room-tip-dialog__actions">
+        <a class="ui-button ui-button--primary" href="${escapeHtml(paymentUri)}">OPEN IN WALLET →</a>
+        <button class="ui-button ui-button--secondary" type="button" data-action="room-tip-copy" data-tip-uri="${escapeHtml(paymentUri)}">${roomTipCopyFeedback || "COPY PAYMENT REQUEST"}</button>
+      </div>
+      <p class="room-tip-dialog__wallet-note">If no wallet opens here, copy the payment request and paste it into your testnet wallet.</p>
+      <p class="room-tip-dialog__note">TESTNET ONLY / TAZ HAS NO MONETARY VALUE. V1 creates the request; it does not issue a payment receipt or confirm a transaction yet.</p>
+    </section>
+  </div>`;
+}
+
+function hydrateRoomTipQr(root: ParentNode): void {
+  const canvas = root.querySelector<HTMLCanvasElement>("[data-tip-qr]");
+  const paymentUri = canvas?.dataset.tipUri;
+  if (!canvas || !paymentUri) {
+    return;
+  }
+
+  void QRCode.toCanvas(canvas, paymentUri, {
+    width: 220,
+    margin: 1,
+    errorCorrectionLevel: "M",
+    color: {
+      dark: "#dcecdf",
+      light: "#031008",
+    },
+  }).catch(() => {
+    canvas.dataset.state = "unavailable";
+  });
+}
+
+async function copyRoomTipText(value: string): Promise<boolean> {
+  let copied = false;
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      copied = true;
+    } catch {
+      // Use the temporary-input fallback below.
+    }
+  }
+
+  if (!copied) {
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "true");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+    input.remove();
+  }
+
+  return copied;
+}
+
+async function copyRoomTipRequest(button: HTMLButtonElement): Promise<void> {
+  const paymentUri = button.dataset.tipUri?.trim();
+  if (!paymentUri) {
+    return;
+  }
+
+  const copied = await copyRoomTipText(paymentUri);
+
+  roomTipCopyFeedback = copied ? "PAYMENT REQUEST COPIED" : "COPY FAILED / SELECT THE REQUEST";
+  rerenderProductRoute();
+  window.setTimeout(() => {
+    if (roomTipCopyFeedback) {
+      roomTipCopyFeedback = "";
+      if (roomTipPostId) {
+        rerenderProductRoute();
+      }
+    }
+  }, 1800);
+}
+
+async function copyRoomTipAddress(button: HTMLButtonElement): Promise<void> {
+  const address = button.dataset.tipAddress?.trim();
+  if (!address) {
+    return;
+  }
+
+  const copied = await copyRoomTipText(address);
+  roomTipAddressCopyFeedback = copied ? "ADDRESS COPIED" : "COPY FAILED / SELECT THE ADDRESS";
+  rerenderProductRoute();
+  window.setTimeout(() => {
+    if (roomTipAddressCopyFeedback) {
+      roomTipAddressCopyFeedback = "";
+      if (roomTipPostId) {
+        rerenderProductRoute();
+      }
+    }
+  }, 1800);
 }
 
 function repliesForThread(id: string): AnonymousReply[] {
@@ -702,6 +859,9 @@ function renderTransmissionRow(
     ? `<span class="transmission-row__category">${escapeHtml(transmission.category)}</span>`
     : "";
   const threadId = transmission.id;
+  const tipAction = threadId && transmission.tipAddress
+    ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(threadId)}">TIP WITH TAZ</button>`
+    : "";
   const shareTextAttributes = threadId
     ? `data-share-text data-share-id="${escapeHtml(threadId)}" data-share-kind="thread" data-share-label="${escapeHtml(transmission.reference ?? "ANONYMOUS THREAD")}" data-share-category="${escapeHtml(transmission.category ?? "IDENTITY")}" data-share-time="${escapeHtml(transmission.time)}"`
     : "";
@@ -712,6 +872,7 @@ function renderTransmissionRow(
         <a class="room-message__action" href="${escapeHtml(options.href)}">REPLIES ${replyCount}</a>
         <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
         <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
+        ${tipAction}
         <a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>
         <span class="thread-share-status" data-share-status="${escapeHtml(threadId)}" role="status" aria-live="polite"></span>
       </div>`
@@ -1921,47 +2082,44 @@ async function createThreadImage(
   suppliedReplies?: AnonymousReply[],
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
-  canvas.width = 1200;
-  canvas.height = 1500;
+  // Match the supplied share-card template: 1170 × 972.
+  canvas.width = 1170;
+  canvas.height = 972;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Canvas rendering is unavailable.");
   }
 
-  const channelKey = typeof confession.channel === "string" ? confession.channel.toLowerCase() : "";
-  const channel = roomChannelOptions.find((option) => option.key === channelKey);
-  const roomLabel = channel?.label ?? "THE ROOM";
   const threadUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(confession.id)}`;
   const messageItems = focusReply
     ? [confession.text, focusReply.reply.text]
     : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
   const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
   const messageCount = Math.max(visibleMessageItems.length, 1);
-  const inset = 92;
-  const contentX = inset;
-  const contentWidth = canvas.width - inset * 2;
-  const maxLines = messageCount === 1 ? 9 : Math.max(2, Math.floor(10 / messageCount));
-  const fontSize = messageCount === 1 ? 58 : 44;
+  const frameX = 48;
+  const frameY = 53;
+  const frameWidth = canvas.width - frameX * 2;
+  const frameHeight = canvas.height - frameY - 38;
+  const contentX = 124;
+  const contentWidth = canvas.width - contentX * 2;
+  const maxLines = messageCount === 1 ? 5 : Math.max(2, Math.floor(6 / messageCount));
+  const fontSize = messageCount === 1 ? 72 : 52;
 
-  // Editorial share template: use a consistent 4:5 canvas so every shared
-  // thought has the same recognizable shape across social feeds.
+  // Match the supplied editorial template: a thin frame, large serif quote,
+  // and a quiet identity block beneath it.
   const measuringContext = ctx;
   measuringContext.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
   const messageLayouts = visibleMessageItems.map((text) => {
     const normalizedText = text.replace(/\s+/g, " ").trim();
-    const lines = wrapCanvasText(measuringContext, `“${normalizedText}”`, contentWidth - 74, maxLines);
-    const lineHeight = Math.round(fontSize * 1.35);
+    const lines = wrapCanvasText(measuringContext, `“${normalizedText}”`, contentWidth - 24, maxLines);
+    const lineHeight = Math.round(fontSize * 1.18);
     return { lines, lineHeight, blockHeight: lines.length * lineHeight };
   });
   const messageBlockHeight = messageLayouts.reduce(
     (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 58 : 0),
     0,
   );
-  const footerLineY = 1080;
-  const contentTopY = 292;
-  const contentBottomY = footerLineY - 100;
-  const contentGroupY = contentTopY + Math.max(0, (contentBottomY - contentTopY - (60 + messageBlockHeight)) / 2);
-
+  const identityBlockY = Math.min(650, Math.max(600, 205 + messageBlockHeight + 80));
   const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   background.addColorStop(0, "#020604");
   background.addColorStop(0.46, "#06110b");
@@ -1969,7 +2127,7 @@ async function createThreadImage(
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const glow = ctx.createRadialGradient(980, 160, 20, 980, 160, 720);
+  const glow = ctx.createRadialGradient(980, 150, 20, 980, 150, 720);
   glow.addColorStop(0, "rgba(93, 255, 143, 0.12)");
   glow.addColorStop(1, "rgba(93, 255, 143, 0)");
   ctx.fillStyle = glow;
@@ -1980,97 +2138,65 @@ async function createThreadImage(
     ctx.fillRect(0, y, canvas.width, 1);
   }
 
-  const frameX = 48;
-  const frameY = 48;
-  const frameWidth = canvas.width - frameX * 2;
-  const frameHeight = canvas.height - frameY * 2;
-  drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 22);
-  ctx.fillStyle = "rgba(2, 9, 5, 0.76)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.48)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(inset, 214);
-  ctx.lineTo(canvas.width - inset, 214);
-  ctx.stroke();
-
-  const logo = await new Promise<HTMLImageElement | undefined>((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => resolve(undefined);
-    image.src = "/brand/hidn-symbol.png";
-  });
-  ctx.fillStyle = "#020504";
-  drawCanvasRoundedRect(ctx, inset, 84, 58, 58, 16);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.62)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  if (logo) {
-    ctx.drawImage(logo, inset + 7, 91, 44, 44);
-  } else {
-    ctx.fillStyle = "#5dff8f";
-    ctx.font = "700 24px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillText("H", inset + 19, 122);
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.04)";
+  ctx.lineWidth = 1;
+  for (let x = frameX; x <= canvas.width - frameX; x += 160) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
   }
 
-  ctx.font = "700 27px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillStyle = "#5dff8f";
-  ctx.fillText("HIDN", inset + 78, 111);
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("A ROOM WITHOUT NAMES", inset + 78, 139);
+  drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 0);
+  ctx.fillStyle = "rgba(2, 9, 5, 0.76)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.36)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
-  ctx.fillStyle = "#5dff8f";
-  ctx.textAlign = "right";
-  ctx.font = "700 17px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`${roomLabel} / PRIVATE ROOM`, canvas.width - inset, 111);
-  ctx.fillStyle = "#789681";
-  ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("ANONYMOUS / NO IDENTITY", canvas.width - inset, 139);
-  ctx.textAlign = "left";
+  ctx.strokeStyle = "#5dff8f";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(frameX, frameY + 40);
+  ctx.lineTo(frameX, frameY);
+  ctx.lineTo(frameX + 40, frameY);
+  ctx.stroke();
 
-  let cursorY = contentGroupY;
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("// ANONYMOUS THOUGHT", contentX, cursorY);
-  cursorY += 60;
-
+  let cursorY = 205;
+  ctx.textAlign = "start";
   ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
   messageLayouts.forEach(({ lines, lineHeight, blockHeight }, index) => {
-    ctx.fillStyle = index === 0 ? "#5dff8f" : "#789681";
-    ctx.fillRect(contentX, cursorY - 10, 6, blockHeight + 18);
-    ctx.fillStyle = "#e8f0e6";
+    ctx.fillStyle = index === 0 ? "#e8f0e6" : "#a1bca7";
     lines.forEach((line, lineIndex) => {
-      ctx.fillText(line, contentX + 38, cursorY + lineIndex * lineHeight);
+      ctx.fillText(line, contentX, cursorY + lineIndex * lineHeight);
     });
     cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 58 : 0);
   });
 
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
-  ctx.lineWidth = 2;
+  const identityY = identityBlockY + 52;
+  ctx.strokeStyle = "#5dff8f";
+  ctx.lineWidth = 6;
   ctx.beginPath();
-  ctx.moveTo(contentX, footerLineY);
-  ctx.lineTo(canvas.width - contentX, footerLineY);
+  ctx.moveTo(contentX, identityBlockY + 18);
+  ctx.lineTo(contentX, identityBlockY + 96);
+  ctx.stroke();
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "19px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(threadUrl, contentX + 38, identityY);
+
+  const badgeX = contentX;
+  const badgeY = identityBlockY + 121;
+  const badgeWidth = 410;
+  const badgeHeight = 82;
+  drawCanvasRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 0);
+  ctx.fillStyle = "rgba(93, 255, 143, 0.05)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(160, 180, 82, 0.62)";
+  ctx.lineWidth = 2;
   ctx.stroke();
   ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 18px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("READ THIS SIGNAL →", contentX, footerLineY + 52);
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(threadUrl, contentX, footerLineY + 92);
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "right";
-  ctx.fillText("HIDN / NO NAME REQUIRED", canvas.width - contentX, footerLineY + 52);
-  ctx.fillStyle = "#789681";
-  ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("ANONYMOUS BY DESIGN", canvas.width - contentX, footerLineY + 92);
-  ctx.textAlign = "left";
+  ctx.font = "700 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("A ROOM WITHOUT NAMES", badgeX + 20, badgeY + 51);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -2624,6 +2750,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
     ${isRoomSurface || isAdminPage ? "" : publicNavigation(path)}
     ${main}
+    ${isRoomSurface ? renderRoomTipDialog() : ""}
     ${isRoomSurface ? renderSelectionTools() : ""}
     ${isRoomSurface || isAdminPage ? "" : FooterShell({
       links: footerLinks,
@@ -2820,11 +2947,122 @@ async function refreshAccountHistory(): Promise<void> {
   return roomAccountHistoryRequest;
 }
 
+function isClientTestnetTipAddress(value: string): boolean {
+  const address = value.trim().toLowerCase();
+  return address.length >= 20
+    && address.length <= 500
+    && /^(?:utest1|ztestsapling1)[0-9a-z]+$/.test(address);
+}
+
+async function refreshRoomTipAddress(): Promise<void> {
+  if (!hasRoomSession() || roomTipAddressRequest || roomTipAddressLoaded) {
+    return;
+  }
+
+  if (roomAnonymousIdentity) {
+    roomTipAddress = sessionStorage.getItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE) ?? "";
+    roomTipAddressDraft = roomTipAddress;
+    if (!roomPostTipAddressEdited) {
+      roomPostTipAddressDraft = roomTipAddress;
+    }
+    roomTipAddressLoaded = true;
+    roomTipAddressError = "";
+    if (normalizePath(window.location.pathname) === "/room/profile" || isRoomPostSurface()) {
+      rerenderProductRoute();
+    }
+    return;
+  }
+
+  roomTipAddressRequest = fetchAccountTipAddress()
+    .then((response) => {
+      roomTipAddress = response.tipAddress ?? "";
+      roomTipAddressDraft = roomTipAddress;
+      if (!roomPostTipAddressEdited) {
+        roomPostTipAddressDraft = roomTipAddress;
+      }
+      roomTipAddressLoaded = true;
+      roomTipAddressError = "";
+    })
+    .catch((error) => {
+      roomTipAddressLoaded = true;
+      roomTipAddressError = error instanceof Error ? error.message : "The testnet tip address could not be loaded.";
+    })
+    .finally(() => {
+      roomTipAddressRequest = undefined;
+      if (normalizePath(window.location.pathname) === "/room/profile" || isRoomPostSurface()) {
+        rerenderProductRoute();
+      }
+    });
+
+  return roomTipAddressRequest;
+}
+
+async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
+  if (roomTipAddressSaving) {
+    return;
+  }
+
+  const input = root.querySelector<HTMLInputElement>("#room-tip-address");
+  const draft = input?.value.trim().toLowerCase() ?? roomTipAddressDraft.trim().toLowerCase();
+  if (draft && !isClientTestnetTipAddress(draft)) {
+    roomTipAddressError = "USE A SHIELDED TESTNET ADDRESS / UTEST1 OR ZTESTSAPLING1";
+    roomTipAddressFeedback = "";
+    rerenderProductRoute();
+    return;
+  }
+
+  roomTipAddressDraft = draft;
+  roomTipAddressSaving = true;
+  roomTipAddressError = "";
+  roomTipAddressFeedback = "";
+  rerenderProductRoute();
+
+  if (roomAnonymousIdentity) {
+    try {
+      if (draft) {
+        sessionStorage.setItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE, draft);
+      } else {
+        sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
+      }
+      roomTipAddress = draft;
+      roomTipAddressLoaded = true;
+      roomTipAddressFeedback = roomTipAddress
+        ? "TESTNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
+        : "TESTNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
+    } catch {
+      roomTipAddressError = "THE BROWSER COULD NOT SAVE THIS LOCAL DESTINATION";
+    } finally {
+      roomTipAddressSaving = false;
+      rerenderProductRoute();
+    }
+    return;
+  }
+
+  try {
+    const response = await saveAccountTipAddress(draft);
+    roomTipAddress = response.tipAddress ?? "";
+    roomTipAddressDraft = roomTipAddress;
+    roomTipAddressLoaded = true;
+    roomTipAddressFeedback = roomTipAddress
+      ? "TESTNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
+      : "TESTNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
+  } catch (error) {
+    roomTipAddressError = error instanceof Error ? error.message : "The testnet tip address could not be saved.";
+  } finally {
+    roomTipAddressSaving = false;
+    rerenderProductRoute();
+  }
+}
+
 function isRoomNotificationSurface(path = normalizePath(window.location.pathname)): boolean {
   return path === "/room"
     || path === "/room/profile"
     || Boolean(roomChannelFromPath(path))
     || path.startsWith("/c/");
+}
+
+function isRoomPostSurface(path = normalizePath(window.location.pathname)): boolean {
+  return path === "/room" || Boolean(roomChannelFromPath(path));
 }
 
 function notificationStateSignature(value: AccountNotificationsResponse | undefined): string {
@@ -2953,6 +3191,7 @@ function startRoomNotificationPolling(): void {
 
 async function submitRoomPost(): Promise<void> {
   const content = roomPostText.trim();
+  const selectedTipAddress = roomPostTipsEnabled ? roomPostTipAddressDraft.trim().toLowerCase() : "";
   if (!content) {
     roomPostError = "Write something before posting.";
     rerenderProductRoute();
@@ -2969,6 +3208,11 @@ async function submitRoomPost(): Promise<void> {
     rerenderProductRoute();
     return;
   }
+  if (roomPostTipsEnabled && (!selectedTipAddress || !isClientTestnetTipAddress(selectedTipAddress))) {
+    roomPostError = "USE A SHIELDED TESTNET ADDRESS / UTEST1 OR ZTESTSAPLING1";
+    rerenderProductRoute();
+    return;
+  }
 
   roomPostSubmitting = true;
   roomPostError = "";
@@ -2978,7 +3222,7 @@ async function submitRoomPost(): Promise<void> {
   try {
     const response = roomAnonymousIdentity
       ? await (async () => {
-        const { scope, proof } = await createAnonymousRoomProof("post", "room", activeRoomChannel, content);
+        const { scope, proof } = await createAnonymousRoomProof("post", "room", activeRoomChannel, content, selectedTipAddress);
         return createAnonymousPost({
           proof,
           scope,
@@ -2987,12 +3231,14 @@ async function submitRoomPost(): Promise<void> {
           content,
           channel: activeRoomChannel,
           category: "IDENTITY",
+          tipAddress: selectedTipAddress || undefined,
         });
       })()
       : await createRoomPost({
         content,
         channel: activeRoomChannel,
         category: "IDENTITY",
+        tipAddress: selectedTipAddress,
       });
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
@@ -3001,6 +3247,9 @@ async function submitRoomPost(): Promise<void> {
     roomPostsLoadedChannel = activeRoomChannel;
     roomPostComposerOpen = false;
     roomPostText = "";
+    roomPostTipsEnabled = false;
+    roomPostTipAddressDraft = "";
+    roomPostTipAddressEdited = false;
     roomChannelNotice = `${response.post.reference} POSTED / ANONYMOUS`;
   } catch (error) {
     roomPostError = error instanceof Error ? error.message : "The post could not be created.";
@@ -3087,6 +3336,33 @@ function renderRoomEyeWatcher(extraClass = ""): string {
   return `<span class="home-room-title__watcher${extraClass ? ` ${extraClass}` : ""}" aria-hidden="true"><span class="home-room-invite__glasses home-room-title__glasses"><span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span><span class="home-room-invite__bridge"></span><span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span></span></span>`;
 }
 
+function renderRoomPostTipControls(): string {
+  if (!roomPostTipsEnabled) {
+    return `<fieldset class="room-post-tips">
+      <legend>OPTIONAL / DIRECT TIPS</legend>
+      <label class="room-post-tips__toggle">
+        <input id="room-post-allow-tips" type="checkbox" />
+        <span>ALLOW TIPS ON THIS POST</span>
+      </label>
+      <p class="room-post-tips__note">Let readers support this post directly with any amount of testnet TAZ.</p>
+    </fieldset>`;
+  }
+
+  return `<fieldset class="room-post-tips room-post-tips--enabled">
+    <legend>OPTIONAL / DIRECT TIPS</legend>
+    <label class="room-post-tips__toggle">
+      <input id="room-post-allow-tips" type="checkbox" checked />
+      <span>ALLOW TIPS ON THIS POST</span>
+    </label>
+    <label class="ui-field room-post-tips__address-field" for="room-post-tip-address">
+      <span class="ui-field__label">SHIELDED TESTNET ADDRESS / THIS POST</span>
+      <input id="room-post-tip-address" type="text" value="${escapeHtml(roomPostTipAddressDraft)}" placeholder="utest1..." autocomplete="off" spellcheck="false" maxlength="500" />
+    </label>
+    <p class="room-post-tips__note">Use your saved default address or enter a different public shielded testnet address for this post.</p>
+    <p class="room-post-tips__warning" data-warning="REUSING AN ADDRESS MAY MAKE POSTS EASIER TO ASSOCIATE." role="note">Reusing an address may make posts easier to associate.</p>
+  </fieldset>`;
+}
+
 function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
   const showFooter = options.showFooter ?? true;
   const activeChannel = roomChannelOption(activeRoomChannel);
@@ -3142,12 +3418,13 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
           ${roomChannelNotice ? `<p role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
           ${roomPostError ? `<p class="room-post-composer__error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
           ${roomPostComposerOpen
-            ? `<form class="room-post-composer" novalidate>
+            ? `<form class="room-post-composer" data-room-post-composer novalidate>
                 <label class="ui-field room-post-composer__field" for="room-post-content">
                   <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
                   <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
                 </label>
                 <p class="room-post-composer__note">${roomPostLimitCopy()} Your post is stored without a public name.</p>
+                ${renderRoomPostTipControls()}
                 <div class="room-post-composer__actions">
                   ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
                   ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -3509,12 +3786,13 @@ function renderRoomNotifications(): string {
 function renderMobilePostSurface(): string {
   const activeChannel = roomChannelOption(activeRoomChannel);
   const content = roomPostComposerOpen && hasRoomSession()
-    ? `<form class="room-post-composer room-mobile-index__composer" novalidate>
+    ? `<form class="room-post-composer room-mobile-index__composer" data-room-post-composer novalidate>
         <label class="ui-field room-post-composer__field" for="room-post-content">
           <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
         <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
       </label>
         <p class="room-post-composer__note">${roomPostLimitCopy()}</p>
+        ${renderRoomPostTipControls()}
         <div class="room-post-composer__actions">
           ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
           ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -3767,6 +4045,7 @@ function renderDetail(id: string): RenderedProductRoute {
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
             <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
             <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">SHARE IMAGE</button>
+            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">TIP WITH TAZ</button>` : ""}
             <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">X / POST</button>
             <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">REPORT</button>
           </div>
@@ -4070,6 +4349,7 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:account:access-level");
   sessionStorage.removeItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE);
   sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
+  sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
   sessionStorage.removeItem("hidn:account:payment-intent");
   sessionStorage.removeItem("hidn:account:verification-requested");
   void logoutAccount().catch(() => undefined);
@@ -4082,12 +4362,25 @@ function clearRoomSession(): void {
   roomBackendId = "";
   roomAccountUsername = "";
   roomAccountAccessLevel = "read_only";
+  roomTipAddress = "";
+  roomTipAddressDraft = "";
+  roomTipAddressLoaded = false;
+  roomTipAddressRequest = undefined;
+  roomTipAddressSaving = false;
+  roomTipAddressFeedback = "";
+  roomTipAddressError = "";
+  roomTipPostId = "";
+  roomTipCopyFeedback = "";
+  roomTipAddressCopyFeedback = "";
   roomAnonymousIdentity = undefined;
   roomAnonymousWitness = undefined;
   roomAnonymousStatus = undefined;
   roomAnonymousSubmitting = false;
   roomPostComposerOpen = false;
   roomPostText = "";
+  roomPostTipsEnabled = false;
+  roomPostTipAddressDraft = "";
+  roomPostTipAddressEdited = false;
   roomPostError = "";
   roomPostSubmitting = false;
   roomPosts = [];
@@ -4143,6 +4436,13 @@ function persistAccountSession(account: AccountResponse): void {
   roomAccountUsername = account.username;
   roomAccountAccessLevel = account.accessLevel;
   roomBackendStatus = "connected";
+  roomTipAddress = "";
+  roomTipAddressDraft = "";
+  roomTipAddressLoaded = false;
+  roomTipAddressRequest = undefined;
+  roomTipAddressSaving = false;
+  roomTipAddressFeedback = "";
+  roomTipAddressError = "";
   sessionStorage.setItem("hidn:account:logged-in", "true");
   sessionStorage.setItem("hidn:account:user-id", account.userId);
   sessionStorage.setItem("hidn:account:username", account.username);
@@ -4210,6 +4510,8 @@ async function registerRoomAccount(username: string): Promise<void> {
   } catch (error) {
     roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The Worker could not create this account.";
+  } finally {
+    roomLoginSubmitting = false;
   }
 
   if (normalizePath(window.location.pathname) === "/room/access") {
@@ -4608,6 +4910,32 @@ function renderRoomReady(): string {
   </div>`;
 }
 
+function renderProfileTipAddress(): string {
+  if (!roomTipAddressLoaded) {
+    return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title" aria-busy="true">
+      ${TerminalLabel("TESTNET / TIP DESTINATION")}
+      <h2 id="room-profile-tips-title">DIRECT SUPPORT</h2>
+      <p class="room-profile-card__note">READING YOUR TESTNET DESTINATION...</p>
+    </section>`;
+  }
+
+  return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title">
+    ${TerminalLabel("TESTNET / TIP DESTINATION")}
+    <h2 id="room-profile-tips-title">LET THE ROOM SUPPORT YOU.</h2>
+    <p class="room-profile-card__note">Add a shielded Zcash testnet receiving address from your wallet. New room posts will show a direct TIP WITH TAZ action. HIDN stores only this public destination; it never stores a spending key or holds TAZ.</p>
+    <form class="room-tip-address-form" data-room-tip-address-form novalidate>
+      <label class="ui-field" for="room-tip-address">
+        <span class="ui-field__label">SHIELDED TESTNET ADDRESS / OPTIONAL</span>
+        <input id="room-tip-address" type="text" value="${escapeHtml(roomTipAddressDraft)}" placeholder="utest1..." autocomplete="off" spellcheck="false" maxlength="500" />
+      </label>
+      <p class="room-tip-address-form__hint">Only shielded testnet addresses beginning with <code>utest1</code> or <code>ztestsapling1</code> are accepted. Leave it empty to turn tips off for future posts.</p>
+      ${roomTipAddressError ? `<p class="room-tip-address-form__feedback room-tip-address-form__feedback--error" role="alert">${escapeHtml(roomTipAddressError)}</p>` : ""}
+      ${roomTipAddressFeedback ? `<p class="room-tip-address-form__feedback" role="status">${escapeHtml(roomTipAddressFeedback)}</p>` : ""}
+      ${SecondaryButton({ label: roomTipAddressSaving ? "SAVING DESTINATION..." : "SAVE TESTNET DESTINATION →", type: "submit", disabled: roomTipAddressSaving, dataAction: "room-tip-address-save" })}
+    </form>
+  </section>`;
+}
+
 function contentStatusLabel(status: RoomComment["status"]): string {
   switch (status) {
     case "hidden":
@@ -4772,6 +5100,7 @@ function renderRoomProfile(): RenderedProductRoute {
               ${GhostButton({ label: "CONTINUE FREE →", dataAction: "room-profile-back" })}
             </div>`}
           </section>
+          ${renderProfileTipAddress()}
           ${renderProfileRecoveryKey()}
           ${historyError}
           <div class="room-profile-history-grid">
@@ -5076,6 +5405,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 interface RoomRecoveryInteractionState {
   username: string;
   confirmations: [boolean, boolean];
+  tipAddress: string;
   activeControlId?: string;
   selectionStart: number | null;
   selectionEnd: number | null;
@@ -5083,18 +5413,25 @@ interface RoomRecoveryInteractionState {
 
 function captureRoomRecoveryInteractionState(): RoomRecoveryInteractionState | undefined {
   const form = document.querySelector<HTMLFormElement>("[data-room-recovery-form]");
-  if (!form) {
+  const tipInput = document.querySelector<HTMLInputElement>("#room-tip-address");
+  if (!form && !tipInput) {
     return undefined;
   }
 
-  const usernameInput = form.querySelector<HTMLInputElement>("#room-recovery-username");
+  const usernameInput = form?.querySelector<HTMLInputElement>("#room-recovery-username");
   const activeElement = document.activeElement;
-  const activeInput = activeElement instanceof HTMLInputElement && form.contains(activeElement) ? activeElement : undefined;
-  const confirmations = [1, 2].map((index) => Boolean(form.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
+  const activeInput = activeElement instanceof HTMLInputElement
+    && (Boolean(form?.contains(activeElement)) || activeElement === tipInput)
+    ? activeElement
+    : undefined;
+  const confirmations = [1, 2].map((index) => Boolean(form?.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
+  const tipAddress = tipInput?.value ?? roomTipAddressDraft;
+  roomTipAddressDraft = tipAddress;
 
   return {
     username: usernameInput?.value ?? roomRecoveryUsernameInput,
     confirmations,
+    tipAddress,
     activeControlId: activeInput?.id,
     selectionStart: activeInput?.selectionStart ?? null,
     selectionEnd: activeInput?.selectionEnd ?? null,
@@ -5107,24 +5444,26 @@ function restoreRoomRecoveryInteractionState(state: RoomRecoveryInteractionState
   }
 
   const form = document.querySelector<HTMLFormElement>("[data-room-recovery-form]");
-  if (!form) {
-    return;
-  }
+  const tipInput = document.querySelector<HTMLInputElement>("#room-tip-address");
 
-  const usernameInput = form.querySelector<HTMLInputElement>("#room-recovery-username");
+  const usernameInput = form?.querySelector<HTMLInputElement>("#room-recovery-username");
   if (usernameInput) {
     usernameInput.value = state.username;
   }
 
   state.confirmations.forEach((checked, index) => {
-    const checkbox = form.querySelector<HTMLInputElement>(`#room-recovery-answer-${index + 1}`);
+    const checkbox = form?.querySelector<HTMLInputElement>(`#room-recovery-answer-${index + 1}`);
     if (checkbox) {
       checkbox.checked = checked;
     }
   });
 
+  if (tipInput) {
+    tipInput.value = state.tipAddress;
+  }
+
   if (state.activeControlId) {
-    const activeInput = form.querySelector<HTMLInputElement>(`#${state.activeControlId}`);
+    const activeInput = document.querySelector<HTMLInputElement>(`#${state.activeControlId}`);
     if (activeInput) {
       activeInput.focus({ preventScroll: true });
       if (activeInput.type !== "checkbox" && state.selectionStart !== null && state.selectionEnd !== null) {
@@ -5147,6 +5486,9 @@ function rerenderProductRoute(force = false): void {
 function navigateProductRoute(path: string): void {
   resetRoomRecoveryReveal();
   roomVerificationNoticeOpen = false;
+  roomTipPostId = "";
+  roomTipCopyFeedback = "";
+  roomTipAddressCopyFeedback = "";
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
 }
@@ -5267,6 +5609,9 @@ function bindRoomChannelInteractions(root: ParentNode): void {
       roomChannelNotice = "";
       roomPostComposerOpen = false;
       roomPostText = "";
+      roomPostTipsEnabled = false;
+      roomPostTipAddressDraft = "";
+      roomPostTipAddressEdited = false;
       roomPostError = "";
       rerenderProductRoute();
     });
@@ -5571,6 +5916,50 @@ function bindRoomRecoveryInteractions(root: ParentNode): void {
   });
 }
 
+function bindRoomTipAddressInteractions(root: ParentNode): void {
+  const form = root.querySelector<HTMLFormElement>("[data-room-tip-address-form]");
+  if (!form) {
+    return;
+  }
+
+  const input = form.querySelector<HTMLInputElement>("#room-tip-address");
+  input?.addEventListener("input", () => {
+    roomTipAddressDraft = input.value;
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveRoomTipAddressFromRoot(root);
+  });
+}
+
+function bindRoomPostComposerInteractions(root: ParentNode): void {
+  const form = root.querySelector<HTMLFormElement>("[data-room-post-composer]");
+  if (!form) {
+    return;
+  }
+
+  const content = form.querySelector<HTMLTextAreaElement>("#room-post-content");
+  content?.addEventListener("input", () => {
+    roomPostText = content.value;
+  });
+
+  const allowTips = form.querySelector<HTMLInputElement>("#room-post-allow-tips");
+  allowTips?.addEventListener("change", () => {
+    roomPostTipsEnabled = allowTips.checked;
+    if (roomPostTipsEnabled && !roomPostTipAddressEdited && !roomPostTipAddressDraft) {
+      roomPostTipAddressDraft = roomTipAddress;
+    }
+    rerenderProductRoute();
+  });
+
+  const tipAddress = form.querySelector<HTMLInputElement>("#room-post-tip-address");
+  tipAddress?.addEventListener("input", () => {
+    roomPostTipAddressDraft = tipAddress.value;
+    roomPostTipAddressEdited = true;
+  });
+}
+
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
   bindRoomLikeInteractions(root);
@@ -5578,6 +5967,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindRoomFolderInteractions(root);
   bindPointerSpotlightInteractions(root);
   bindRoomRecoveryInteractions(root);
+  bindRoomTipAddressInteractions(root);
+  bindRoomPostComposerInteractions(root);
+  hydrateRoomTipQr(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
   const isRoomAccessPath = normalizePath(window.location.pathname) === "/room/access";
@@ -5630,6 +6022,10 @@ export function bindProductRoute(root: ParentNode = document): void {
   }
   if (normalizedPath === "/room/profile" && hasRoomSession()) {
     void refreshAccountHistory();
+    void refreshRoomTipAddress();
+  }
+  if (isRoomPostSurface(normalizedPath) && hasRoomSession()) {
+    void refreshRoomTipAddress();
   }
   if (isModerationSurfacePath(normalizedPath)) {
     void refreshModerationVisibility();
@@ -5819,6 +6215,36 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
           break;
         }
+        case "room-tip": {
+          const threadId = button.dataset.threadId ?? "";
+          const post = roomPosts.find((candidate) => candidate.id === threadId);
+          if (!post?.tipAddress) {
+            roomChannelNotice = "THIS POST DOES NOT HAVE A SHIELDED TESTNET DESTINATION.";
+            rerenderProductRoute();
+            break;
+          }
+
+          roomTipPostId = threadId;
+          roomTipCopyFeedback = "";
+          roomTipAddressCopyFeedback = "";
+          rerenderProductRoute();
+          break;
+        }
+        case "room-tip-close":
+          roomTipPostId = "";
+          roomTipCopyFeedback = "";
+          roomTipAddressCopyFeedback = "";
+          rerenderProductRoute();
+          break;
+        case "room-tip-copy":
+          void copyRoomTipRequest(button);
+          break;
+        case "room-tip-copy-address":
+          void copyRoomTipAddress(button);
+          break;
+        case "room-tip-address-save":
+          void saveRoomTipAddressFromRoot(root);
+          break;
         case "room-menu-toggle": {
           const menu = button.closest<HTMLElement>("[data-room-menu]");
           const panel = menu?.querySelector<HTMLElement>(".room-menu__panel");
@@ -5956,18 +6382,27 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
 
           roomPostComposerOpen = true;
+          roomPostTipsEnabled = false;
+          roomPostTipAddressDraft = roomTipAddress;
+          roomPostTipAddressEdited = false;
           roomPostError = "";
           roomChannelNotice = "";
+          void refreshRoomTipAddress();
           rerenderProductRoute();
           break;
         case "room-post-cancel":
           roomPostComposerOpen = false;
           roomPostText = "";
+          roomPostTipsEnabled = false;
+          roomPostTipAddressDraft = "";
+          roomPostTipAddressEdited = false;
           roomPostError = "";
           rerenderProductRoute();
           break;
         case "room-post-submit": {
           roomPostText = root.querySelector<HTMLTextAreaElement>("#room-post-content")?.value ?? roomPostText;
+          roomPostTipsEnabled = root.querySelector<HTMLInputElement>("#room-post-allow-tips")?.checked ?? roomPostTipsEnabled;
+          roomPostTipAddressDraft = root.querySelector<HTMLInputElement>("#room-post-tip-address")?.value ?? roomPostTipAddressDraft;
           void submitRoomPost();
           break;
         }

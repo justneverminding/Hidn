@@ -256,6 +256,7 @@ interface RoomPostRow {
   category: string;
   channel: RoomChannel;
   created_at: string;
+  tip_address?: string | null;
   reactions?: number;
   reply_count?: number;
   liked_by_current_user?: number;
@@ -621,6 +622,16 @@ function normalizeUsername(username: string): string {
 
 function isValidUsername(username: string): boolean {
   return /^HIDN-[A-Z0-9]{1,20}$/.test(username);
+}
+
+function normalizeTestnetTipAddress(address: string): string {
+  return address.trim().toLowerCase();
+}
+
+function isValidTestnetTipAddress(address: string): boolean {
+  return address.length >= 20
+    && address.length <= 500
+    && /^(?:utest1|ztestsapling1)[0-9a-z]+$/.test(address);
 }
 
 function normalizeRecoveryAnswer(value: string): string {
@@ -1148,6 +1159,67 @@ async function getAccountSession(request: Request, env: HidnWorkerEnv): Promise<
   return jsonResponse({ ...user, paymentStatus: user.accessLevel === "full" ? "confirmed" : "pending" });
 }
 
+async function getAccountTipAddress(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before configuring a testnet tip address." }, 401);
+  }
+
+  const row = await env.ROOM_DB!.prepare(
+    `SELECT tip_address
+     FROM hidn_users
+     WHERE user_id = ?
+     LIMIT 1`,
+  )
+    .bind(user.userId)
+    .first<{ tip_address: string | null }>();
+
+  return jsonResponse({
+    network: "testnet",
+    tipAddress: row?.tip_address ?? null,
+  }, 200, "no-store");
+}
+
+async function saveAccountTipAddress(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const user = await getAuthenticatedUser(request, env);
+  if (!user) {
+    return jsonResponse({ error: "Log in before configuring a testnet tip address." }, 401);
+  }
+
+  const body = await requestBody(request);
+  const rawAddress = typeof body.tipAddress === "string" ? body.tipAddress : "";
+  const tipAddress = normalizeTestnetTipAddress(rawAddress);
+  if (tipAddress && !isValidTestnetTipAddress(tipAddress)) {
+    return jsonResponse(
+      { error: "Use a shielded Zcash testnet address beginning with utest1 or ztestsapling1. Transparent addresses are not accepted." },
+      400,
+    );
+  }
+
+  await env.ROOM_DB!.prepare(
+    `UPDATE hidn_users
+     SET tip_address = ?
+     WHERE user_id = ?`,
+  )
+    .bind(tipAddress || null, user.userId)
+    .run();
+
+  return jsonResponse({
+    network: "testnet",
+    tipAddress: tipAddress || null,
+  }, 200, "no-store");
+}
+
 async function recordActivityEvent(
   env: HidnWorkerEnv,
   action: ActivityAction,
@@ -1225,6 +1297,7 @@ function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
     reactions: Number(row.reactions ?? 0),
     replies: Number(row.reply_count ?? 0),
     liked: row.liked_by_current_user === 1,
+    ...(row.tip_address ? { tipAddress: row.tip_address } : {}),
   };
 }
 
@@ -1383,6 +1456,7 @@ async function verifyAnonymousAction(
   targetType: "room" | "thread" | "reply",
   targetId: string,
   content: string,
+  tipAddress = "",
 ): Promise<VerifiedAnonymousAction | Response> {
   const protocol = typeof body.protocol === "string" ? body.protocol.trim() : "";
   if (protocol !== ANONYMOUS_PROTOCOL_VERSION) {
@@ -1417,7 +1491,7 @@ async function verifyAnonymousAction(
     return jsonResponse({ error: "That anonymous membership root is no longer accepted." }, 400);
   }
 
-  const message = canonicalAnonymousMessage(action, targetType, targetId, content);
+  const message = canonicalAnonymousMessage(action, targetType, targetId, content, tipAddress);
   let expectedBinding: string;
   try {
     expectedBinding = anonymousBinding(nullifier, message);
@@ -1624,6 +1698,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   const content = typeof body.content === "string" ? body.content.trim() : "";
   const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
   const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
+  const tipAddress = normalizeTestnetTipAddress(typeof body.tipAddress === "string" ? body.tipAddress : "");
   const alias = anonymousAliasFromBody(body);
   const notificationCapability = anonymousCapabilityFromBody(body);
   if (!content) {
@@ -1641,6 +1716,12 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   if (!ROOM_POST_CATEGORIES.has(category)) {
     return jsonResponse({ error: "Choose a valid post category." }, 400);
   }
+  if (tipAddress && !isValidTestnetTipAddress(tipAddress)) {
+    return jsonResponse(
+      { error: "Use a shielded Zcash testnet address beginning with utest1 or ztestsapling1. Transparent addresses are not accepted." },
+      400,
+    );
+  }
 
   const action = await verifyAnonymousAction(
     env,
@@ -1649,6 +1730,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
     "room",
     channel,
     content,
+    tipAddress,
   );
   if (action instanceof Response) {
     return action;
@@ -1665,6 +1747,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
     category,
     channel,
     created_at: new Date().toISOString(),
+    tip_address: tipAddress || null,
   };
   const actionConflict = await reserveAnonymousAction(env, action, "post", "room", post.thread_id);
   if (actionConflict) {
@@ -1676,8 +1759,8 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
       (thread_id, room_id, content, category, moderation_state, created_at,
        updated_at, hidden_at, channel, author_user_id, anonymous_root,
        anonymous_nullifier, anonymous_binding, anonymous_alias,
-       anonymous_notification_capability_hash)
-     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?)`,
+       anonymous_notification_capability_hash, tip_address)
+     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       post.thread_id,
@@ -1692,6 +1775,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
       action.binding,
       alias,
       await hashText(notificationCapability),
+      post.tip_address,
     )
     .run();
 
@@ -1927,7 +2011,7 @@ async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise
   }
 
   const result = await env.ROOM_DB!.prepare(
-    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
             COUNT(r.reaction_id) AS reactions,
             (SELECT COUNT(*)
              FROM hidn_replies reply_count
@@ -1939,7 +2023,7 @@ async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
      WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible'
-     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
      ORDER BY t.created_at DESC
      LIMIT 100`,
   )
@@ -1961,7 +2045,7 @@ async function listAnonymousThread(request: Request, env: HidnWorkerEnv): Promis
   }
 
   const post = await env.ROOM_DB!.prepare(
-    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
             COUNT(r.reaction_id) AS reactions,
             (SELECT COUNT(*)
              FROM hidn_replies reply_count
@@ -1973,7 +2057,7 @@ async function listAnonymousThread(request: Request, env: HidnWorkerEnv): Promis
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
      WHERE t.thread_id = ? AND t.room_id = ? AND t.moderation_state = 'visible'
-     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
      LIMIT 1`,
   )
     .bind(threadId, MAIN_ROOM_ID)
@@ -2402,7 +2486,7 @@ async function listAccountHistory(request: Request, env: HidnWorkerEnv): Promise
 
   const [posts, comments, stats] = await Promise.all([
     env.ROOM_DB!.prepare(
-      `SELECT thread_id, content, category, channel, created_at, moderation_state,
+      `SELECT thread_id, content, category, channel, created_at, tip_address, moderation_state,
               (SELECT COUNT(*)
                FROM hidn_replies reply_count
                WHERE reply_count.thread_id = hidn_threads.thread_id
@@ -2611,7 +2695,7 @@ async function listRoomPosts(request: Request, env: HidnWorkerEnv): Promise<Resp
   }
 
   const result = await env.ROOM_DB!.prepare(
-    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
             COUNT(r.reaction_id) AS reactions,
             (SELECT COUNT(*)
              FROM hidn_replies reply_count
@@ -2631,7 +2715,7 @@ async function listRoomPosts(request: Request, env: HidnWorkerEnv): Promise<Resp
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
      WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible'
-     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
      ORDER BY t.created_at DESC
      LIMIT 100`,
   )
@@ -2658,7 +2742,7 @@ async function listRoomThread(request: Request, env: HidnWorkerEnv): Promise<Res
   }
 
   const post = await env.ROOM_DB!.prepare(
-    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at,
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
             COUNT(r.reaction_id) AS reactions,
             (SELECT COUNT(*)
              FROM hidn_replies reply_count
@@ -2678,7 +2762,7 @@ async function listRoomThread(request: Request, env: HidnWorkerEnv): Promise<Res
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
      WHERE t.thread_id = ? AND t.room_id = ? AND t.moderation_state = 'visible'
-     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
      LIMIT 1`,
   )
     .bind(user.userId, threadId, MAIN_ROOM_ID)
@@ -2721,6 +2805,9 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
   const content = typeof body.content === "string" ? body.content.trim() : "";
   const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
   const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
+  const requestedTipAddress = typeof body.tipAddress === "string"
+    ? normalizeTestnetTipAddress(body.tipAddress)
+    : undefined;
   if (!content) {
     return jsonResponse({ error: "Write something before creating the post." }, 400);
   }
@@ -2734,10 +2821,29 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
   if (!ROOM_POST_CATEGORIES.has(category)) {
     return jsonResponse({ error: "Choose a valid post category." }, 400);
   }
+  if (requestedTipAddress && !isValidTestnetTipAddress(requestedTipAddress)) {
+    return jsonResponse(
+      { error: "Use a shielded Zcash testnet address beginning with utest1 or ztestsapling1. Transparent addresses are not accepted." },
+      400,
+    );
+  }
 
   const abuseResponse = await assessRoomAbuse(request, env, user, content);
   if (abuseResponse) {
     return abuseResponse;
+  }
+
+  let tipAddress: string | null = requestedTipAddress === undefined ? null : requestedTipAddress || null;
+  if (requestedTipAddress === undefined) {
+    const tipAddressRow = await env.ROOM_DB!.prepare(
+      `SELECT tip_address
+       FROM hidn_users
+       WHERE user_id = ?
+       LIMIT 1`,
+    )
+      .bind(user.userId)
+      .first<{ tip_address: string | null }>();
+    tipAddress = tipAddressRow?.tip_address ?? null;
   }
 
   const post: RoomPostRow = {
@@ -2746,12 +2852,13 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
     category,
     channel,
     created_at: new Date().toISOString(),
+    tip_address: tipAddress,
   };
   await env.ROOM_DB!.prepare(
     `INSERT INTO hidn_threads
       (thread_id, room_id, content, category, moderation_state, created_at,
-       updated_at, hidden_at, channel, author_user_id)
-     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, ?)`,
+       updated_at, hidden_at, channel, author_user_id, tip_address)
+     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, ?, ?)`,
   )
     .bind(
       post.thread_id,
@@ -2762,6 +2869,7 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
       post.created_at,
       post.channel,
       user.userId,
+      post.tip_address,
     )
     .run();
 
@@ -4388,6 +4496,20 @@ const worker = {
         return await getAccountSession(request, env);
       } catch {
         return jsonResponse({ error: "Account session could not be read." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/account/tip-address") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return request.method === "GET"
+          ? await getAccountTipAddress(request, env)
+          : await saveAccountTipAddress(request, env);
+      } catch {
+        return jsonResponse({ error: "The testnet tip address could not be saved." }, 500);
       }
     }
 
