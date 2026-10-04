@@ -2121,9 +2121,9 @@ async function createThreadImage(
   );
   const identityBlockY = Math.min(650, Math.max(600, 205 + messageBlockHeight + 80));
   const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  background.addColorStop(0, "#020604");
-  background.addColorStop(0.46, "#06110b");
-  background.addColorStop(1, "#010302");
+  background.addColorStop(0, "#031009");
+  background.addColorStop(0.46, "#06150c");
+  background.addColorStop(1, "#020704");
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -2133,14 +2133,14 @@ async function createThreadImage(
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.13)";
+  ctx.fillStyle = "rgba(40, 94, 61, 0.16)";
   for (let y = 0; y < canvas.height; y += 8) {
     ctx.fillRect(0, y, canvas.width, 1);
   }
 
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.04)";
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.07)";
   ctx.lineWidth = 1;
-  for (let x = frameX; x <= canvas.width - frameX; x += 160) {
+  for (let x = 0; x <= canvas.width; x += 336) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, canvas.height);
@@ -2148,7 +2148,7 @@ async function createThreadImage(
   }
 
   drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 0);
-  ctx.fillStyle = "rgba(2, 9, 5, 0.76)";
+  ctx.fillStyle = "rgba(7, 23, 13, 0.54)";
   ctx.fill();
   ctx.strokeStyle = "rgba(93, 255, 143, 0.36)";
   ctx.lineWidth = 2;
