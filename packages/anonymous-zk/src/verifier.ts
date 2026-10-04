@@ -45,16 +45,15 @@ async function loadGroth16Runtime(): Promise<Groth16Runtime> {
   const urlConstructor = globalThis.URL as typeof URL & {
     createObjectURL?: (object: Blob) => string;
   };
-  if (typeof urlConstructor.createObjectURL !== "function") {
-    try {
-      Object.defineProperty(urlConstructor, "createObjectURL", {
-        configurable: true,
-        value: () => "data:application/javascript,",
-      });
-    } catch {
-      // A future runtime may expose a non-configurable URL object. The import
-      // below will still be attempted and the caller will safely reject.
-    }
+  try {
+    Object.defineProperty(urlConstructor, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: () => "data:application/javascript,",
+    });
+  } catch {
+    // A future runtime may expose a non-configurable URL object. The import
+    // below will still be attempted and the caller will safely reject.
   }
 
   const runtime = await import("snarkjs");
@@ -65,13 +64,35 @@ export async function verifyAnonymousGroth16Proof(
   verificationKey: unknown,
   publicSignals: string[],
   proof: unknown,
+  precompiledModule?: WebAssembly.Module,
 ): Promise<boolean> {
+  let restoreCompile: (() => void) | undefined;
   try {
+    if (precompiledModule) {
+      const webAssembly = globalThis.WebAssembly as unknown as {
+        compile: (bytes: BufferSource) => Promise<WebAssembly.Module>;
+      };
+      const originalCompile = webAssembly.compile;
+      Object.defineProperty(webAssembly, "compile", {
+        configurable: true,
+        writable: true,
+        value: async (_bytes: BufferSource) => precompiledModule,
+      });
+      restoreCompile = () => {
+        Object.defineProperty(webAssembly, "compile", {
+          configurable: true,
+          writable: true,
+          value: originalCompile,
+        });
+      };
+    }
     const groth16 = await loadGroth16Runtime();
     return await groth16.verify(verificationKey, publicSignals, proof);
   } catch (error) {
     const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     console.error(`ANONYMOUS_ZK_VERIFY_FAILED / ${message.slice(0, 240)}`);
     return false;
+  } finally {
+    restoreCompile?.();
   }
 }

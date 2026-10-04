@@ -22,6 +22,7 @@ import {
 import {
   EXPLORE_METADATA,
   HOME_METADATA,
+  PUBLIC_SITE_ORIGIN,
   ROOM_METADATA,
   webPageStructuredData,
   type HidnMetadata,
@@ -471,6 +472,7 @@ function mockConfessionFromRoomPost(post: RoomPost): MockConfession {
     reference: post.reference,
     text: post.text,
     category: isMockCategory(post.category) ? post.category : "IDENTITY",
+    channel: post.channel,
     relativeTime: formatTransmissionTime(post.time),
     reactions: post.reactions,
     time: post.time,
@@ -1918,62 +1920,61 @@ async function createThreadImage(
   cardType: ShareCardType = "THREAD",
   suppliedReplies?: AnonymousReply[],
 ): Promise<Blob> {
-  const compactCard = cardType === "TEXT" || cardType === "REPLY";
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
-  canvas.height = compactCard ? 1000 : 1500;
+  canvas.height = 1500;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Canvas rendering is unavailable.");
   }
 
+  const channelKey = typeof confession.channel === "string" ? confession.channel.toLowerCase() : "";
+  const channel = roomChannelOptions.find((option) => option.key === channelKey);
+  const roomPath = channel ? `/room/channel/${channel.key}` : "/room";
+  const roomLabel = channel?.label ?? "THE ROOM";
+  const roomEntryLabel = channel ? `${channel.label} ROOM` : "THE ROOM";
+  const roomUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}${roomPath}`;
+  const messageItems = focusReply
+    ? [confession.text, focusReply.reply.text]
+    : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
+  const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
+  const messageCount = Math.max(visibleMessageItems.length, 1);
+
   const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  background.addColorStop(0, "#030806");
-  background.addColorStop(0.45, "#07140d");
+  background.addColorStop(0, "#020604");
+  background.addColorStop(0.46, "#06110b");
   background.addColorStop(1, "#010302");
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const glow = ctx.createRadialGradient(900, 220, 20, 900, 220, 720);
-  glow.addColorStop(0, "rgba(93, 255, 143, 0.17)");
+  const glow = ctx.createRadialGradient(980, 160, 20, 980, 160, 720);
+  glow.addColorStop(0, "rgba(93, 255, 143, 0.12)");
   glow.addColorStop(1, "rgba(93, 255, 143, 0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.08)";
-  ctx.lineWidth = 1;
-  for (let x = 48; x < canvas.width; x += 48) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-  for (let y = 48; y < canvas.height; y += 48) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
-  ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
-  for (let y = 0; y < canvas.height; y += 6) {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.13)";
+  for (let y = 0; y < canvas.height; y += 8) {
     ctx.fillRect(0, y, canvas.width, 1);
   }
 
-  drawCanvasRoundedRect(ctx, 34, 34, canvas.width - 68, canvas.height - 68, 34);
-  ctx.fillStyle = "rgba(3, 10, 6, 0.88)";
+  const frameX = 48;
+  const frameY = 48;
+  const frameWidth = canvas.width - frameX * 2;
+  const frameHeight = canvas.height - frameY * 2;
+  drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 22);
+  ctx.fillStyle = "rgba(2, 9, 5, 0.76)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.7)";
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.48)";
+  ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(93, 255, 143, 0.08)";
-  drawCanvasRoundedRect(ctx, 35, 35, canvas.width - 70, 176, 32);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.45)";
+  const inset = 92;
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(72, 210);
-  ctx.lineTo(canvas.width - 72, 210);
+  ctx.moveTo(inset, 214);
+  ctx.lineTo(canvas.width - inset, 214);
   ctx.stroke();
 
   const logo = await new Promise<HTMLImageElement | undefined>((resolve) => {
@@ -1983,138 +1984,61 @@ async function createThreadImage(
     image.src = "/brand/hidn-symbol.png";
   });
   ctx.fillStyle = "#020504";
-  drawCanvasRoundedRect(ctx, 74, 74, 92, 92, 22);
+  drawCanvasRoundedRect(ctx, inset, 84, 58, 58, 16);
   ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.7)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.62)";
+  ctx.lineWidth = 1.5;
   ctx.stroke();
   if (logo) {
-    ctx.drawImage(logo, 84, 84, 72, 72);
+    ctx.drawImage(logo, inset + 7, 91, 44, 44);
   } else {
     ctx.fillStyle = "#5dff8f";
-    ctx.font = "700 30px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillText("H", 105, 124);
+    ctx.font = "700 24px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillText("H", inset + 19, 122);
   }
 
-  ctx.font = "700 31px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.font = "700 27px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.fillStyle = "#5dff8f";
-  ctx.fillText("HIDN", 194, 111);
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("THE ROOM / PRIVATE SIGNALS", 194, 143);
-
-  ctx.fillStyle = "rgba(217, 245, 222, 0.75)";
-  ctx.textAlign = "right";
-  ctx.font = "600 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("NO NAME / NO PROFILE", canvas.width - 74, 91);
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 19px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`${formatTransmissionTime(confession.time)} / ${focusReply ? "REPLY" : cardType}`, canvas.width - 74, 126);
+  ctx.fillText("HIDN", inset + 78, 111);
   ctx.fillStyle = "#a1bca7";
   ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("LOCAL IMAGE / HIDN", canvas.width - 74, 158);
+  ctx.fillText("A ROOM WITHOUT NAMES", inset + 78, 139);
+
+  ctx.fillStyle = "#5dff8f";
+  ctx.textAlign = "right";
+  ctx.font = "700 17px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`PRIVATE ROOM / ${roomLabel}`, canvas.width - inset, 111);
+  ctx.fillStyle = "#789681";
+  ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("ANONYMOUS SIGNAL", canvas.width - inset, 139);
   ctx.textAlign = "left";
 
-  const allReplies = suppliedReplies ?? repliesForThread(confession.id);
-  const replyCount = allReplies.length;
-  const replies = allReplies.slice(0, 2);
-  const contentX = 82;
-  const contentWidth = canvas.width - 164;
-  let cursorY = 258;
-
-  const drawChatBubble = (label: string, text: string, accent: boolean, fontSize: number, maxLines: number): number => {
-    ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-    const lineHeight = Math.round(fontSize * 1.35);
-    const lines = wrapCanvasText(ctx, `“${text}”`, contentWidth - 64, maxLines);
-    const height = 66 + lines.length * lineHeight + 28;
-    drawCanvasRoundedRect(ctx, contentX, cursorY, contentWidth, height, 24);
-    ctx.fillStyle = accent ? "rgba(93, 255, 143, 0.13)" : "rgba(161, 188, 167, 0.07)";
-    ctx.fill();
-    ctx.strokeStyle = accent ? "rgba(93, 255, 143, 0.7)" : "rgba(161, 188, 167, 0.28)";
-    ctx.lineWidth = accent ? 3 : 2;
-    ctx.stroke();
-    ctx.fillStyle = accent ? "#5dff8f" : "#a1bca7";
-    ctx.font = "600 15px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillText(label, contentX + 32, cursorY + 34);
-    ctx.fillStyle = "#f0f4e9";
-    ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-    lines.forEach((line, index) => ctx.fillText(line, contentX + 32, cursorY + 78 + index * lineHeight));
-    cursorY += height + 22;
-    return height;
-  };
-
+  const contentX = inset;
+  const contentWidth = canvas.width - inset * 2;
+  let cursorY = 292;
   ctx.fillStyle = "#5dff8f";
   ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-  const cardHeading = focusReply
-    ? `REPLY / ${String(focusReply.index + 1).padStart(2, "0")}`
-    : cardType === "TEXT"
-      ? "SELECTED TEXT"
-      : cardType === "BATCH"
-        ? "SELECTED TEXT / BATCH"
-        : cardType === "REPLY"
-          ? "SELECTED REPLY"
-          : `THREAD / ${confession.reference.replace("// ", "")}`;
-  ctx.fillText(cardHeading, contentX, cursorY);
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "right";
-  ctx.fillText(`${confession.category} / ${replyCount} COMMENTS`, canvas.width - contentX, cursorY);
-  ctx.textAlign = "left";
-  cursorY += 30;
+  ctx.fillText("// ANONYMOUS MESSAGE", contentX, cursorY);
+  cursorY += 66;
 
-  if (focusReply) {
-    drawChatBubble("ORIGINAL SIGNAL / CONTEXT", confession.text, false, 23, 3);
-    drawChatBubble(`ANONYMOUS / REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, focusReply.reply.text, true, 42, 6);
-  } else {
-    drawChatBubble(
-      cardType === "TEXT" ? "SELECTED / EXACT TEXT" : cardType === "REPLY" ? "SELECTED / REPLY" : cardType === "BATCH" ? "SELECTED / 01" : "ANONYMOUS / ORIGINAL SIGNAL",
-      confession.text,
-      true,
-      42,
-      compactCard ? 4 : 5,
-    );
-  }
-
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`REPLIES / ${String(replyCount).padStart(2, "0")}`, contentX, cursorY);
-  cursorY += 28;
-  replies.forEach((reply, index) => {
-    if (focusReply) {
-      return;
-    }
-    drawChatBubble(cardType === "BATCH" ? `SELECTED / ${String(index + 2).padStart(2, "0")}` : `ANONYMOUS / ${String(index + 1).padStart(2, "0")}`, reply.text, false, 23, 3);
+  const maxLines = messageCount === 1 ? 9 : Math.max(2, Math.floor(10 / messageCount));
+  const fontSize = messageCount === 1 ? 58 : 44;
+  visibleMessageItems.forEach((text, index) => {
+    const normalizedText = text.replace(/\s+/g, " ").trim();
+    ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+    const lines = wrapCanvasText(ctx, `“${normalizedText}”`, contentWidth - 74, maxLines);
+    const lineHeight = Math.round(fontSize * 1.35);
+    const blockHeight = lines.length * lineHeight;
+    ctx.fillStyle = index === 0 ? "#5dff8f" : "#789681";
+    ctx.fillRect(contentX, cursorY - 10, 6, blockHeight + 18);
+    ctx.fillStyle = "#e8f0e6";
+    lines.forEach((line, lineIndex) => {
+      ctx.fillText(line, contentX + 38, cursorY + lineIndex * lineHeight);
+    });
+    cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 58 : 0);
   });
 
-  const signalY = compactCard ? Math.max(500, cursorY + 18) : 1110;
-  ctx.fillStyle = "rgba(93, 255, 143, 0.09)";
-  drawCanvasRoundedRect(ctx, contentX, signalY, contentWidth, 104, 18);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("THREAD SIGNAL", contentX + 26, signalY + 34);
-  ctx.fillStyle = "#f0f4e9";
-  ctx.font = "700 24px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(`♡ ${reactionCountForThread(confession.id, confession.reactions)}`, contentX + 26, signalY + 72);
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "right";
-  ctx.fillText(`${replyCount} COMMENTS`, canvas.width - contentX - 26, signalY + 63);
-  ctx.textAlign = "left";
-
-  const code = `${confession.id}${focusReply ? `R${focusReply.index}` : "T"}`;
-  ctx.fillStyle = "#5dff8f";
-  let barX = canvas.width - contentX - 190;
-  for (let index = 0; index < 24; index += 1) {
-    const height = 17 + (code.charCodeAt(index % code.length) % 22);
-    ctx.fillRect(barX, signalY + 127 - height, 3 + (index % 2), height);
-    barX += 7;
-  }
-
-  const footerLineY = signalY + (compactCard ? 150 : 166);
+  const footerLineY = 1194;
   ctx.strokeStyle = "rgba(93, 255, 143, 0.35)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -2122,33 +2046,19 @@ async function createThreadImage(
   ctx.lineTo(canvas.width - contentX, footerLineY);
   ctx.stroke();
   ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 26px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("PRIVATE ROOMS WITHOUT NAMES.", contentX, footerLineY + (compactCard ? 50 : 54));
+  ctx.font = "700 18px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`ENTER ${roomEntryLabel}`, contentX, footerLineY + 52);
   ctx.fillStyle = "#a1bca7";
-  ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("NO HANDLE / NO PROFILE / NO TRAIL", contentX, footerLineY + (compactCard ? 86 : 96));
+  ctx.font = "17px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(roomUrl, contentX, footerLineY + 92);
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "right";
-  ctx.fillStyle = "#5dff8f";
-  const cardFooter = focusReply
-    ? "HIDN / REPLY CARD"
-    : cardType === "TEXT"
-      ? "HIDN / TEXT CARD"
-      : cardType === "REPLY"
-        ? "HIDN / REPLY CARD"
-        : cardType === "BATCH"
-          ? "HIDN / BATCH CARD"
-          : "HIDN / THREAD CARD";
-  ctx.fillText(cardFooter, canvas.width - contentX, footerLineY + (compactCard ? 86 : 96));
+  ctx.fillText("HIDN / PRIVATE ROOM", canvas.width - contentX, footerLineY + 52);
+  ctx.fillStyle = "#789681";
+  ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("SHARE A THOUGHT WITHOUT A NAME", canvas.width - contentX, footerLineY + 92);
   ctx.textAlign = "left";
-
-  const footerDotY = footerLineY + (compactCard ? 123 : 134);
-  ctx.fillStyle = "rgba(93, 255, 143, 0.5)";
-  ctx.fillRect(contentX, footerDotY, 8, 8);
-  ctx.fillRect(contentX + 16, footerDotY, 8, 8);
-  ctx.fillRect(contentX + 32, footerDotY, 8, 8);
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "600 14px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("HIDN://THE_ROOM", contentX + 58, footerLineY + (compactCard ? 133 : 144));
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -2189,6 +2099,7 @@ function selectionConfession(item: SelectedTextItem, index: number): MockConfess
     reference: "// SELECTED",
     text: item.text,
     category: isMockCategory(item.category) ? item.category : "IDENTITY",
+    channel: activeRoomChannel,
     relativeTime: "SELECTED TEXT",
     reactions: 0,
     time: item.time || new Date().toISOString(),
@@ -3897,11 +3808,6 @@ function resetRoomRecoveryReveal(): void {
 }
 
 function openRoomRecoveryCheck(): void {
-  if (roomAnonymousIdentity && roomAccountRecoveryCode) {
-    revealRoomRecoveryKeyTemporarily();
-    return;
-  }
-
   if (!roomAccountRecoveryCode) {
     roomAccessMode = "login";
     roomLoginError = "Enter the recovery key you saved to restore it in this browser session.";
@@ -3925,11 +3831,22 @@ async function verifyRoomRecoveryCheck(root: ParentNode): Promise<void> {
     return;
   }
 
+  roomRecoveryConfirmations = [1, 2].map((index) => Boolean(root.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
+  const answers = roomRecoveryConfirmations.map((confirmed) => confirmed ? "yes" : "");
+  if (roomAnonymousIdentity) {
+    if (answers.some((answer) => !answer)) {
+      roomRecoveryRevealError = "Confirm both recovery statements before revealing the key.";
+      rerenderProductRoute();
+      return;
+    }
+
+    revealRoomRecoveryKeyTemporarily();
+    return;
+  }
+
   const usernameInput = root.querySelector<HTMLInputElement>("#room-recovery-username");
   roomRecoveryUsernameInput = usernameInput?.value ?? roomRecoveryUsernameInput;
-  roomRecoveryConfirmations = [1, 2].map((index) => Boolean(root.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
   const username = completeRoomHandle(roomRecoveryUsernameInput);
-  const answers = roomRecoveryConfirmations.map((confirmed) => confirmed ? "yes" : "");
   if (!ROOM_HANDLE_PATTERN.test(username) || username !== roomAccountUsername || answers.some((answer) => !answer)) {
     roomRecoveryRevealError = "Enter the correct handle and confirm both recovery statements.";
     rerenderProductRoute();
@@ -4546,6 +4463,31 @@ function renderRecoveryConfirmationFields(): string {
   </fieldset>`).join("");
 }
 
+function renderRecoveryRevealPrompt(className: string): string {
+  const isAnonymous = Boolean(roomAnonymousIdentity);
+  const handleField = isAnonymous ? "" : `<label class="room-access-field">
+        <span>USERNAME / HIDN PRIVATE HANDLE</span>
+        <div class="room-handle-input">
+          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
+          <input id="room-recovery-username" type="text" value="${escapeHtml(roomRecoveryUsernameInput)}" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
+        </div>
+      </label>`;
+  const label = isAnonymous ? "RECOVERY KEY / CONFIRM OWNERSHIP" : "RECOVERY KEY / CONFIRM HANDLE";
+  const note = "Confirm both statements. The recovery key will be visible for 20 seconds only.";
+
+  return `<form class="${className}" data-room-recovery-form novalidate>
+      <span class="room-access-key__label">${label}</span>
+      ${handleField}
+      ${renderRecoveryConfirmationFields()}
+      ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
+      <p class="room-payment-card__note">${note}</p>
+      <div class="room-access-actions">
+        ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
+        ${SecondaryButton({ label: roomRecoveryVerificationSubmitting ? "CHECKING CONFIRMATIONS..." : "REVEAL RECOVERY KEY →", disabled: roomRecoveryVerificationSubmitting, dataAction: "room-recovery-submit" })}
+      </div>
+    </form>`;
+}
+
 function renderRoomRecoveryPanel(): string {
   if (roomAnonymousIdentity) {
     if (roomRecoveryRevealMode === "visible") {
@@ -4554,14 +4496,18 @@ function renderRoomRecoveryPanel(): string {
         <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
           <code>${escapeHtml(roomAccountRecoveryCode)}</code>
         </button>
-        <span class="room-access-key__warning">VISIBLE FOR 20 SECONDS / HIDN CANNOT RECOVER A LOST KEY.</span>
+        <span class="room-access-key__warning">VISIBLE FOR 20 SECONDS / REPEAT THE CONFIRMATIONS TO REVEAL IT AGAIN.</span>
       </section>`;
+    }
+
+    if (roomRecoveryRevealMode === "prompt") {
+      return renderRecoveryRevealPrompt("room-login-card room-recovery-panel");
     }
 
     return `<section class="room-access-key room-recovery-panel room-recovery-panel--hidden">
       <span class="room-access-key__label">RECOVERY KEY / LOCAL ONLY</span>
       <p>This key is the only way back into this anonymous access session. It is not a username and is never sent to HIDN.</p>
-      ${SecondaryButton({ label: "SHOW KEY TEMPORARILY →", dataAction: "room-recovery-open" })}
+      ${SecondaryButton({ label: "RECOVER KEY →", dataAction: "room-recovery-open" })}
     </section>`;
   }
 
@@ -4584,29 +4530,13 @@ function renderRoomRecoveryPanel(): string {
   }
 
   if (roomRecoveryRevealMode === "prompt") {
-    return `<form class="room-login-card room-recovery-panel" data-room-recovery-form novalidate>
-      <span class="room-access-key__label">RECOVERY KEY / CONFIRM OWNERSHIP</span>
-      <label class="room-access-field">
-        <span>USERNAME / HIDN PRIVATE HANDLE</span>
-        <div class="room-handle-input">
-          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-recovery-username" type="text" value="${escapeHtml(roomRecoveryUsernameInput)}" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
-        </div>
-      </label>
-      ${renderRecoveryConfirmationFields()}
-      ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
-      <p class="room-payment-card__note">Confirm both statements. The recovery key will be visible for 20 seconds only.</p>
-      <div class="room-access-actions">
-        ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
-        ${SecondaryButton({ label: roomRecoveryVerificationSubmitting ? "CHECKING CONFIRMATIONS..." : "SHOW RECOVERY KEY →", disabled: roomRecoveryVerificationSubmitting, dataAction: "room-recovery-submit" })}
-      </div>
-    </form>`;
+    return renderRecoveryRevealPrompt("room-login-card room-recovery-panel");
   }
 
   return `<section class="room-access-key room-recovery-panel room-recovery-panel--hidden">
     <span class="room-access-key__label">RECOVERY KEY / HIDDEN</span>
-    <p>The recovery key is not displayed automatically. Confirm your HIDN handle and both recovery statements to reveal it temporarily.</p>
-    ${SecondaryButton({ label: "RECOVER KEY", dataAction: "room-recovery-open" })}
+    <p>The recovery key is not displayed automatically. Confirm both recovery statements to reveal it temporarily.</p>
+    ${SecondaryButton({ label: "RECOVER KEY →", dataAction: "room-recovery-open" })}
     <span class="room-access-key__warning">The recovery key cannot be recovered from HIDN. So keep it safely; it is your key to the private room.</span>
   </section>`;
 }
@@ -4687,39 +4617,26 @@ function renderProfileRecoveryKey(): string {
   }
 
   if (roomRecoveryRevealMode === "visible") {
+    const repeatInstruction = roomAnonymousIdentity
+      ? "VISIBLE FOR 20 SECONDS / REPEAT THE CONFIRMATIONS TO REVEAL IT AGAIN."
+      : "VISIBLE FOR 20 SECONDS / REPEAT THE HANDLE CHECK TO REVEAL IT AGAIN.";
     return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--visible" aria-labelledby="room-profile-key-title" aria-live="polite">
       <span class="room-access-key__label" id="room-profile-key-title" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
       <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
         <code>${escapeHtml(roomAccountRecoveryCode)}</code>
       </button>
-      <span class="room-access-key__warning">VISIBLE FOR 20 SECONDS / REPEAT THE HANDLE CHECK TO REVEAL IT AGAIN.</span>
+      <span class="room-access-key__warning">${repeatInstruction}</span>
     </section>`;
   }
 
   if (roomRecoveryRevealMode === "prompt") {
-    return `<form class="room-profile-card room-profile-card--key room-login-card room-recovery-panel" data-room-recovery-form aria-labelledby="room-profile-key-title" novalidate>
-      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / CONFIRM OWNERSHIP</span>
-      <label class="room-access-field">
-        <span>PRIVATE HANDLE / HIDN HANDLE</span>
-        <div class="room-handle-input">
-          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-recovery-username" type="text" value="${escapeHtml(roomRecoveryUsernameInput)}" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
-        </div>
-      </label>
-      ${renderRecoveryConfirmationFields()}
-      ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
-      <p class="room-profile-card__note">Confirm both statements. The recovery key will be visible for 20 seconds only.</p>
-      <div class="room-access-actions">
-        ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
-        ${SecondaryButton({ label: roomRecoveryVerificationSubmitting ? "CHECKING CONFIRMATIONS..." : "SHOW RECOVERY KEY →", disabled: roomRecoveryVerificationSubmitting, dataAction: "room-recovery-submit" })}
-      </div>
-    </form>`;
+    return renderRecoveryRevealPrompt("room-profile-card room-profile-card--key room-login-card room-recovery-panel");
   }
 
   return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--hidden" aria-labelledby="room-profile-key-title">
     <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / HIDDEN</span>
-    <p class="room-profile-card__note">The recovery key is hidden by default. Confirm your private handle and both recovery statements to reveal it for 20 seconds.</p>
-    ${SecondaryButton({ label: "RECOVER KEY", dataAction: "room-recovery-open" })}
+    <p class="room-profile-card__note">The recovery key is hidden by default. Confirm both recovery statements to reveal it for 20 seconds.</p>
+    ${SecondaryButton({ label: "RECOVER KEY →", dataAction: "room-recovery-open" })}
     <span class="room-access-key__warning">The recovery key cannot be recovered from HIDN. So keep it safely; it is your key to the private room.</span>
   </section>`;
 }

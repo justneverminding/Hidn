@@ -12,6 +12,7 @@ import {
   parseField,
 } from "@hidn/anonymous-zk";
 import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
+import anonymousVerifierWasm from "../../../packages/anonymous-zk/wasm/bn128.wasm";
 
 // Keep the edge verifier bundle fresh when its shared anonymous-zk runtime changes.
 
@@ -1449,7 +1450,12 @@ async function verifyAnonymousAction(
     return jsonResponse({ error: "The anonymous verification key is not valid JSON." }, 503);
   }
 
-  const valid = await verifyAnonymousGroth16Proof(verificationKey, publicSignalValues, proof);
+  const valid = await verifyAnonymousGroth16Proof(
+    verificationKey,
+    publicSignalValues,
+    proof,
+    anonymousVerifierWasm,
+  );
   if (!valid) {
     return jsonResponse({ error: "The anonymous membership proof could not be verified." }, 400);
   }

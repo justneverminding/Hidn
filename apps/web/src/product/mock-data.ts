@@ -16,6 +16,7 @@ export interface MockConfession {
   reference: string;
   text: string;
   category: MockCategory;
+  channel?: string;
   relativeTime: string;
   reactions: number;
   time: string;
