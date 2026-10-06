@@ -6536,12 +6536,21 @@
 }
 
 .room-directory__create {
+  align-items: stretch;
+  display: flex;
+  gap: 0.65rem;
   margin: 0 0 1rem;
 }
 
 .room-directory__create .ui-button {
+  flex: 1;
   justify-content: center;
   width: 100%;
+}
+
+.room-directory__create .room-refresh-button {
+  flex: 0 0 3.1rem;
+  width: 3.1rem;
 }
 
 .room-directory__list {
@@ -7866,6 +7875,54 @@
   max-width: 28ch;
 }
 
+.room-refresh-button {
+  align-items: center;
+  background: rgba(4, 16, 9, 0.72);
+  border: 1px solid var(--hidn-border);
+  color: var(--hidn-broadcast-amber);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--hidn-font-mono);
+  font-size: 1.25rem;
+  height: 3.1rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 3.1rem;
+  text-transform: uppercase;
+  transition: background-color var(--hidn-motion-fast) var(--hidn-ease), border-color var(--hidn-motion-fast) var(--hidn-ease), color var(--hidn-motion-fast) var(--hidn-ease);
+}
+
+.room-refresh-button:hover,
+.room-refresh-button:focus-visible {
+  background: rgba(93, 255, 143, 0.08);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-signal);
+  outline: none;
+}
+
+.room-refresh-button:disabled,
+.room-refresh-button[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.room-refresh-button__icon {
+  display: inline-block;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.room-refresh-button--loading .room-refresh-button__icon {
+  animation: hidn-room-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes hidn-room-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .public-page--explore .explore-layout {
   align-items: start;
   display: grid;
@@ -8184,10 +8241,21 @@
   margin-top: 0.25rem;
 }
 
-.room-mobile-index__create > .ui-button {
+.room-mobile-index__create-actions {
+  align-items: stretch;
+  display: flex;
+  gap: 0.65rem;
+}
+
+.room-mobile-index__create-actions > .ui-button {
+  flex: 1;
   justify-content: center;
   min-height: 3.1rem;
   width: 100%;
+}
+
+.room-mobile-index__create-actions .room-refresh-button {
+  flex: 0 0 3.1rem;
 }
 
 .room-mobile-index__composer {

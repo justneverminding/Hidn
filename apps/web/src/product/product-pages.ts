@@ -66,7 +66,6 @@ import {
   createRoomSession,
   enrollAnonymousMember,
   fetchAnonymousStatus,
-  fetchAccountHistory,
   fetchAccountNotifications,
   fetchAccountTipAddress,
   fetchAnonymousNotifications,
@@ -106,7 +105,6 @@ import {
   type AdminReportsResponse,
   type AdminSession,
   type AccountAccessLevel,
-  type AccountHistoryResponse,
   type AccountNotification,
   type AccountNotificationsResponse,
   type AccountResponse,
@@ -133,6 +131,13 @@ type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
+type DeviceSignalPost = RoomPost & { status: RoomComment["status"] };
+
+interface DeviceSignalHistory {
+  version: 1;
+  posts: DeviceSignalPost[];
+  comments: RoomComment[];
+}
 
 const ROOM_FREE_POST_MAX_LENGTH = 200;
 const ROOM_FREE_REPLY_MAX_LENGTH = 100;
@@ -141,6 +146,7 @@ const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ROOM_ACCOUNT_RECOVERY_KEY_STORAGE = "hidn:account:recovery-key";
 const ROOM_ANONYMOUS_SESSION_STORAGE = "hidn:anonymous:session";
 const ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE = "hidn:anonymous:tip-address";
+const ROOM_DEVICE_HISTORY_STORAGE = "hidn:signals:device-history";
 const ROOM_RECOVERY_CONFIRMATIONS = [
   "Do you understand that this is your recovery key to the private room?",
   "Do you understand that HIDN cannot recover this key if you lose it?",
@@ -184,9 +190,8 @@ let roomAnonymousWitness: AnonymousMerkleWitness | undefined;
 let roomAnonymousStatus: AnonymousStatusResponse | undefined;
 let roomAnonymousSubmitting = false;
 let roomLoginSubmitting = false;
-let roomAccountHistory: AccountHistoryResponse | undefined;
-let roomAccountHistoryRequest: Promise<void> | undefined;
-let roomAccountHistoryError = "";
+let roomDeviceHistory: DeviceSignalHistory | undefined;
+let roomDeviceHistoryScope = "";
 let roomTipAddress = "";
 let roomTipAddressDraft = "";
 let roomTipAddressLoaded = false;
@@ -228,6 +233,7 @@ let roomPosts: RoomPost[] = [];
 let roomPendingPostIds = new Set<string>();
 let roomPostsLoadedChannel: RoomChannel | undefined;
 let roomPostsRequest: Promise<void> | undefined;
+let roomRefreshSubmitting = false;
 const roomThreadDetailRequests = new Map<string, Promise<void>>();
 const roomThreadDetailLoaded = new Set<string>();
 const roomThreadDetailErrors = new Map<string, string>();
@@ -460,6 +466,103 @@ function formatNotificationDateTime(value: string): string {
 
 function formatPrivateTotal(value: number | undefined): string {
   return value === undefined ? "--" : String(value).padStart(2, "0");
+}
+
+function deviceSignalHistoryScope(): string {
+  if (roomAnonymousIdentity?.commitment) {
+    return `anonymous:${roomAnonymousIdentity.commitment}`;
+  }
+
+  if (roomAccountUsername) {
+    return `account:${roomAccountUsername.toLowerCase()}`;
+  }
+
+  return roomBackendId ? `account:${roomBackendId}` : "local";
+}
+
+function emptyDeviceSignalHistory(): DeviceSignalHistory {
+  return { version: 1, posts: [], comments: [] };
+}
+
+function loadDeviceSignalHistory(): DeviceSignalHistory {
+  const scope = deviceSignalHistoryScope();
+  if (roomDeviceHistory && roomDeviceHistoryScope === scope) {
+    return roomDeviceHistory;
+  }
+
+  const fallback = emptyDeviceSignalHistory();
+  try {
+    const stored = window.localStorage.getItem(`${ROOM_DEVICE_HISTORY_STORAGE}:${scope}`);
+    if (!stored) {
+      roomDeviceHistory = fallback;
+      roomDeviceHistoryScope = scope;
+      return fallback;
+    }
+
+    const parsed = JSON.parse(stored) as Partial<DeviceSignalHistory>;
+    const history: DeviceSignalHistory = {
+      version: 1,
+      posts: Array.isArray(parsed.posts) ? parsed.posts as DeviceSignalPost[] : [],
+      comments: Array.isArray(parsed.comments) ? parsed.comments as RoomComment[] : [],
+    };
+    roomDeviceHistory = history;
+    roomDeviceHistoryScope = scope;
+    return history;
+  } catch {
+    roomDeviceHistory = fallback;
+    roomDeviceHistoryScope = scope;
+    return fallback;
+  }
+}
+
+function saveDeviceSignalHistory(history: DeviceSignalHistory): void {
+  roomDeviceHistory = history;
+  roomDeviceHistoryScope = deviceSignalHistoryScope();
+  try {
+    window.localStorage.setItem(
+      `${ROOM_DEVICE_HISTORY_STORAGE}:${roomDeviceHistoryScope}`,
+      JSON.stringify(history),
+    );
+  } catch {
+    // The current tab still retains the history if browser storage is unavailable.
+  }
+}
+
+function rememberDeviceSignalPost(post: RoomPost): void {
+  const history = loadDeviceSignalHistory();
+  const storedPost: DeviceSignalPost = { ...post, status: "visible" };
+  saveDeviceSignalHistory({
+    ...history,
+    posts: [storedPost, ...history.posts.filter((item) => item.id !== storedPost.id)],
+  });
+}
+
+function refreshDeviceSignalPost(post: RoomPost): void {
+  const history = loadDeviceSignalHistory();
+  if (!history.posts.some((item) => item.id === post.id)) {
+    return;
+  }
+
+  saveDeviceSignalHistory({
+    ...history,
+    posts: history.posts.map((item) => item.id === post.id ? { ...item, ...post, status: item.status } : item),
+  });
+}
+
+function rememberDeviceSignalComment(comment: RoomComment): void {
+  const history = loadDeviceSignalHistory();
+  saveDeviceSignalHistory({
+    ...history,
+    comments: [comment, ...history.comments.filter((item) => item.id !== comment.id)],
+  });
+}
+
+function deviceSignalStats(history: DeviceSignalHistory): { posts: number; comments: number; likes: number } {
+  return {
+    posts: history.posts.length,
+    comments: history.comments.length,
+    likes: history.posts.reduce((total, post) => total + Math.max(0, post.reactions), 0),
+  };
 }
 
 function transmissionViewFromConfession(confession: MockConfession): TransmissionView {
@@ -2821,8 +2924,22 @@ function renderExploreTabs(): string {
   </div>`;
 }
 
-async function refreshRoomPosts(): Promise<void> {
-  if (!hasRoomSession() || roomPostsRequest || roomPostsLoadedChannel === activeRoomChannel) {
+function renderRoomRefreshControl(): string {
+  return `<button class="room-refresh-button${roomRefreshSubmitting ? " room-refresh-button--loading" : ""}" type="button" data-action="room-refresh" aria-label="Refresh room posts" title="Refresh room posts" aria-busy="${roomRefreshSubmitting}"${roomRefreshSubmitting ? " disabled" : ""}>
+    <span class="room-refresh-button__icon" aria-hidden="true">↻</span>
+  </button>`;
+}
+
+async function refreshRoomPosts(force = false): Promise<void> {
+  if (!hasRoomSession()) {
+    return;
+  }
+
+  if (roomPostsRequest) {
+    return roomPostsRequest;
+  }
+
+  if (!force && roomPostsLoadedChannel === activeRoomChannel) {
     return;
   }
 
@@ -2842,6 +2959,7 @@ async function refreshRoomPosts(): Promise<void> {
       for (const post of response.posts) {
         roomPendingPostIds.delete(post.id);
         roomLikeCounts.set(post.id, post.reactions);
+        refreshDeviceSignalPost(post);
         if (post.liked) {
           roomLikedIds.add(post.id);
         } else {
@@ -2866,6 +2984,25 @@ async function refreshRoomPosts(): Promise<void> {
   return roomPostsRequest;
 }
 
+async function refreshActiveRoom(): Promise<void> {
+  if (roomRefreshSubmitting || !hasRoomSession()) {
+    return;
+  }
+
+  roomRefreshSubmitting = true;
+  roomPostsLoadedChannel = undefined;
+  roomChannelNotice = "REFRESHING / ROOM FEED";
+  rerenderProductRoute();
+
+  try {
+    await refreshRoomPosts(true);
+    roomChannelNotice = roomPostError ? "REFRESH FAILED / TRY AGAIN" : "ROOM FEED UPDATED / JUST NOW";
+  } finally {
+    roomRefreshSubmitting = false;
+    rerenderProductRoute();
+  }
+}
+
 async function refreshRoomThread(threadId: string): Promise<void> {
   if (!hasRoomSession() || roomThreadDetailLoaded.has(threadId)) {
     return;
@@ -2888,6 +3025,7 @@ async function refreshRoomThread(threadId: string): Promise<void> {
       roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
       roomPendingPostIds.delete(response.post.id);
       roomLikeCounts.set(response.post.id, response.post.reactions);
+      refreshDeviceSignalPost(response.post);
       if (response.post.liked) {
         roomLikedIds.add(response.post.id);
       } else {
@@ -2921,30 +3059,6 @@ async function refreshRoomThread(threadId: string): Promise<void> {
 
   roomThreadDetailRequests.set(threadId, request);
   return request;
-}
-
-async function refreshAccountHistory(): Promise<void> {
-  if (!hasRoomSession() || roomAnonymousIdentity || roomAccountHistoryRequest) {
-    return;
-  }
-
-  roomAccountHistoryError = "";
-  roomAccountHistoryRequest = fetchAccountHistory()
-    .then((response) => {
-      roomAccountHistory = response;
-    })
-    .catch((error) => {
-      roomAccountHistory = undefined;
-      roomAccountHistoryError = error instanceof Error ? error.message : "Private account history could not be loaded.";
-    })
-    .finally(() => {
-      roomAccountHistoryRequest = undefined;
-      if (normalizePath(window.location.pathname) === "/room/profile") {
-        rerenderProductRoute();
-      }
-    });
-
-  return roomAccountHistoryRequest;
 }
 
 function isClientTestnetTipAddress(value: string): boolean {
@@ -3243,6 +3357,7 @@ async function submitRoomPost(): Promise<void> {
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
     roomLikeCounts.set(response.post.id, response.post.reactions);
+    rememberDeviceSignalPost(response.post);
     roomLikedIds.delete(response.post.id);
     roomPostsLoadedChannel = activeRoomChannel;
     roomPostComposerOpen = false;
@@ -3287,6 +3402,7 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
     };
     repliesForThread(threadId).push({ text: content, time: "JUST NOW" });
     roomLocalComments = [localComment, ...roomLocalComments];
+    rememberDeviceSignalComment(localComment);
     rerenderProductRoute();
     return;
   }
@@ -3311,9 +3427,7 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
       })()
       : await createRoomReply({ threadId, content, submissionId: createRoomReplySubmissionId() });
     roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
-    roomAccountHistory = roomAccountHistory
-      ? { ...roomAccountHistory, comments: [response.comment, ...roomAccountHistory.comments.filter((comment) => comment.id !== response.comment.id)] }
-      : roomAccountHistory;
+    rememberDeviceSignalComment(response.comment);
     if (response.status === "created") {
       repliesForThread(threadId).push({ text: response.comment.text, time: "JUST NOW" });
       roomPosts = roomPosts.map((post) => post.id === threadId ? { ...post, replies: post.replies + 1 } : post);
@@ -3388,7 +3502,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     </div>
     <h2>Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
-    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}</div>`}
+    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -3798,7 +3912,7 @@ function renderMobilePostSurface(): string {
           ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
         </div>
       </form>`
-    : SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" });
+    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`;
 
   return `<div class="room-mobile-index__create">
     ${content}
@@ -4383,6 +4497,7 @@ function clearRoomSession(): void {
   roomPostTipAddressEdited = false;
   roomPostError = "";
   roomPostSubmitting = false;
+  roomRefreshSubmitting = false;
   roomPosts = [];
   roomPendingPostIds.clear();
   roomPostsLoadedChannel = undefined;
@@ -4395,8 +4510,8 @@ function clearRoomSession(): void {
   roomLikedIds.clear();
   roomAccountRecoveryCode = "";
   roomAccountWasCreated = false;
-  roomAccountHistory = undefined;
-  roomAccountHistoryError = "";
+  roomDeviceHistory = undefined;
+  roomDeviceHistoryScope = "";
   roomNotifications = undefined;
   roomNotificationsRequest = undefined;
   roomNotificationsOpen = false;
@@ -4488,8 +4603,6 @@ function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind 
 
 async function registerRoomAccount(username: string): Promise<void> {
   roomAccountRecoveryCode = "";
-  roomAccountHistory = undefined;
-  roomAccountHistoryError = "";
   roomLocalComments = [];
   resetRoomRecoveryReveal();
   try {
@@ -4598,8 +4711,6 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
     roomAccountWasCreated = false;
     sessionStorage.setItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE, roomAccountRecoveryCode);
     resetRoomRecoveryReveal();
-    roomAccountHistory = undefined;
-    roomAccountHistoryError = "";
     roomLocalComments = [];
     roomPayment = undefined;
     roomVerificationRequested = false;
@@ -4983,7 +5094,7 @@ function renderProfileRecoveryKey(): string {
   </section>`;
 }
 
-function renderProfilePost(post: AccountHistoryResponse["posts"][number]): string {
+function renderProfilePost(post: DeviceSignalPost): string {
   return `<article class="room-profile-history__item">
     <header><span>${escapeHtml(post.reference)} / ${escapeHtml(post.channel.toUpperCase())}</span><time>${escapeHtml(formatTransmissionTime(post.time))}</time></header>
     <p>${escapeHtml(post.text)}</p>
@@ -5046,17 +5157,10 @@ function renderRoomProfile(): RenderedProductRoute {
   const isFull = roomAccountAccessLevel === "full";
   const isAnonymous = Boolean(roomAnonymousIdentity);
   const profileLabel = isAnonymous ? "ANONYMOUS ACCESS" : roomAccountUsername;
-  const posts = roomAccountHistory?.posts ?? [];
-  const localCommentIds = new Set(roomLocalComments.map((comment) => comment.id));
-  const comments = [
-    ...roomLocalComments,
-    ...(roomAccountHistory?.comments ?? []).filter((comment) => !localCommentIds.has(comment.id)),
-  ];
-  const profileStats = roomAccountHistory?.stats;
-  const historyLoading = !roomAccountHistory && !roomAccountHistoryError;
-  const historyError = roomAccountHistoryError
-    ? AlertMessage("PROFILE HISTORY", roomAccountHistoryError, "danger")
-    : "";
+  const deviceHistory = loadDeviceSignalHistory();
+  const posts = deviceHistory.posts;
+  const comments = deviceHistory.comments;
+  const profileStats = deviceSignalStats(deviceHistory);
 
   return {
     metadata: {
@@ -5079,7 +5183,7 @@ function renderRoomProfile(): RenderedProductRoute {
               ${TerminalLabel("PRIVATE SIGNAL / PROFILE")}
             </div>
             <h1 class="type-display-lg room-access-header__title">YOUR SIGNALS<br /><em>STAY WITH YOU.</em></h1>
-            <p class="room-access-header__copy">${isAnonymous ? "This is a private anonymous access surface. Your recovery key stays on this device and is never used as a public name." : `${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key and history stay behind this session.`}</p>
+            <p class="room-access-header__copy">${isAnonymous ? "This is a private anonymous access surface. Your recovery key stays on this device and is never used as a public name." : `${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key stays behind this session.`} Your signals are stored only in this browser and cannot move to another device.</p>
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
@@ -5089,11 +5193,11 @@ function renderRoomProfile(): RenderedProductRoute {
               </div>
               ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
             </div>
-            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 200 characters and replies allow 100; optional ZEC verification unlocks higher limits and advanced room privileges."}</p>
+            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 200 characters and replies allow 100; optional ZEC verification unlocks higher limits and advanced room privileges."} This history is saved only on this device. It is not synced, exported, or recoverable on another device.</p>
             <div class="room-profile-stats" aria-label="Private account totals">
-              <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats?.posts)}</strong></div>
-              <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats?.comments)}</strong></div>
-              <div><span>LIKES RECEIVED</span><strong>${formatPrivateTotal(profileStats?.likes)}</strong></div>
+              <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats.posts)}</strong></div>
+              <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats.comments)}</strong></div>
+              <div><span>LIKES RECEIVED</span><strong>${formatPrivateTotal(profileStats.likes)}</strong></div>
             </div>
             ${isFull ? "" : `<div class="room-profile-card__actions">
               ${SecondaryButton({ label: "VERIFY WITH ZEC →", dataAction: "room-open-verification" })}
@@ -5102,7 +5206,6 @@ function renderRoomProfile(): RenderedProductRoute {
           </section>
           ${renderProfileTipAddress()}
           ${renderProfileRecoveryKey()}
-          ${historyError}
           <div class="room-profile-history-grid">
             <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-posts-title">
               <header class="room-profile-history__header">
@@ -5110,10 +5213,10 @@ function renderRoomProfile(): RenderedProductRoute {
                   ${TerminalLabel("HISTORY / YOUR POSTS")}
                   <h2 id="room-profile-posts-title">POSTS</h2>
                 </div>
-                <span>${formatPrivateTotal(profileStats?.posts)}</span>
+                <span>${formatPrivateTotal(profileStats.posts)}</span>
               </header>
               <div class="room-profile-history__list">
-                ${posts.length ? posts.map(renderProfilePost).join("") : historyLoading ? `<p class="room-profile-history__empty">READING PRIVATE HISTORY...</p>` : `<p class="room-profile-history__empty">NO POSTS SAVED HERE YET.</p>`}
+                ${posts.length ? posts.map(renderProfilePost).join("") : `<p class="room-profile-history__empty">NO POSTS SAVED ON THIS DEVICE YET.</p>`}
               </div>
             </section>
             <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-comments-title">
@@ -5122,10 +5225,10 @@ function renderRoomProfile(): RenderedProductRoute {
                   ${TerminalLabel("HISTORY / YOUR COMMENTS")}
                   <h2 id="room-profile-comments-title">COMMENTS</h2>
                 </div>
-                <span>${formatPrivateTotal(profileStats?.comments)}</span>
+                <span>${formatPrivateTotal(profileStats.comments)}</span>
               </header>
               <div class="room-profile-history__list">
-                ${comments.length ? comments.map(renderProfileComment).join("") : historyLoading ? `<p class="room-profile-history__empty">READING PRIVATE HISTORY...</p>` : `<p class="room-profile-history__empty">NO COMMENTS SAVED HERE YET.</p>`}
+                ${comments.length ? comments.map(renderProfileComment).join("") : `<p class="room-profile-history__empty">NO COMMENTS SAVED ON THIS DEVICE YET.</p>`}
               </div>
             </section>
           </div>
@@ -6021,7 +6124,6 @@ export function bindProductRoute(root: ParentNode = document): void {
     void refreshRoomThread(notificationThreadId);
   }
   if (normalizedPath === "/room/profile" && hasRoomSession()) {
-    void refreshAccountHistory();
     void refreshRoomTipAddress();
   }
   if (isRoomPostSurface(normalizedPath) && hasRoomSession()) {
@@ -6368,6 +6470,9 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         case "room-enter":
           startRoomEntryTransition("/room", "return");
+          break;
+        case "room-refresh":
+          void refreshActiveRoom();
           break;
         case "room-profile-back":
           navigateProductRoute("/room");
