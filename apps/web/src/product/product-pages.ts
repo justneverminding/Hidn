@@ -5,6 +5,7 @@ import {
   ErrorState,
   FooterShell,
   GhostButton,
+  HidnDoorLogo,
   ManifestoStatement,
   NavigationShell,
   PrimaryButton,
@@ -169,8 +170,8 @@ interface DeviceSignalHistory {
   comments: RoomComment[];
 }
 
-const ROOM_FREE_POST_MAX_LENGTH = 200;
-const ROOM_FREE_REPLY_MAX_LENGTH = 100;
+const ROOM_FREE_POST_MAX_LENGTH = 500;
+const ROOM_FREE_REPLY_MAX_LENGTH = 500;
 const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
 const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ROOM_ACCOUNT_RECOVERY_KEY_STORAGE = "hidn:account:recovery-key";
@@ -478,19 +479,6 @@ function formatTransmissionTime(value: string): string {
     hour12: false,
     minute: "2-digit",
   }).format(date);
-}
-
-function formatShareCardTime(value: string): string {
-  if (/^\d{2}:\d{2}$/.test(value)) {
-    return value;
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function formatNotificationDateTime(value: string): string {
@@ -2392,8 +2380,6 @@ async function createThreadImage(
   ctx.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "start";
   ctx.fillText(roomLabel, contentX, metadataTextY);
-  ctx.textAlign = "right";
-  ctx.fillText(formatShareCardTime(confession.time || "PRIVATE"), contentRight, metadataTextY);
 
   ctx.fillStyle = colors.muted;
   ctx.font = "600 20px ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -2849,7 +2835,7 @@ function renderRoomMenu(): string {
     </button>
     <div class="room-menu__panel" id="room-channel-menu" hidden>
       <div class="room-menu__panel-head">
-        <span>PRIVATE ROOM / INDEX</span>
+        <span>PRIVATE ROOM</span>
         <span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>
       </div>
       <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
@@ -2895,8 +2881,8 @@ function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus 
   const normalizedPath = normalizePath(path);
 
   return `<div class="public-page__signal-bar">
-      <span class="public-page__signal-brand">HIDN</span>
-      <span class="public-page__signal-title" aria-label="HIDN ${publicWindowTitle(path)}">${normalizedPath.startsWith("/room") || normalizedPath.startsWith("/c/") ? "PRIVATE ROOM" : "HIDN"}</span>
+      <span class="public-page__signal-brand">${HidnDoorLogo({ className: "public-page__signal-logo", label: "HIDN home" })}</span>
+      ${normalizedPath.startsWith("/room") || normalizedPath.startsWith("/c/") ? "" : `<span class="public-page__signal-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN</span>`}
       <div class="public-page__signal-actions">
         ${showZcashStatus ? `<span class="public-page__signal-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
         ${renderAmbientAudioControl()}
@@ -3622,7 +3608,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
             <div class="room-directory__folder-children" id="room-folder-${folder.key}" role="group"${folder.open ? "" : " hidden"}>
               ${folder.channels
                 .map((channel, index) => `<button class="room-directory__room${activeRoomChannel === channel.key ? " room-directory__room--active" : ""}" type="button" data-room-channel="${channel.key}" aria-pressed="${activeRoomChannel === channel.key}">
-                  <span class="room-directory__room-number">${String(index + 1).padStart(2, "0")}</span>
+                  <span class="room-directory__room-number" aria-hidden="true">ᙇ</span>
                   <span class="room-directory__room-copy"><strong>${channel.label}</strong><small>${channel.description}</small></span>
                   <span class="room-directory__room-arrow" aria-hidden="true">↗</span>
                 </button>`)
@@ -4030,7 +4016,7 @@ function renderMobilePostSurface(): string {
 function renderMobileRoomIndex(): string {
   const rooms = roomChannelOptions
     .map((channel, index) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
-      <span class="room-mobile-index__number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="room-mobile-index__number" aria-hidden="true">ᙇ</span>
       <span class="room-mobile-index__copy"><strong>${escapeHtml(channel.label)}</strong><small>${escapeHtml(channel.description)}</small></span>
       <span class="room-mobile-index__arrow" aria-hidden="true">→</span>
     </button>`)
@@ -4041,7 +4027,7 @@ function renderMobileRoomIndex(): string {
     `<main id="main-content" class="public-main room-mobile-index-main">
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
-          ${TerminalLabel("PRIVATE ROOM / INDEX")}
+          ${TerminalLabel("PRIVATE ROOM")}
           <h1>CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
           <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
@@ -4914,7 +4900,6 @@ function renderRoomAccessChooser(): string {
 function renderRoomCreate(): string {
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / ANONYMOUS ACCESS")}
       <h1 class="type-display-lg room-access-header__title">KEEP YOUR<br /><em>KEY.</em></h1>
       <p class="room-access-header__copy">HIDN creates a private recovery key on this device. No username, handle, or public identity is needed.</p>
     </header>
@@ -5071,14 +5056,13 @@ function renderRoomReady(): string {
   const titleText = isNewAccount ? "SAVE YOUR KEY." : "THE ROOM IS OPEN.";
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
-    ? `${accountLabel} is ready. Save the recovery key below, then enter the room.`
+    ? "The private room is ready. Save the recovery key below, then enter the room."
     : isFull
       ? `${accountLabel} is active with full room access.`
       : `${accountLabel} is active with free room access. Enter the private room to post, reply, and keep your history.`;
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel(isFull ? "HIDN / VERIFIED ACCESS" : "HIDN / FREE ACCESS")}
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
         THE ROOM IS<br />
         <em>${escapeHtml(titleSignal)}</em>
@@ -5287,7 +5271,7 @@ function renderRoomProfile(): RenderedProductRoute {
               </div>
               ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
             </div>
-            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 200 characters and replies allow 100; optional ZEC verification unlocks higher limits and advanced room privileges."} This history is saved only on this device. It is not synced, exported, or recoverable on another device.</p>
+            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 500 characters and replies allow 500; optional ZEC verification unlocks higher limits and advanced room privileges."} This history is saved only on this device. It is not synced, exported, or recoverable on another device.</p>
             <div class="room-profile-stats" aria-label="Private account totals">
               <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats.posts)}</strong></div>
               <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats.comments)}</strong></div>
@@ -5473,7 +5457,7 @@ function renderHome(): RenderedProductRoute {
           <div class="home-room-noise" aria-hidden="true"></div>
           ${renderPointerSpotlight()}
           <div class="home-room-signal">
-              <span class="home-room-signal__brand">HIDN</span>
+              <span class="home-room-signal__brand">${HidnDoorLogo({ className: "home-room-signal__logo", label: "HIDN home" })}</span>
               <span class="home-room-signal__title">// HIDN / PRIVATE ROOM</span>
               <div class="home-room-signal__actions">
                 ${renderAmbientAudioControl()}
@@ -5485,7 +5469,7 @@ function renderHome(): RenderedProductRoute {
           </div>
           <div class="home-room-core">
             <div class="home-room-core__watcher">${renderRoomEyeWatcher()}</div>
-            <h1 id="home-room-title">WRITE<br /><em>FREELY.</em><br />STAY UNKNOWN.</h1>
+            <h1 id="home-room-title">WRITE<br /><em>FREELY.</em><br />STAY PRIVATE.</h1>
             <p class="home-room-core__copy">A private room for thoughts, confessions, and conversations without public names.</p>
             <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>

@@ -20,6 +20,43 @@
   width: auto;
 }
 
+.ui-door-logo {
+  color: currentColor;
+  display: block;
+  height: 1.55rem;
+  overflow: visible;
+  width: 4.85rem;
+}
+
+.ui-door-logo__letter {
+  fill: currentColor;
+  font-family: var(--hidn-font-display);
+  font-size: 31px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+}
+
+.ui-door-logo__door-frame {
+  fill: none;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.ui-door-logo__door-panel {
+  fill: currentColor;
+  fill-opacity: 0.16;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.ui-door-logo__door-handle {
+  fill: var(--hidn-zcash);
+  stroke: var(--hidn-zcash);
+  stroke-width: 0.6;
+}
+
 .ui-terminal-label {
   color: var(--hidn-signal);
   display: inline-flex;

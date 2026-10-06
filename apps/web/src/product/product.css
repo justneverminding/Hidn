@@ -9121,7 +9121,7 @@
   font-size: clamp(3.8rem, 8.3vw, 8.6rem);
   font-weight: 500;
   letter-spacing: -0.075em;
-  line-height: 0.8;
+  line-height: 0.9;
   text-shadow: none;
 }
 
@@ -9360,7 +9360,7 @@
 
   .public-page--home .home-room-core h1 {
     font-size: clamp(3.25rem, 16vw, 5.5rem);
-    line-height: 0.84;
+    line-height: 0.9;
   }
 
   .public-page--home .home-room-core__copy {
@@ -9407,11 +9407,18 @@
 }
 
 .public-page__signal-brand {
+  align-items: center;
   color: var(--hidn-paper);
+  display: inline-flex;
   font-family: var(--hidn-font-display);
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: -0.04em;
+}
+
+.public-page__signal-logo {
+  height: 1.45rem;
+  width: 4.55rem;
 }
 
 .public-page__signal-title {
@@ -9566,7 +9573,9 @@
 }
 
 .home-room-signal__brand {
+  align-items: center;
   color: var(--hidn-paper);
+  display: inline-flex;
   font-family: var(--hidn-font-display);
   font-size: 1.05rem;
   font-weight: 600;
@@ -9575,12 +9584,25 @@
   position: absolute;
 }
 
+.home-room-signal__logo {
+  height: 1.45rem;
+  width: 4.55rem;
+}
+
 @media (max-width: 760px) {
   .public-page__signal-bar {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    inset: 0.8rem 1rem auto;
-    row-gap: 0.45rem;
+    align-items: center;
+    display: grid;
+    gap: 0.65rem 0.8rem;
+    grid-template-areas:
+      "brand actions"
+      "menu menu";
+    grid-template-columns: minmax(0, 1fr) auto;
+    inset: 0.8rem 0.9rem auto;
+  }
+
+  .public-page__signal-brand {
+    grid-area: brand;
   }
 
   .public-page__signal-title {
@@ -9591,8 +9613,23 @@
   }
 
   .public-page__signal-actions {
-    flex-basis: 100%;
+    flex-basis: auto;
+    gap: 0.38rem;
+    grid-area: actions;
     justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .public-page__signal-meta {
+    font-size: 0.48rem;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .public-page__signal-bar > .room-menu {
+    grid-area: menu;
+    justify-self: start;
+    margin-left: 0.05rem;
   }
 
   .public-page--room-access .public-page__signal-bar {
@@ -9608,7 +9645,7 @@
   }
 
   .public-page__signal-bar + .public-main {
-    padding-top: 6.5rem;
+    padding-top: 5rem;
   }
 
   .home-room-signal {
@@ -11355,9 +11392,97 @@
   }
 
   .public-page--home .home-room-invite {
-    bottom: 1rem;
+    bottom: 4.5rem;
     left: 1rem;
+    max-height: calc(100svh - 6rem);
+    overflow-y: auto;
     right: 1rem;
     width: auto;
+  }
+}
+
+/* Keep confession actions compact while preserving a clear tap target. */
+.public-page :is(.transmission-row__actions, .thread-room__message-actions, .detail-actions) .room-message__action {
+  font-size: 0.7rem;
+  min-height: 1.82rem;
+  padding: 0.3rem 0.54rem;
+}
+
+@media (max-width: 760px) {
+  .public-page :is(.transmission-row__actions, .thread-room__message-actions, .detail-actions) .room-message__action {
+    font-size: 0.65rem;
+    min-height: 1.94rem;
+    padding: 0.3rem 0.48rem;
+  }
+}
+
+/* Keep the create-post surface balanced on desktop and single-column on mobile. */
+.public-page--explore .room-post-composer {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 14rem);
+}
+
+.public-page--explore .room-post-composer__field {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.public-page--explore .room-post-composer__note {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.62rem;
+  grid-column: 1;
+  grid-row: 2;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.public-page--explore .room-post-tips {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.public-page--explore .room-post-composer__actions {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.public-page--explore .room-post-composer__actions .ui-button {
+  font-size: 0.68rem;
+  min-height: 2.1rem;
+  padding: 0.45rem 0.7rem;
+}
+
+@media (max-width: 760px) {
+  .public-page--explore .room-post-composer {
+    gap: 0.65rem;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.72rem;
+  }
+
+  .public-page--explore .room-post-composer__field,
+  .public-page--explore .room-post-composer__note,
+  .public-page--explore .room-post-tips,
+  .public-page--explore .room-post-composer__actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .public-page--explore .room-post-composer__field textarea {
+    min-height: 8rem;
+  }
+
+  .public-page--explore .room-post-tips {
+    padding: 0.62rem 0.7rem;
+  }
+
+  .public-page--explore .room-post-composer__actions {
+    justify-content: stretch;
+  }
+
+  .public-page--explore .room-post-composer__actions .ui-button {
+    flex: 1 1 0;
+    justify-content: center;
   }
 }
