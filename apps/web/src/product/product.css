@@ -9107,3 +9107,2398 @@
     width: min(22rem, calc(100vw - 2rem));
   }
 }
+
+/* Phase 3 — editorial monochrome surface.
+   Keep the private-room behavior and terminal metadata, but let the main
+   reading surfaces feel quieter, more tactile, and easier to scan. */
+:root {
+  --hidn-ink: #080808;
+  --hidn-paper: #f5f1e8;
+  --hidn-paper-muted: #c7c1b5;
+}
+
+.public-page {
+  background:
+    radial-gradient(circle at 50% -12%, rgba(245, 241, 232, 0.055), transparent 34rem),
+    linear-gradient(180deg, #080808 0%, #0b0b0a 48%, #080808 100%);
+  color: var(--hidn-text);
+}
+
+.public-page::before {
+  background-image:
+    linear-gradient(rgba(245, 241, 232, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 241, 232, 0.028) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  opacity: 0.34;
+}
+
+.public-page :is(.ui-button, .ui-visibility-toggle, .ui-report-dialog__action) {
+  border-radius: var(--hidn-radius-md);
+  font-family: var(--hidn-font-body);
+  font-weight: 500;
+  letter-spacing: 0.055em;
+}
+
+.public-page :is(.ui-field input, .ui-field textarea, .room-access-field input) {
+  background: rgba(17, 17, 16, 0.92);
+  border-color: var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
+  color: var(--hidn-text);
+  font-family: var(--hidn-font-body);
+}
+
+.public-page :is(.ui-field input, .ui-field textarea, .room-access-field input):focus {
+  border-color: var(--hidn-border-strong);
+  box-shadow: 0 0 0 3px rgba(245, 241, 232, 0.08);
+}
+
+/* Homepage */
+.public-page--home .home-room-stage {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(245, 241, 232, 0.075), transparent 24rem),
+    linear-gradient(180deg, rgba(8, 8, 8, 0.22), rgba(8, 8, 8, 0.72)),
+    #080808;
+}
+
+.public-page--home .home-room-stage::before {
+  background-image:
+    linear-gradient(rgba(245, 241, 232, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 241, 232, 0.035) 1px, transparent 1px);
+  background-size: 3.75rem 3.75rem;
+  opacity: 0.48;
+}
+
+.public-page--home .home-room-stage::after {
+  background: radial-gradient(ellipse at center, transparent 34%, rgba(0, 0, 0, 0.7) 100%);
+  opacity: 0.72;
+}
+
+.public-page--home .home-room-window {
+  inset: 4.8rem 0 3.25rem;
+}
+
+.public-page--home .home-room-window__bar {
+  background: rgba(9, 9, 8, 0.78);
+  border-bottom: 1px solid rgba(245, 241, 232, 0.14);
+  color: var(--hidn-text-dim);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.public-page--home .home-room-window__bar::after {
+  background: rgba(245, 241, 232, 0.22);
+  left: 1rem;
+  right: 1rem;
+}
+
+.public-page--home .home-room-window__title {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page--home .home-room-window__control--minimize {
+  background: #c8a86d;
+}
+
+.public-page--home .home-room-window__control--maximize {
+  background: #91b18c;
+}
+
+.public-page--home .hidn-local-time-signal__dot {
+  background: var(--hidn-signal);
+  box-shadow: 0 0 0.35rem rgba(182, 211, 174, 0.7);
+}
+
+.public-page--home .hidn-local-time-signal__dot::after {
+  border-color: var(--hidn-signal);
+}
+
+.public-page--home .home-room-card {
+  background: rgba(20, 20, 19, 0.86);
+  border: 1px solid rgba(245, 241, 232, 0.14);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.32);
+  gap: 0.62rem;
+  mask-image: none;
+  -webkit-mask-image: none;
+  padding: 0.9rem;
+}
+
+.public-page--home .home-room-card::after {
+  background: repeating-linear-gradient(180deg, transparent 0 4px, rgba(245, 241, 232, 0.04) 4px 5px);
+  opacity: 0.22;
+}
+
+.public-page--home .home-room-card__meta,
+.public-page--home .home-room-card footer {
+  color: var(--hidn-text-dim);
+}
+
+.public-page--home .home-room-card p {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-body);
+  font-size: clamp(0.84rem, 1vw, 1rem);
+  line-height: 1.34;
+}
+
+@media (hover: hover) {
+  .public-page--home .home-room-card:hover {
+    filter: brightness(1.28) !important;
+    outline-color: rgba(245, 241, 232, 0.54);
+  }
+}
+
+.public-page--home .home-room-core {
+  max-width: 52rem;
+  padding: 4.5rem 1.5rem 3.75rem;
+}
+
+.public-page--home .home-room-core::before {
+  background: radial-gradient(ellipse at center, rgba(245, 241, 232, 0.08), transparent 68%);
+}
+
+.public-page--home .home-room-core__eyebrow {
+  color: var(--hidn-text-dim);
+}
+
+.public-page--home .home-room-core__watcher {
+  align-items: center;
+  display: flex;
+  height: 1.65rem;
+  justify-content: center;
+  margin: -0.15rem 0 1.15rem;
+  width: 6.2rem;
+}
+
+.public-page--home .home-room-core__watcher .home-room-title__watcher {
+  height: 1.65rem;
+  left: auto;
+  position: relative;
+  top: auto;
+  transform: none;
+  width: 6.2rem;
+}
+
+.public-page--home .home-room-core__watcher .home-room-invite__lens {
+  background: rgba(245, 241, 232, 0.035);
+  border-color: rgba(245, 241, 232, 0.56);
+  box-shadow: inset 0 0 0 1px rgba(245, 241, 232, 0.08);
+}
+
+.public-page--home .home-room-core__watcher .home-room-invite__eye {
+  background: var(--hidn-paper);
+  box-shadow: 0 0 0.28rem rgba(245, 241, 232, 0.64);
+}
+
+.public-page--home .home-room-core__watcher .home-room-invite__pupil {
+  border-color: var(--hidn-ink);
+}
+
+.public-page--home .home-room-core h1 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(3.8rem, 8.3vw, 8.6rem);
+  font-weight: 500;
+  letter-spacing: -0.075em;
+  line-height: 0.8;
+  text-shadow: none;
+}
+
+.public-page--home .home-room-core h1 em {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page--home .home-room-core__copy {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: clamp(0.98rem, 1.45vw, 1.2rem);
+  letter-spacing: 0;
+  line-height: 1.55;
+  margin: 1.8rem auto 1.65rem;
+  max-width: 42ch;
+  text-transform: none;
+}
+
+.public-page--home .home-room-enter {
+  background: var(--hidn-paper);
+  border: 1px solid var(--hidn-paper);
+  border-radius: var(--hidn-radius-md);
+  box-shadow: 0 1rem 2.8rem rgba(0, 0, 0, 0.34);
+  clip-path: none;
+  color: var(--hidn-ink);
+  font-family: var(--hidn-font-body);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  min-width: 15rem;
+  transition: background-color var(--hidn-motion-standard) var(--hidn-ease), color var(--hidn-motion-standard) var(--hidn-ease), transform var(--hidn-motion-standard) var(--hidn-ease);
+}
+
+.public-page--home .home-room-enter::before,
+.public-page--home .home-room-enter::after {
+  display: none;
+}
+
+.public-page--home .home-room-enter:hover,
+.public-page--home .home-room-enter:focus-visible {
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 1.2rem 3.2rem rgba(0, 0, 0, 0.48);
+  color: #000000;
+  transform: translateY(-3px);
+}
+
+.public-page--home .home-room-enter__prompt,
+.public-page--home .home-room-enter__cursor,
+.public-page--home .home-room-core__status {
+  color: #6c6961;
+}
+
+.public-page--home .home-room-core__status {
+  letter-spacing: 0.13em;
+}
+
+.public-page--home .home-room-invite {
+  background: rgba(18, 18, 17, 0.96);
+  border-color: rgba(245, 241, 232, 0.24);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.52);
+}
+
+.public-page--home .home-room-invite__eyebrow,
+.public-page--home .home-room-invite__copy {
+  color: var(--hidn-text-dim);
+}
+
+/* Access and room surfaces */
+.public-page--room .room-access-page {
+  color: var(--hidn-text);
+}
+
+.public-page--room .room-access-header__title,
+.public-page--room .room-locked-page h1,
+.public-page--room-index .room-mobile-index__header h1,
+.public-page--explore .explore-header h1 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-weight: 500;
+  letter-spacing: -0.065em;
+  text-shadow: none;
+}
+
+.public-page--room .room-access-header__title em {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page--room .room-access-header__copy,
+.public-page--room .room-access-option p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0;
+  line-height: 1.6;
+  text-transform: none;
+}
+
+.public-page--room .room-access-options {
+  gap: 1rem;
+}
+
+.public-page--room .room-access-option,
+.public-page--room .room-login-card,
+.public-page--room .room-access-key {
+  background: rgba(18, 18, 17, 0.88);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.25);
+}
+
+.public-page--room .room-access-option::after,
+.public-page--room .room-access-key::after {
+  display: none;
+}
+
+.public-page--room .room-access-option h2 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.public-page--room .room-access-option:hover {
+  border-color: var(--hidn-border-strong);
+  transform: translateY(-2px);
+}
+
+.public-page--room .room-access-threshold-scene {
+  filter: grayscale(1);
+  opacity: 0.58;
+}
+
+.public-page--room .room-access-threshold-scene__opening {
+  border-color: var(--hidn-border-strong);
+  box-shadow: 0 0 4rem rgba(245, 241, 232, 0.07), inset 0 0 2rem rgba(245, 241, 232, 0.035);
+}
+
+.public-page--explore .explore-header,
+.public-page--explore .explore-feed__heading {
+  border-color: var(--hidn-border);
+}
+
+.public-page--explore .explore-header p,
+.public-page--explore .room-directory__intro,
+.public-page--room-index .room-mobile-index__header p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0;
+  line-height: 1.6;
+  text-transform: none;
+}
+
+.public-page--explore .explore-feed,
+.public-page--explore .room-directory {
+  background: rgba(15, 15, 14, 0.72);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.24);
+  padding: clamp(1rem, 2.5vw, 1.6rem);
+}
+
+.public-page--explore .explore-feed__heading {
+  padding-bottom: 1rem;
+}
+
+.public-page--explore .explore-feed__list {
+  gap: 0.8rem;
+  padding-top: 0.8rem;
+}
+
+.public-page--explore .explore-feed__list .transmission-row {
+  background: rgba(24, 24, 23, 0.86);
+  border: 1px solid rgba(245, 241, 232, 0.1);
+  border-radius: var(--hidn-radius-md);
+  box-shadow: none;
+  padding: 1rem;
+}
+
+.public-page--explore .transmission-row__thought {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
+  font-size: clamp(1rem, 1.15vw, 1.1rem);
+  line-height: 1.48;
+}
+
+.public-page--explore .transmission-row__meta,
+.public-page--explore .transmission-row__footer {
+  color: var(--hidn-text-dim);
+}
+
+.public-page--explore .room-directory__folder-toggle,
+.public-page--explore .room-directory__room {
+  border-color: var(--hidn-border);
+  border-radius: var(--hidn-radius-sm);
+}
+
+.public-page--explore .room-directory__folder-toggle:hover,
+.public-page--explore .room-directory__room:hover,
+.public-page--explore .room-directory__room--active {
+  background: rgba(245, 241, 232, 0.07);
+  border-color: var(--hidn-border-strong);
+}
+
+.public-page--explore .public-page__window-bar {
+  background: rgba(9, 9, 8, 0.82);
+  border-bottom-color: rgba(245, 241, 232, 0.12);
+}
+
+.public-page--explore .public-page__window-bar::after {
+  background: rgba(245, 241, 232, 0.18);
+}
+
+.public-page--explore .room-locked-page h1 em {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page--explore .room-locked-page p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0;
+  line-height: 1.6;
+  text-transform: none;
+}
+
+.public-page--explore .room-locked-page > .ui-button--primary {
+  background: var(--hidn-paper);
+  border-color: var(--hidn-paper);
+  border-radius: var(--hidn-radius-md);
+  color: var(--hidn-ink);
+  font-family: var(--hidn-font-body);
+}
+
+.public-page--explore .room-locked-page > .ui-button--primary:hover,
+.public-page--explore .room-locked-page > .ui-button--primary:focus-visible {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+
+@media (max-width: 760px) {
+  .public-page--home .home-room-core {
+    padding: 3.8rem 1rem 3rem;
+  }
+
+  .public-page--home .home-room-core h1 {
+    font-size: clamp(3.25rem, 16vw, 5.5rem);
+    line-height: 0.84;
+  }
+
+  .public-page--home .home-room-core__copy {
+    font-size: 0.95rem;
+    max-width: 30ch;
+  }
+
+  .public-page--home .home-room-card {
+    min-height: 6.8rem;
+    padding: 0.72rem;
+    width: 10.5rem;
+  }
+
+  .public-page--home .home-room-card:nth-child(n + 6) {
+    display: none;
+  }
+
+  .public-page--room .room-access-options {
+    gap: 0.8rem;
+  }
+
+  .public-page--explore .explore-feed,
+  .public-page--explore .room-directory {
+    padding: 0.85rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-page--home .home-room-card,
+  .public-page--home .home-room-core__watcher .home-room-title__watcher {
+    animation: none;
+  }
+}
+
+/* Phase 4 — one editorial signal bar instead of stacked window chrome. */
+.public-page__signal-bar {
+  align-items: center;
+  display: flex;
+  gap: clamp(0.75rem, 2vw, 1.6rem);
+  inset: 1.15rem clamp(1rem, 4vw, 4rem) auto;
+  min-height: 2rem;
+  position: absolute;
+  z-index: 6;
+}
+
+.public-page__signal-brand {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+.public-page__signal-title {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.public-page__signal-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  margin-left: auto;
+}
+
+.public-page__signal-meta {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+}
+
+.public-page__signal-zcash-status {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+}
+
+.public-page__signal-zcash-status::before {
+  color: var(--hidn-signal);
+  content: "●";
+  margin-right: 0.35rem;
+}
+
+.public-page__signal-bar .home-room-audio-toggle {
+  background: transparent;
+  border-color: var(--hidn-border);
+  color: var(--hidn-text-dim);
+  min-height: 1.5rem;
+}
+
+.public-page__signal-bar .home-room-audio-toggle:hover,
+.public-page__signal-bar .home-room-audio-toggle:focus-visible,
+.public-page__signal-bar .home-room-audio-toggle[aria-pressed="true"] {
+  background: rgba(245, 241, 232, 0.07);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+}
+
+.public-page__signal-actions + .room-menu {
+  margin-left: 0;
+}
+
+.public-page__signal-bar + .public-main {
+  padding-top: clamp(5rem, 8vw, 6.5rem);
+}
+
+.room-menu__toggle {
+  background: rgba(15, 15, 14, 0.72);
+  border-color: var(--hidn-border);
+  border-radius: var(--hidn-radius-sm);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0.08em;
+}
+
+.room-menu__toggle:hover,
+.room-menu--open .room-menu__toggle {
+  background: rgba(245, 241, 232, 0.08);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+}
+
+.room-menu__panel {
+  background: rgba(18, 18, 17, 0.98);
+  border-color: var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-md);
+  box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.48);
+}
+
+.room-menu__panel nav a,
+.room-menu__leave {
+  color: var(--hidn-text-muted);
+}
+
+.room-menu__panel nav a:hover,
+.room-menu__leave:hover {
+  background: rgba(245, 241, 232, 0.07);
+  color: var(--hidn-paper);
+}
+
+.public-page--room-access .room-access-activity {
+  margin: 0 auto;
+  position: relative;
+  z-index: 3;
+}
+
+.home-room-signal {
+  align-items: center;
+  display: flex;
+  inset: 1.1rem 1.4rem auto;
+  justify-content: space-between;
+  position: absolute;
+  z-index: 6;
+}
+
+.home-room-signal__title {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.home-room-signal__actions {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+}
+
+.home-room-signal__meta {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+}
+
+.public-page--home .home-room-signal .home-room-audio-toggle {
+  background: transparent;
+  border-color: var(--hidn-border);
+  color: var(--hidn-text-dim);
+}
+
+.public-page--home .home-room-signal .home-room-audio-toggle:hover,
+.public-page--home .home-room-signal .home-room-audio-toggle:focus-visible,
+.public-page--home .home-room-signal .home-room-audio-toggle[aria-pressed="true"] {
+  background: rgba(245, 241, 232, 0.07);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+}
+
+.public-page--home .hidn-pointer-spotlight {
+  background:
+    radial-gradient(circle 8rem at var(--pointer-x) var(--pointer-y), rgba(245, 241, 232, 0.16), transparent 68%),
+    radial-gradient(circle 24rem at var(--pointer-x) var(--pointer-y), rgba(245, 241, 232, 0.07), transparent 74%);
+}
+
+.home-room-signal__brand {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+@media (max-width: 760px) {
+  .public-page__signal-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    inset: 0.8rem 1rem auto;
+    row-gap: 0.45rem;
+  }
+
+  .public-page__signal-title {
+    max-width: 9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .public-page__signal-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .public-page__signal-bar + .public-main {
+    padding-top: 6.5rem;
+  }
+
+  .home-room-signal {
+    inset: 0.8rem 0.9rem auto;
+  }
+
+  .home-room-signal__title {
+    font-size: 0.46rem;
+    max-width: 10rem;
+  }
+
+  .home-room-signal__actions {
+    gap: 0.38rem;
+  }
+}
+
+/* Phase 5 — bring live activity, room folders, and channel discovery into the
+   same editorial system as the homepage and access flow. */
+.public-page--room-access .room-access-activity {
+  background: rgba(18, 18, 17, 0.72);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.22);
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+}
+
+.public-page--room-access .room-access-main {
+  align-items: center;
+  flex-direction: column;
+}
+
+.public-page--room-access .room-access-activity {
+  flex: 0 0 auto;
+  width: min(52rem, 100%);
+}
+
+.public-page--room-access .room-access-page {
+  width: min(64rem, 100%);
+}
+
+.public-page--room-access .room-access-activity__header {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+}
+
+.public-page--room-access .room-access-activity__header > span:first-child,
+.public-page--room-access .room-access-activity__header > span:last-child {
+  color: var(--hidn-text-dim);
+}
+
+.public-page--room-access .room-access-activity__header i {
+  background: var(--hidn-signal);
+  box-shadow: 0 0 0.45rem rgba(182, 211, 174, 0.48);
+}
+
+.public-page--room-access .room-access-activity p {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.public-page--room-access .room-access-activity__actor,
+.public-page--room-access .room-access-activity__action,
+.public-page--room-access .room-access-activity__subject {
+  color: inherit;
+}
+
+.public-page--room-access .room-access-activity__actor {
+  color: var(--hidn-paper);
+  font-weight: 600;
+}
+
+.public-page--room-access .room-access-activity__action {
+  color: var(--hidn-signal);
+}
+
+.public-page--explore .room-mobile-index,
+.public-page--explore .explore-page {
+  color: var(--hidn-text);
+}
+
+.public-page--room-index .room-mobile-index__header {
+  border-color: var(--hidn-border);
+}
+
+.public-page--room-index .room-mobile-index__header h1 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-weight: 500;
+  letter-spacing: -0.065em;
+  text-shadow: none;
+}
+
+.public-page--room-index .room-mobile-index__header p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+}
+
+.public-page--room-index .room-mobile-index__status .zcash-status-carousel {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page--room-index .room-mobile-index__status .zcash-status-carousel .ui-status-dot {
+  background: var(--hidn-warning);
+}
+
+.public-page--room-index .room-mobile-index__create-actions > .ui-button {
+  background: var(--hidn-paper);
+  border-color: var(--hidn-paper);
+  color: var(--hidn-ink);
+}
+
+.public-page--room-index .room-mobile-index__create-actions > .ui-button:hover,
+.public-page--room-index .room-mobile-index__create-actions > .ui-button:focus-visible {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+
+.public-page--room-index .room-mobile-index__create-actions .room-refresh-button {
+  background: transparent;
+  border-color: var(--hidn-border);
+  color: var(--hidn-text-muted);
+}
+
+.public-page--room-index .room-mobile-index__create-actions .room-refresh-button:hover,
+.public-page--room-index .room-mobile-index__create-actions .room-refresh-button:focus-visible {
+  background: rgba(245, 241, 232, 0.07);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+}
+
+.public-page--room-index .room-mobile-index__room {
+  border-color: var(--hidn-border);
+  color: var(--hidn-text-muted);
+  min-height: 4.9rem;
+}
+
+.public-page--room-index .room-mobile-index__room:first-child {
+  border-color: var(--hidn-border);
+}
+
+.public-page--room-index .room-mobile-index__room:hover,
+.public-page--room-index .room-mobile-index__room:focus-visible {
+  background: rgba(245, 241, 232, 0.06);
+  color: var(--hidn-paper);
+}
+
+.public-page--room-index .room-mobile-index__number,
+.public-page--room-index .room-mobile-index__arrow {
+  color: var(--hidn-text-dim);
+}
+
+.public-page--room-index .room-mobile-index__copy strong {
+  color: currentColor;
+  font-family: var(--hidn-font-body);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.public-page--room-index .room-mobile-index__copy small {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-body);
+  font-size: 0.88rem;
+}
+
+.public-page--explore .room-directory {
+  background: rgba(15, 15, 14, 0.72);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.24);
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.public-page--explore .room-directory::before,
+.public-page--explore .room-directory::after,
+.public-page--explore .room-directory__header::after,
+.public-page--explore .room-directory__footer::before,
+.public-page--explore .room-directory__folder::after,
+.public-page--explore .room-directory__folder-children .room-directory__room::after {
+  background: var(--hidn-border);
+}
+
+.public-page--explore .room-directory__header,
+.public-page--explore .room-directory__list,
+.public-page--explore .room-directory__tree {
+  border-color: var(--hidn-border);
+}
+
+.public-page--explore .room-directory h2 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  text-shadow: none;
+}
+
+.public-page--explore .room-directory__count,
+.public-page--explore .room-directory__room-number,
+.public-page--explore .room-directory__room-arrow,
+.public-page--explore .room-directory__folder-caret,
+.public-page--explore .room-directory__folder-toggle small {
+  color: var(--hidn-text-dim);
+}
+
+.public-page--explore .room-directory__folder-toggle,
+.public-page--explore .room-directory__room {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0.04em;
+}
+
+.public-page--explore .room-directory__folder-toggle strong,
+.public-page--explore .room-directory__room-copy strong {
+  color: currentColor;
+  font-family: var(--hidn-font-body);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.public-page--explore .room-directory__folder-toggle:hover,
+.public-page--explore .room-directory__folder--open > .room-directory__folder-toggle,
+.public-page--explore .room-directory__room:hover,
+.public-page--explore .room-directory__room--active {
+  background: rgba(245, 241, 232, 0.06);
+  color: var(--hidn-paper);
+}
+
+.public-page--explore .room-directory__folder-icon {
+  color: var(--hidn-text-muted);
+}
+
+.public-page--explore .room-directory__folder-children {
+  border-left-color: var(--hidn-border-strong);
+}
+
+.public-page--explore .room-directory__room-copy small {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-body);
+  font-size: 0.8rem;
+}
+
+.public-page--explore .room-directory__footer > strong {
+  color: var(--hidn-text-muted);
+}
+
+.public-page--explore .room-directory__footer > p {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.public-page--explore .room-post-composer,
+.public-page--explore .room-post-tips {
+  background: rgba(18, 18, 17, 0.9);
+  border-color: var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
+}
+
+.public-page--explore .room-post-composer__field .ui-field__label {
+  color: var(--hidn-text-muted);
+}
+
+.public-page--explore .room-post-composer__field textarea {
+  background: var(--hidn-surface-inset);
+  border-color: var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
+}
+
+.public-page--explore .room-post-composer__field textarea:focus {
+  border-color: var(--hidn-border-strong);
+  box-shadow: 0 0 0 3px rgba(245, 241, 232, 0.08);
+}
+
+/* Phase 6 — recovery surfaces use the same quiet card language everywhere. */
+.public-page--room :is(.room-login-card, .room-payment-card, .room-access-key, .room-profile-card--key) {
+  background: rgba(18, 18, 17, 0.92);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.28);
+}
+
+.public-page--room :is(.room-login-card, .room-payment-card, .room-access-key, .room-profile-card--key)::after {
+  display: none;
+}
+
+.public-page--room :is(.room-login-card, .room-payment-card, .room-access-key, .room-profile-card--key) p,
+.public-page--room .room-payment-card__explainer,
+.public-page--room .room-payment-card__note,
+.public-page--room .room-profile-card__note {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.92rem;
+  letter-spacing: 0;
+  line-height: 1.62;
+  text-transform: none;
+}
+
+.public-page--room .room-access-key__label,
+.public-page--room .room-payment-card__eyebrow,
+.public-page--room .room-access-field > span,
+.public-page--room .room-recovery-question legend {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.11em;
+}
+
+.public-page--room .room-access-key__label,
+.public-page--room .room-payment-card__eyebrow {
+  display: block;
+  margin-bottom: 0.7rem;
+}
+
+.public-page--room .room-login-card {
+  padding: clamp(1.2rem, 4vw, 2rem);
+}
+
+.public-page--room .room-access-field input,
+.public-page--room .room-handle-input__prefix {
+  background: var(--hidn-surface-inset);
+  border-color: var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
+}
+
+.public-page--room .room-handle-input__prefix {
+  border-bottom-right-radius: 0;
+  border-right: 0;
+  border-top-right-radius: 0;
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page--room .room-handle-input input {
+  border-bottom-left-radius: 0;
+  border-top-left-radius: 0;
+}
+
+.public-page--room .room-access-field input:focus,
+.public-page--room .room-handle-input:focus-within .room-handle-input__prefix {
+  border-color: var(--hidn-border-strong);
+  box-shadow: 0 0 0 3px rgba(245, 241, 232, 0.08);
+  outline: none;
+}
+
+.public-page--room .room-access-key code,
+.public-page--room .room-profile-card--key .room-access-key__copy code,
+.public-page--room .room-payment-card__address {
+  background: rgba(245, 241, 232, 0.06);
+  border: 1px solid var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-md);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-mono);
+  letter-spacing: 0.09em;
+  padding: 0.95rem;
+}
+
+.public-page--room .room-access-key__copy:hover code,
+.public-page--room .room-access-key__copy:focus-visible code {
+  border-color: var(--hidn-paper-muted);
+  box-shadow: 0 0 1.2rem rgba(245, 241, 232, 0.1);
+}
+
+.public-page--room .room-access-key__copy[data-state="copied"] code {
+  border-color: var(--hidn-signal);
+  color: var(--hidn-signal);
+}
+
+.public-page--room .room-access-key__copy[data-state="failed"] code {
+  border-color: var(--hidn-danger);
+  color: var(--hidn-danger);
+}
+
+.public-page--room .room-access-key__warning {
+  color: var(--hidn-warning);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.09em;
+  line-height: 1.6;
+}
+
+.public-page--room .room-recovery-panel--hidden {
+  gap: 0.9rem;
+  padding: clamp(1.2rem, 3vw, 1.7rem);
+}
+
+.public-page--room .room-recovery-question {
+  background: rgba(245, 241, 232, 0.025);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
+  gap: 0.8rem;
+  padding: 1rem;
+}
+
+.public-page--room .room-recovery-question__prompt {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.92rem;
+  letter-spacing: 0;
+  line-height: 1.55;
+  text-transform: none;
+}
+
+.public-page--room .room-recovery-confirmation {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.public-page--room .room-recovery-confirmation:has(input:checked) {
+  color: var(--hidn-paper);
+}
+
+.public-page--room .room-recovery-confirmation input {
+  accent-color: var(--hidn-paper-muted);
+}
+
+.public-page--room .room-payment-card h2,
+.public-page--room .room-profile-card--key h2 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.public-page--room .room-payment-card__status {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page--room .room-payment-card__status span {
+  background: var(--hidn-signal);
+  box-shadow: 0 0 0.45rem rgba(182, 211, 174, 0.6);
+}
+
+.public-page--room .room-payment-card__details {
+  border-color: var(--hidn-border);
+}
+
+.public-page--room .room-payment-card__details strong {
+  color: var(--hidn-paper);
+}
+
+.public-page--room .room-payment-card__memo {
+  border-left-color: var(--hidn-warning);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.84rem;
+  letter-spacing: 0;
+}
+
+.public-page--room .room-payment-card__memo strong {
+  color: var(--hidn-warning);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+}
+
+.public-page--room .room-payment-card__memo code {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-mono);
+}
+
+@media (max-width: 760px) {
+  .public-page--room :is(.room-login-card, .room-payment-card, .room-access-key, .room-profile-card--key) {
+    border-radius: var(--hidn-radius-md);
+    padding: 1rem;
+  }
+
+  .public-page--room .room-payment-card__header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .public-page--room .room-access-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .public-page--room .room-access-actions .ui-button {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* Phase 7 — interaction surfaces and share language.
+   Keep metadata machine-like, but make every action surface feel like the
+   same quiet editorial product instead of a second terminal UI. */
+.public-page :is(.ui-button, .room-message__action, .room-refresh-button, .room-notifications__toggle, .room-menu__toggle, .hidn-report-dialog__close, .hidn-selection-tools__close) {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--hidn-motion-standard) var(--hidn-ease),
+    border-color var(--hidn-motion-standard) var(--hidn-ease),
+    color var(--hidn-motion-standard) var(--hidn-ease),
+    box-shadow var(--hidn-motion-standard) var(--hidn-ease),
+    transform var(--hidn-motion-standard) var(--hidn-ease);
+}
+
+.public-page .ui-button {
+  border: 1px solid var(--hidn-border-strong);
+  min-height: 2.55rem;
+  padding: 0.7rem 1rem;
+}
+
+.public-page .ui-button--primary {
+  background: var(--hidn-paper);
+  border-color: var(--hidn-paper);
+  color: var(--hidn-ink);
+}
+
+.public-page .ui-button--primary:hover,
+.public-page .ui-button--primary:focus-visible {
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 0.7rem 1.6rem rgba(0, 0, 0, 0.25);
+  color: #000000;
+  transform: translateY(-1px);
+}
+
+.public-page .ui-button--secondary,
+.public-page .ui-button--ghost {
+  background: rgba(245, 241, 232, 0.035);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper-muted);
+}
+
+.public-page .ui-button--secondary:hover,
+.public-page .ui-button--secondary:focus-visible,
+.public-page .ui-button--ghost:hover,
+.public-page .ui-button--ghost:focus-visible {
+  background: rgba(245, 241, 232, 0.09);
+  border-color: var(--hidn-paper-muted);
+  color: var(--hidn-paper);
+}
+
+.public-page :is(.room-message__action, .room-refresh-button, .room-notifications__toggle, .room-menu__toggle) {
+  align-items: center;
+  background: rgba(245, 241, 232, 0.025);
+  border: 1px solid var(--hidn-border);
+  border-radius: 999px;
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.68rem;
+  font-weight: 500;
+  gap: 0.4rem;
+  letter-spacing: 0.045em;
+  min-height: 2.15rem;
+  padding: 0.45rem 0.78rem;
+  text-transform: none;
+}
+
+.public-page :is(.room-message__action, .room-refresh-button, .room-notifications__toggle, .room-menu__toggle):hover,
+.public-page :is(.room-message__action, .room-refresh-button, .room-notifications__toggle, .room-menu__toggle):focus-visible,
+.public-page .room-message__action[aria-pressed="true"] {
+  background: rgba(245, 241, 232, 0.1);
+  border-color: var(--hidn-paper-muted);
+  color: var(--hidn-paper);
+  outline: none;
+}
+
+.public-page :is(.room-refresh-button, .room-notifications__toggle, .room-menu__toggle) svg,
+.public-page .room-notifications__bell-icon {
+  color: currentColor;
+  stroke: currentColor;
+}
+
+.public-page .thread-share-status,
+.public-page .room-notifications__meta,
+.public-page .room-notifications__empty,
+.public-page .room-post-composer__status,
+.public-page .room-post-composer__limit,
+.public-page .room-profile-card__meta,
+.public-page .room-profile-card__hint {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.57rem;
+  letter-spacing: 0.08em;
+  line-height: 1.55;
+}
+
+.public-page :is(.transmission-row__meta, .transmission-row__footer, .detail-header__meta, .detail-meta-grid span, .home-room-card__meta, .home-room-card footer, .thread-room__message header, .thread-room__composer-footer > span, .thread-room__note) {
+  font-family: var(--hidn-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-page :is(.transmission-row__thought, .thread-room__message p, .thread-room__quote, .detail-header__copy, .room-directory__intro, .room-access-header__copy, .room-access-option p, .room-payment-card__memo) {
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.public-page .transmission-row__thought {
+  color: var(--hidn-paper);
+  font-size: clamp(1rem, 1.35vw, 1.15rem);
+  line-height: 1.55;
+}
+
+.public-page .transmission-row__meta {
+  color: var(--hidn-text-dim);
+  font-size: 0.59rem;
+}
+
+.public-page .transmission-row__meta span {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page .transmission-row__meta time {
+  color: var(--hidn-text-dim);
+}
+
+.public-page .transmission-row__category {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.57rem;
+  letter-spacing: 0.08em;
+}
+
+.public-page .transmission-row__view {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+}
+
+.public-page .transmission-row__view:hover,
+.public-page .transmission-row__view:focus-visible {
+  color: var(--hidn-paper);
+}
+
+.public-page .home-room-card {
+  background: rgba(22, 22, 21, 0.9);
+  border-color: rgba(245, 241, 232, 0.18);
+  box-shadow: 0 1.2rem 2.5rem rgba(0, 0, 0, 0.22);
+  color: var(--hidn-paper);
+}
+
+.public-page .home-room-card p {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
+  letter-spacing: -0.01em;
+}
+
+.public-page .home-room-card__meta,
+.public-page .home-room-card footer {
+  color: var(--hidn-text-dim);
+  font-size: 0.52rem;
+}
+
+.public-page .hidn-report-dialog__close,
+.public-page .hidn-selection-tools__close {
+  border: 1px solid var(--hidn-border);
+  border-radius: 999px;
+  color: var(--hidn-text-muted);
+}
+
+.public-page :is(.hidn-report-dialog__close, .hidn-selection-tools__close):hover,
+.public-page :is(.hidn-report-dialog__close, .hidn-selection-tools__close):focus-visible {
+  background: rgba(245, 241, 232, 0.08);
+  border-color: var(--hidn-paper-muted);
+  color: var(--hidn-paper);
+  outline: none;
+}
+
+.public-page :is(.ui-terminal-label, .detail-header__meta span, .thread-room__header h2, .room-directory__folder-label, .room-directory__room-name, .room-mobile-index__header h1) {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page .ui-terminal-label {
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page .thread-room__signal,
+.public-page .thread-room__signal i,
+.public-page .room-menu__signal,
+.public-page .room-menu__signal i {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page .thread-room__signal i,
+.public-page .room-menu__signal i {
+  background: var(--hidn-paper-muted);
+  box-shadow: 0 0 0.45rem rgba(245, 241, 232, 0.45);
+}
+
+.public-page .room-directory-title__watcher {
+  animation: hidn-room-eye-editorial 5.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 0.16em rgba(245, 241, 232, 0.28));
+}
+
+.public-page .room-directory-title__watcher .home-room-invite__lens {
+  background: rgba(245, 241, 232, 0.035);
+  border-color: rgba(245, 241, 232, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(245, 241, 232, 0.08);
+}
+
+.public-page .room-directory-title__watcher .home-room-invite__eye {
+  background: var(--hidn-paper);
+  box-shadow: 0 0 0.2em rgba(245, 241, 232, 0.34);
+}
+
+.public-page .room-directory-title__watcher .home-room-invite__pupil {
+  border-color: var(--hidn-ink);
+}
+
+@keyframes hidn-room-eye-editorial {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0.16em rgba(245, 241, 232, 0.24));
+    transform: translate(-50%, -50%);
+  }
+
+  48% {
+    filter: drop-shadow(0 0 0.28em rgba(245, 241, 232, 0.42));
+    transform: translate(-50%, calc(-50% - 0.03em));
+  }
+}
+
+/* Final interaction pass — one editorial signal language across entry, room controls, audio, and sharing. */
+.public-page {
+  --hidn-bg: #080808;
+  --hidn-surface: #121211;
+  --hidn-surface-raised: #181817;
+  --hidn-surface-inset: #0f0f0e;
+  --hidn-text: #f5f1e8;
+  --hidn-text-muted: #b8b2a8;
+  --hidn-text-dim: #817b72;
+  --hidn-bone: #f5f1e8;
+  --hidn-signal: #f5f1e8;
+  --hidn-signal-soft: #c6c0b6;
+  --hidn-zcash: #d7d1c6;
+  --hidn-warning: #b7afa2;
+  --hidn-border: rgba(245, 241, 232, 0.14);
+  --hidn-border-strong: rgba(245, 241, 232, 0.3);
+  --hidn-focus: #ffffff;
+  --hidn-broadcast-black: #080808;
+  --hidn-broadcast-panel: rgba(18, 18, 17, 0.86);
+  --hidn-broadcast-amber: #aaa49b;
+  background-color: var(--hidn-bg);
+  background-image:
+    linear-gradient(rgba(245, 241, 232, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 241, 232, 0.018) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 38%, rgba(245, 241, 232, 0.045), transparent 46%),
+    radial-gradient(ellipse at center, transparent 34%, rgba(0, 0, 0, 0.62) 100%);
+  background-size: 100% 4px, 4rem 100%, 100% 100%, 100% 100%;
+}
+
+.public-page::before {
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.56) 100%);
+}
+
+.public-page .ui-nav-shell,
+.public-page .ui-footer-shell {
+  background: rgba(8, 8, 8, 0.88);
+  box-shadow: inset 0 -1px 0 rgba(245, 241, 232, 0.06), 0 1rem 3rem rgba(0, 0, 0, 0.22);
+}
+
+.public-page .ui-nav-shell::before,
+.public-page .ui-footer-shell::before,
+.public-page .public-main::before,
+.public-page--explore .room-directory::before,
+.public-page--explore .room-directory::after,
+.public-page--explore .room-directory__header::after,
+.public-page--explore .room-directory__footer::before,
+.public-page--explore .room-directory__folder::after,
+.public-page--explore .room-directory__folder-children .room-directory__room::after {
+  background: var(--hidn-border);
+}
+
+.public-page--home .home-conversation-stage {
+  background:
+    linear-gradient(90deg, rgba(8, 8, 8, 0.3), transparent 16%, transparent 84%, rgba(8, 8, 8, 0.3)),
+    linear-gradient(rgba(245, 241, 232, 0.016) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 4px;
+}
+
+.public-page--home .home-stream,
+.public-page--explore .explore-feed,
+.public-page--explore .room-directory {
+  background-color: rgba(18, 18, 17, 0.74);
+}
+
+.public-page .thread-room,
+.public-page .room-directory {
+  background:
+    linear-gradient(rgba(245, 241, 232, 0.016) 1px, transparent 1px),
+    rgba(18, 18, 17, 0.78);
+  background-size: 100% 4px;
+  box-shadow: inset 0 0 2.5rem rgba(245, 241, 232, 0.018);
+}
+
+.public-page .room-access-main {
+  background:
+    radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(245, 241, 232, 0.045), transparent 25rem),
+    #080808;
+}
+
+.public-page .room-access-main::before {
+  background:
+    linear-gradient(rgba(245, 241, 232, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 241, 232, 0.014) 1px, transparent 1px);
+}
+
+.public-page--explore .room-directory__folder-children {
+  border-left-color: var(--hidn-border-strong);
+}
+
+.public-page .room-entry-transition {
+  animation: hidn-room-entry-editorial-fade 2.3s ease both;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(245, 241, 232, 0.075), transparent 18rem),
+    repeating-linear-gradient(90deg, rgba(245, 241, 232, 0.028) 0 1px, transparent 1px 4rem),
+    repeating-linear-gradient(0deg, rgba(245, 241, 232, 0.025) 0 1px, transparent 1px 4px),
+    #080808;
+}
+
+.public-page .room-entry-transition--first {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(245, 241, 232, 0.075), transparent 18rem),
+    repeating-linear-gradient(90deg, rgba(245, 241, 232, 0.028) 0 1px, transparent 1px 4rem),
+    repeating-linear-gradient(0deg, rgba(245, 241, 232, 0.025) 0 1px, transparent 1px 4px),
+    #080808;
+}
+
+.public-page .room-entry-transition::before {
+  background: repeating-linear-gradient(180deg, transparent 0 3px, rgba(245, 241, 232, 0.035) 3px 4px);
+  mix-blend-mode: normal;
+  opacity: 0.8;
+}
+
+.public-page .room-entry-transition::after {
+  background: radial-gradient(ellipse at center, transparent 24%, rgba(0, 0, 0, 0.84) 100%);
+  box-shadow: inset 0 0 12rem rgba(0, 0, 0, 0.76);
+}
+
+.public-page .room-entry-transition__rings span {
+  animation: hidn-room-entry-editorial-ring 2.3s var(--hidn-ease-sharp) both;
+  border-color: rgba(245, 241, 232, 0.68);
+  box-shadow: 0 0 1.7rem rgba(245, 241, 232, 0.12), inset 0 0 1.7rem rgba(245, 241, 232, 0.045);
+}
+
+.public-page .room-entry-transition__loader {
+  animation: hidn-room-entry-editorial-loader-fade 2.3s ease both;
+}
+
+.public-page .room-entry-transition__loader span {
+  animation-name: hidn-room-entry-editorial-loader;
+  background: var(--hidn-paper-muted);
+  box-shadow: 0 0 0.8rem rgba(245, 241, 232, 0.18);
+}
+
+.public-page .room-entry-transition__label {
+  animation: hidn-room-entry-editorial-label 2.3s steps(2, end) both;
+  color: var(--hidn-paper);
+  text-shadow: 0 0 0.8rem rgba(245, 241, 232, 0.16);
+}
+
+.public-page .room-entry-transition__subline,
+.public-page .room-entry-transition--first .room-entry-transition__subline {
+  animation: hidn-room-entry-editorial-subline 2.3s ease both;
+  color: var(--hidn-text-muted);
+  text-shadow: 0 0 0.7rem rgba(245, 241, 232, 0.1);
+}
+
+@keyframes hidn-room-entry-editorial-fade {
+  0% {
+    opacity: 0;
+  }
+
+  14%,
+  84% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hidn-room-entry-editorial-ring {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.08) rotateX(18deg);
+  }
+
+  18% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.16) rotateX(18deg);
+  }
+}
+
+@keyframes hidn-room-entry-editorial-loader-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  14%,
+  84% {
+    opacity: 1;
+  }
+}
+
+@keyframes hidn-room-entry-editorial-loader {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scaleY(0.54);
+  }
+
+  48% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes hidn-room-entry-editorial-label {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(0.45rem);
+  }
+
+  20%,
+  82% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hidn-room-entry-editorial-subline {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+
+  26%,
+  80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.public-page :is(.room-directory__folder-toggle, .room-directory__room, .room-mobile-index__room) {
+  border-color: var(--hidn-border);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  transition: background-color var(--hidn-motion-fast) var(--hidn-ease), border-color var(--hidn-motion-fast) var(--hidn-ease), color var(--hidn-motion-fast) var(--hidn-ease), transform var(--hidn-motion-fast) var(--hidn-ease);
+}
+
+.public-page :is(.room-directory__folder-toggle, .room-directory__room, .room-mobile-index__room):hover,
+.public-page :is(.room-directory__folder-toggle, .room-directory__room, .room-mobile-index__room):focus-visible,
+.public-page .room-directory__folder--open > .room-directory__folder-toggle,
+.public-page .room-directory__room--active,
+.public-page .room-mobile-index__room[aria-current="true"] {
+  background: rgba(245, 241, 232, 0.07);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+  outline: none;
+  transform: translateX(0.12rem);
+}
+
+.public-page .room-directory__room-copy strong,
+.public-page .room-mobile-index__copy strong {
+  color: currentColor;
+  font-family: var(--hidn-font-body);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.public-page .room-directory__room-copy small,
+.public-page .room-mobile-index__copy small {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.public-page :is(.room-directory__room-number, .room-directory__room-arrow, .room-mobile-index__number, .room-mobile-index__arrow) {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle) {
+  background: rgba(245, 241, 232, 0.035);
+  border-color: var(--hidn-border);
+  border-radius: 999px;
+  color: var(--hidn-text-dim);
+  gap: 0.18rem;
+  letter-spacing: 0.05em;
+  min-height: 1.15rem;
+  padding: 0.12rem 0.3rem;
+}
+
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle)::before {
+  color: currentColor;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle) .home-room-audio-toggle__label {
+  display: none;
+}
+
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle):hover,
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle):focus-visible,
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle)[aria-pressed="true"] {
+  background: rgba(245, 241, 232, 0.08);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+  outline: none;
+}
+
+.public-page :is(.home-room-audio-toggle, .public-page__signal-bar .home-room-audio-toggle, .home-room-signal .home-room-audio-toggle)[aria-pressed="true"]::before {
+  color: var(--hidn-paper);
+}
+
+.public-page :is(.transmission-row__actions, .thread-room__message-actions, .detail-actions) .room-message__action {
+  background: rgba(245, 241, 232, 0.035);
+  border-color: var(--hidn-border);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0.03em;
+}
+
+.public-page :is(.transmission-row__actions, .thread-room__message-actions, .detail-actions) .room-message__action:hover,
+.public-page :is(.transmission-row__actions, .thread-room__message-actions, .detail-actions) .room-message__action:focus-visible {
+  background: rgba(245, 241, 232, 0.08);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+  outline: none;
+}
+
+.public-page .thread-share-status {
+  color: var(--hidn-text-dim);
+  flex-basis: 100%;
+  font-family: var(--hidn-font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  min-height: 1em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-page .room-entry-transition,
+  .public-page .room-entry-transition__rings span,
+  .public-page .room-entry-transition__loader,
+  .public-page .room-entry-transition__loader span,
+  .public-page .room-entry-transition__label,
+  .public-page .room-entry-transition__subline {
+    animation: none;
+  }
+
+  .public-page .room-entry-transition {
+    opacity: 1;
+  }
+}
+
+/* Precision typography pass — remove duplicate labels, align channel hierarchy,
+   and keep copy readable at the same rhythm on every route. */
+.public-page :is(.ui-terminal-label, .detail-header__meta, .detail-meta-grid span, .transmission-row__meta, .transmission-row__category, .room-post-composer__note, .room-post-composer__limit) {
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.public-page :is(.ui-button, .room-message__action, .room-refresh-button, .room-menu__toggle, .room-notifications__toggle, .explore-tabs__tab) {
+  white-space: nowrap;
+}
+
+.public-page :is(.room-access-header__copy, .room-access-option p, .room-payment-card__explainer, .room-payment-card__note, .room-profile-card__note, .detail-header__copy, .room-locked-page p) {
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+
+.public-page--explore .explore-feed::before {
+  content: none;
+  display: none;
+}
+
+.public-page--explore .explore-tabs {
+  align-items: end;
+  border-color: var(--hidn-border);
+  gap: clamp(0.8rem, 2.5vw, 1.8rem);
+  margin-block: 1.35rem 0.35rem;
+}
+
+.public-page--explore .explore-tabs__tab {
+  border-bottom: 2px solid transparent;
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  min-height: 2.85rem;
+  padding: 0.7rem 0.15rem 0.65rem;
+  transition: border-color var(--hidn-motion-fast) var(--hidn-ease), color var(--hidn-motion-fast) var(--hidn-ease);
+}
+
+.public-page--explore .explore-tabs__tab:hover,
+.public-page--explore .explore-tabs__tab:focus-visible,
+.public-page--explore .explore-tabs__tab[aria-selected="true"] {
+  background: transparent;
+  border-color: var(--hidn-paper);
+  color: var(--hidn-paper);
+  outline: none;
+}
+
+.public-page--room-channel .explore-page {
+  max-width: 1280px;
+  padding-block: clamp(5.5rem, 8vw, 7.25rem) clamp(3.5rem, 6vw, 5.5rem);
+}
+
+.public-page--room-channel .explore-header {
+  align-items: end;
+  column-gap: clamp(2rem, 7vw, 8rem);
+  display: grid;
+  grid-template-areas:
+    "back back"
+    "label signals"
+    "title signals"
+    "copy signals";
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, auto);
+  row-gap: 0.8rem;
+  padding-bottom: clamp(1.6rem, 3.4vw, 2.6rem);
+}
+
+.public-page--room-channel .room-channel-back {
+  grid-area: back;
+  margin-bottom: 0.45rem;
+}
+
+.public-page--room-channel .explore-header > .ui-terminal-label {
+  grid-area: label;
+}
+
+.public-page--room-channel .explore-header h1 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(2.2rem, 4.8vw, 5rem);
+  font-weight: 500;
+  grid-area: title;
+  letter-spacing: -0.065em;
+  line-height: 0.9;
+  margin: 0;
+  max-width: 18ch;
+  text-wrap: balance;
+}
+
+.public-page--room-channel .explore-header p {
+  grid-area: copy;
+  margin: 0;
+  max-width: 42ch;
+}
+
+.public-page--room-channel .room-channel-header__signals {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  grid-area: signals;
+  justify-content: flex-end;
+  padding-bottom: 0.2rem;
+}
+
+.public-page--room-channel .room-channel-header__signals .zcash-status-carousel {
+  align-items: center;
+  border: 1px solid var(--hidn-border);
+  border-radius: 999px;
+  color: var(--hidn-text-muted);
+  display: inline-flex;
+  gap: 0.45rem;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.public-page--room-channel .room-channel-header__signals .zcash-status-carousel .ui-status-dot {
+  background: var(--hidn-paper-muted);
+  box-shadow: 0 0 0.35rem rgba(245, 241, 232, 0.35);
+}
+
+.public-page--room-channel .room-channel-header__signals .room-notifications__toggle {
+  min-height: 2.35rem;
+}
+
+.public-page--room-channel .explore-layout {
+  gap: clamp(1.75rem, 5vw, 4rem);
+  padding-top: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.public-page--room-channel .explore-feed__heading {
+  display: none;
+}
+
+.public-page--room-channel .explore-tabs {
+  margin-top: 0;
+}
+
+.public-page--room-channel .explore-feed__list {
+  gap: 0.8rem;
+  padding-top: 0.8rem;
+}
+
+.public-page--room-channel .explore-feed__list .transmission-row {
+  column-gap: clamp(1rem, 2.2vw, 1.8rem);
+  padding: clamp(1.1rem, 2.2vw, 1.45rem);
+}
+
+.public-page--room-channel .transmission-row__thought {
+  font-family: var(--hidn-font-body);
+  font-size: clamp(0.98rem, 1.2vw, 1.12rem);
+  line-height: 1.58;
+  max-width: 62ch;
+}
+
+.public-page--room-channel .transmission-row__meta {
+  gap: 0.45rem;
+}
+
+.public-page--room-channel .transmission-row__meta span,
+.public-page--room-channel .transmission-row__meta time {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+}
+
+.public-page--room-channel .transmission-row__footer {
+  align-items: center;
+  gap: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .public-page--room-channel .explore-page {
+    padding-block: 4.75rem 3.25rem;
+  }
+
+  .public-page--room-channel .explore-header {
+    align-items: start;
+    column-gap: 0;
+    grid-template-areas:
+      "back"
+      "label"
+      "title"
+      "copy"
+      "signals";
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.8rem;
+  }
+
+  .public-page--room-channel .explore-header h1 {
+    font-size: clamp(2rem, 10vw, 3.5rem);
+    line-height: 0.94;
+    max-width: 15ch;
+  }
+
+  .public-page--room-channel .room-channel-header__signals {
+    justify-content: flex-start;
+    padding-bottom: 0;
+  }
+
+  .public-page--room-channel .explore-layout {
+    gap: 1.4rem;
+    padding-top: 1.4rem;
+  }
+
+  .public-page--room-channel .explore-feed {
+    border: 0;
+    padding: 0;
+  }
+
+  .public-page--room-channel .explore-feed__list .transmission-row {
+    padding: 1rem;
+  }
+
+  .public-page--room-channel .transmission-row__thought {
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+}
+
+/* Report and text-selection tools use the same compact card language. */
+.public-page .hidn-report-dialog__panel,
+.public-page .hidn-selection-tools {
+  background: #151514;
+  border: 1px solid var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.5);
+}
+
+.public-page .hidn-report-dialog__panel {
+  gap: 1.05rem;
+}
+
+.public-page .hidn-report-dialog__target {
+  background: rgba(245, 241, 232, 0.035);
+  border-left-color: var(--hidn-paper-muted);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.public-page .hidn-report-dialog__target span {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.58rem;
+}
+
+.public-page .hidn-report-dialog__note,
+.public-page .hidn-report-dialog__feedback {
+  font-family: var(--hidn-font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  line-height: 1.55;
+  text-transform: none;
+}
+
+.public-page .hidn-selection-tools {
+  padding: 0.85rem;
+}
+
+.public-page .hidn-selection-tools__header {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page .hidn-selection-tools__actions button,
+.public-page .hidn-selection-tools__batch button {
+  background: rgba(245, 241, 232, 0.04);
+  border-color: var(--hidn-border);
+  border-radius: 999px;
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  padding-inline: 0.7rem;
+  text-transform: none;
+}
+
+.public-page .hidn-selection-tools__actions button:hover,
+.public-page .hidn-selection-tools__actions button:focus-visible,
+.public-page .hidn-selection-tools__batch button:hover,
+.public-page .hidn-selection-tools__batch button:focus-visible {
+  background: var(--hidn-paper);
+  border-color: var(--hidn-paper);
+  color: var(--hidn-ink);
+  outline: none;
+}
+
+/* Homepage invitation: a small editorial nudge, not another broadcast panel. */
+.public-page--home .home-room-invite {
+  background: rgba(18, 18, 17, 0.97);
+  border: 1px solid var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.48);
+  padding: 1.15rem 1.2rem 1.2rem;
+  width: min(19rem, calc(100vw - 2rem));
+}
+
+.public-page--home .home-room-invite__watcher {
+  margin-bottom: 0.75rem;
+  transform: scale(0.78);
+  transform-origin: left center;
+}
+
+.public-page--home .home-room-invite::before {
+  background: repeating-linear-gradient(180deg, transparent 0 3px, rgba(245, 241, 232, 0.035) 3px 4px);
+}
+
+.public-page--home .home-room-invite__lens {
+  background: radial-gradient(circle at 50% 55%, rgba(245, 241, 232, 0.1), rgba(8, 8, 8, 0.94) 68%);
+  border-color: rgba(245, 241, 232, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(245, 241, 232, 0.08), 0 0 0.6rem rgba(245, 241, 232, 0.08);
+}
+
+.public-page--home .home-room-invite__eye {
+  box-shadow: 0 0 0.55rem rgba(245, 241, 232, 0.42);
+}
+
+.public-page--home .home-room-invite__pupil {
+  border-color: rgba(245, 241, 232, 0.56);
+}
+
+.public-page--home .home-room-invite__eyebrow {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.57rem;
+  letter-spacing: 0.1em;
+}
+
+.public-page--home .home-room-invite p {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(1.65rem, 4vw, 2.15rem);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 0.98;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.public-page--home .home-room-invite__copy {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  line-height: 1.5;
+  text-transform: none;
+}
+
+.public-page--home .home-room-invite__enter {
+  align-items: center;
+  background: var(--hidn-paper);
+  border: 1px solid var(--hidn-paper);
+  border-radius: 999px;
+  color: var(--hidn-ink);
+  display: inline-flex;
+  font-family: var(--hidn-font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  justify-content: center;
+  letter-spacing: 0.06em;
+  margin-top: 1rem;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.85rem;
+  text-decoration: none;
+  width: 100%;
+}
+
+.public-page--home .home-room-invite__enter:hover,
+.public-page--home .home-room-invite__enter:focus-visible {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.public-page--home .home-room-invite__close {
+  background: transparent;
+  border: 1px solid var(--hidn-border);
+  border-radius: 999px;
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-body);
+  font-size: 1.05rem;
+  height: 1.8rem;
+  min-width: 1.8rem;
+  right: 0.85rem;
+  top: 0.85rem;
+  width: 1.8rem;
+}
+
+.public-page--home .home-room-invite__close:hover,
+.public-page--home .home-room-invite__close:focus-visible {
+  background: rgba(245, 241, 232, 0.08);
+  border-color: var(--hidn-paper-muted);
+  color: var(--hidn-paper);
+  outline: none;
+}
+
+/* Information pages share the same editorial frame instead of reverting to
+   the older scanline-heavy terminal layout. */
+.public-page--placeholder .ui-nav-shell {
+  background: rgba(8, 8, 8, 0.78);
+  border-bottom: 1px solid var(--hidn-border);
+}
+
+.public-page--placeholder .ui-nav-shell::before {
+  background: linear-gradient(90deg, transparent, rgba(245, 241, 232, 0.14), transparent);
+}
+
+.public-page--placeholder .ui-nav-shell__descriptor,
+.public-page--placeholder .ui-nav-shell__status {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page--placeholder .ui-nav-shell__links a {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+}
+
+.public-page--placeholder .ui-nav-shell__links a:hover,
+.public-page--placeholder .ui-nav-shell__links a[aria-current="page"] {
+  background: rgba(245, 241, 232, 0.08);
+  color: var(--hidn-paper);
+}
+
+.public-page--placeholder .placeholder-main {
+  padding-block: clamp(2rem, 6vw, 5rem);
+}
+
+.public-page--placeholder .placeholder-page {
+  background: rgba(15, 15, 14, 0.78);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.24);
+  gap: clamp(2.5rem, 6vw, 5rem);
+  max-width: 74rem;
+  padding: clamp(1.25rem, 4vw, 3rem);
+}
+
+.public-page--placeholder .placeholder-header {
+  border-top: 0;
+  border-bottom: 1px solid var(--hidn-border);
+  padding: 0 0 clamp(1.4rem, 3vw, 2rem);
+}
+
+.public-page--placeholder .placeholder-header .ui-terminal-label {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page--placeholder .placeholder-header__title {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(3.2rem, 7vw, 7.5rem);
+  font-weight: 500;
+  letter-spacing: -0.075em;
+  line-height: 0.86;
+  max-width: 12ch;
+}
+
+.public-page--placeholder .ui-section-header__copy {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: clamp(1rem, 1.4vw, 1.18rem);
+  letter-spacing: 0;
+  line-height: 1.55;
+  max-width: 48ch;
+}
+
+.public-page--placeholder .placeholder-content {
+  align-items: start;
+  gap: clamp(2rem, 7vw, 8rem);
+}
+
+.public-page--placeholder .ui-manifesto {
+  border-left-color: var(--hidn-paper-muted);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(2rem, 4.2vw, 4rem);
+}
+
+.public-page--placeholder .placeholder-content .type-body-lg,
+.public-page--placeholder .placeholder-steps p {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 1rem;
+  letter-spacing: 0;
+  line-height: 1.7;
+}
+
+.public-page--placeholder .placeholder-steps {
+  border-color: var(--hidn-border);
+}
+
+.public-page--placeholder .placeholder-steps li {
+  border-color: var(--hidn-border);
+  padding-block: 1.15rem;
+}
+
+.public-page--placeholder .placeholder-steps li > span,
+.public-page--placeholder .placeholder-steps strong {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-mono);
+}
+
+/* Profile and history keep the same private-card proportions as the room. */
+.public-page--room-profile .room-profile-page {
+  gap: clamp(1.3rem, 3vw, 2rem);
+  width: min(100%, 68rem);
+}
+
+.public-page--room-profile .room-profile-page__header {
+  gap: 1rem;
+}
+
+.public-page--room-profile .room-profile-signal-icon {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page--room-profile .room-profile-signal-icon__wave,
+.public-page--room-profile .room-profile-signal-icon__mast,
+.public-page--room-profile .room-profile-signal-icon__mast::after {
+  border-color: currentColor;
+  background: currentColor;
+  box-shadow: none;
+}
+
+.public-page--room-profile .room-profile-card {
+  background: rgba(18, 18, 17, 0.82);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.2);
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.public-page--room-profile .room-profile-card::after {
+  background-image:
+    linear-gradient(rgba(245, 241, 232, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 241, 232, 0.022) 1px, transparent 1px);
+  background-size: 2.5rem 2.5rem;
+  opacity: 0.35;
+}
+
+.public-page--room-profile .room-profile-card__heading h2,
+.public-page--room-profile .room-profile-history__header h2 {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+
+.public-page--room-profile .room-profile-card__note {
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.9rem;
+  letter-spacing: 0;
+  line-height: 1.65;
+}
+
+.public-page--room-profile .room-profile-stats {
+  border-color: var(--hidn-border);
+}
+
+.public-page--room-profile .room-profile-stats > div {
+  border-color: var(--hidn-border);
+}
+
+.public-page--room-profile .room-profile-stats span,
+.public-page--room-profile .room-profile-history__item header,
+.public-page--room-profile .room-profile-history__item footer {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+}
+
+.public-page--room-profile .room-profile-stats strong {
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-weight: 500;
+}
+
+.public-page--room-profile .room-profile-history__header {
+  border-color: var(--hidn-border);
+}
+
+.public-page--room-profile .room-profile-history__item {
+  border-color: var(--hidn-border);
+  padding-block: 1rem;
+}
+
+.public-page--room-profile .room-profile-history__item p {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.92rem;
+  letter-spacing: 0;
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .public-page--placeholder .placeholder-page {
+    border-radius: var(--hidn-radius-md);
+    gap: 2.5rem;
+    padding: 1rem;
+  }
+
+  .public-page--placeholder .placeholder-header__title {
+    font-size: clamp(2.8rem, 14vw, 5rem);
+  }
+
+  .public-page--placeholder .placeholder-content {
+    gap: 2rem;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .public-page :is(.ui-button, .room-message__action, .room-refresh-button) {
+    min-height: 2.35rem;
+  }
+
+  .public-page .transmission-row__actions {
+    gap: 0.45rem;
+  }
+
+  .public-page .transmission-row__actions .room-message__action {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .public-page--home .home-room-invite {
+    bottom: 1rem;
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+  }
+}

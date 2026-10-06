@@ -133,6 +133,36 @@ type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 type DeviceSignalPost = RoomPost & { status: RoomComment["status"] };
 
+interface ShareCardStyle {
+  background: [string, string, string];
+  signalGlow: [string, string, string];
+  scanline: string;
+  grid: string;
+  frameFill: string;
+  border: string;
+  accent: string;
+  code: string;
+  text: string;
+  muted: string;
+  apertureFill: [string, string, string];
+  apertureGlow: string;
+}
+
+const SHARE_CARD_STYLE: ShareCardStyle = {
+  background: ["#020202", "#101010", "#030303"],
+  signalGlow: ["rgba(255, 255, 255, 0.12)", "rgba(190, 190, 190, 0.04)", "rgba(255, 255, 255, 0)"],
+  scanline: "rgba(255, 255, 255, 0.055)",
+  grid: "rgba(255, 255, 255, 0.035)",
+  frameFill: "rgba(13, 13, 13, 0.5)",
+  border: "rgba(245, 245, 240, 0.28)",
+  accent: "#f2f2ec",
+  code: "#d7d7cf",
+  text: "#f4f4ee",
+  muted: "#b8b8b0",
+  apertureFill: ["rgba(18, 18, 18, 0.9)", "rgba(9, 9, 9, 0.76)", "rgba(130, 130, 130, 0.12)"],
+  apertureGlow: "rgba(245, 245, 240, 0.16)",
+};
+
 interface DeviceSignalHistory {
   version: 1;
   posts: DeviceSignalPost[];
@@ -448,6 +478,19 @@ function formatTransmissionTime(value: string): string {
     hour12: false,
     minute: "2-digit",
   }).format(date);
+}
+
+function formatShareCardTime(value: string): string {
+  if (/^\d{2}:\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function formatNotificationDateTime(value: string): string {
@@ -2126,27 +2169,49 @@ function formatVisitorLocalTime(): string {
 
 function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
   const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
+  const expandedWords: string[] = [];
 
-  for (const word of words) {
+  // Split an unusually long word before measuring lines so a handle, URL, or
+  // unbroken sentence can never run outside the rounded card.
+  words.forEach((word) => {
+    if (ctx.measureText(word).width <= maxWidth) {
+      expandedWords.push(word);
+      return;
+    }
+
+    let chunk = "";
+    for (const character of word) {
+      const candidate = `${chunk}${character}`;
+      if (chunk && ctx.measureText(candidate).width > maxWidth) {
+        expandedWords.push(chunk);
+        chunk = character;
+      } else {
+        chunk = candidate;
+      }
+    }
+    if (chunk) {
+      expandedWords.push(chunk);
+    }
+  });
+
+  const allLines: string[] = [];
+  let current = "";
+  expandedWords.forEach((word) => {
     const candidate = current ? `${current} ${word}` : word;
     if (current && ctx.measureText(candidate).width > maxWidth) {
-      lines.push(current);
+      allLines.push(current);
       current = word;
-      if (lines.length === maxLines - 1) {
-        break;
-      }
     } else {
       current = candidate;
     }
+  });
+  if (current) {
+    allLines.push(current);
   }
 
-  if (current && lines.length < maxLines) {
-    lines.push(current);
-  }
-
-  if (lines.length === maxLines && words.length > 0) {
+  const truncated = allLines.length > maxLines;
+  const lines = allLines.slice(0, maxLines);
+  if (truncated && lines.length) {
     const lastIndex = lines.length - 1;
     let last = lines[lastIndex];
     while (ctx.measureText(`${last}…`).width > maxWidth && last.length > 1) {
@@ -2185,121 +2250,159 @@ async function createThreadImage(
   suppliedReplies?: AnonymousReply[],
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
-  // Match the supplied share-card template: 1170 × 972.
-  canvas.width = 1170;
-  canvas.height = 972;
+  // Keep the export compact enough to feel like a shareable conversation card,
+  // not a poster with a large empty tail.
+  canvas.width = 1200;
+  canvas.height = 1200;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Canvas rendering is unavailable.");
   }
 
-  const threadUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(confession.id)}`;
+  const colors = SHARE_CARD_STYLE;
+
   const messageItems = focusReply
     ? [confession.text, focusReply.reply.text]
     : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
   const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
   const messageCount = Math.max(visibleMessageItems.length, 1);
-  const frameX = 48;
-  const frameY = 53;
-  const frameWidth = canvas.width - frameX * 2;
-  const frameHeight = canvas.height - frameY - 38;
-  const contentX = 124;
-  const contentWidth = canvas.width - contentX * 2;
-  const maxLines = messageCount === 1 ? 5 : Math.max(2, Math.floor(6 / messageCount));
-  const fontSize = messageCount === 1 ? 72 : 52;
-
-  // Match the supplied editorial template: a thin frame, large serif quote,
-  // and a quiet identity block beneath it.
+  const cardX = 88;
+  const cardY = 160;
+  const cardWidth = canvas.width - cardX * 2;
+  const contentX = cardX + 68;
+  const contentRight = cardX + cardWidth - 68;
+  const contentWidth = contentRight - contentX;
+  const quoteFontSize = messageCount === 1 ? 54 : 42;
+  const maxLines = messageCount === 1 ? 8 : Math.max(2, Math.floor(9 / messageCount));
   const measuringContext = ctx;
-  measuringContext.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  measuringContext.font = "700 " + quoteFontSize + "px ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
   const messageLayouts = visibleMessageItems.map((text) => {
     const normalizedText = text.replace(/\s+/g, " ").trim();
-    const lines = wrapCanvasText(measuringContext, `“${normalizedText}”`, contentWidth - 24, maxLines);
-    const lineHeight = Math.round(fontSize * 1.18);
+    const lines = wrapCanvasText(measuringContext, "“" + normalizedText + "”", contentWidth, maxLines);
+    const lineHeight = Math.round(quoteFontSize * 1.16);
     return { lines, lineHeight, blockHeight: lines.length * lineHeight };
   });
   const messageBlockHeight = messageLayouts.reduce(
-    (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 58 : 0),
+    (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 46 : 0),
     0,
   );
-  const identityBlockY = Math.min(650, Math.max(600, 205 + messageBlockHeight + 80));
+  const quoteStartY = cardY + 150;
+  const metadataLineY = quoteStartY + messageBlockHeight + 46;
+  const metadataTextY = metadataLineY + 50;
+  const footerY = metadataTextY + 104;
+  const cardHeight = footerY - cardY + 68;
+  canvas.height = Math.max(960, cardY + cardHeight + 120);
+
   const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  background.addColorStop(0, "#031009");
-  background.addColorStop(0.46, "#06150c");
-  background.addColorStop(1, "#020704");
+  background.addColorStop(0, colors.background[0]);
+  background.addColorStop(0.48, colors.background[1]);
+  background.addColorStop(1, colors.background[2]);
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const glow = ctx.createRadialGradient(980, 150, 20, 980, 150, 720);
-  glow.addColorStop(0, "rgba(93, 255, 143, 0.12)");
-  glow.addColorStop(1, "rgba(93, 255, 143, 0)");
-  ctx.fillStyle = glow;
+  const signalGlow = ctx.createRadialGradient(930, 420, 20, 930, 420, 740);
+  signalGlow.addColorStop(0, colors.signalGlow[0]);
+  signalGlow.addColorStop(0.42, colors.signalGlow[1]);
+  signalGlow.addColorStop(1, colors.signalGlow[2]);
+  ctx.fillStyle = signalGlow;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "rgba(40, 94, 61, 0.16)";
+  ctx.fillStyle = colors.scanline;
   for (let y = 0; y < canvas.height; y += 8) {
     ctx.fillRect(0, y, canvas.width, 1);
   }
 
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.07)";
-  ctx.lineWidth = 1;
-  for (let x = 0; x <= canvas.width; x += 336) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-
-  drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 0);
-  ctx.fillStyle = "rgba(7, 23, 13, 0.54)";
+  const handleWidth = 96;
+  const handleHeight = 10;
+  drawCanvasRoundedRect(ctx, (canvas.width - handleWidth) / 2, 22, handleWidth, handleHeight, handleHeight / 2);
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = colors.muted;
   ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.36)";
-  ctx.lineWidth = 2;
+  ctx.restore();
+
+  drawCanvasRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 40);
+  const apertureFill = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY);
+  apertureFill.addColorStop(0, colors.apertureFill[0]);
+  apertureFill.addColorStop(0.72, colors.apertureFill[1]);
+  apertureFill.addColorStop(1, colors.apertureFill[2]);
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.28)";
+  ctx.shadowBlur = 42;
+  ctx.shadowOffsetY = 24;
+  ctx.fillStyle = apertureFill;
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 1;
   ctx.stroke();
 
-  ctx.strokeStyle = "#5dff8f";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(frameX, frameY + 40);
-  ctx.lineTo(frameX, frameY);
-  ctx.lineTo(frameX + 40, frameY);
-  ctx.stroke();
+  const apertureGlow = ctx.createLinearGradient(cardX + cardWidth - 300, cardY, cardX + cardWidth, cardY);
+  apertureGlow.addColorStop(0, colors.signalGlow[2]);
+  apertureGlow.addColorStop(1, colors.apertureGlow);
+  ctx.save();
+  drawCanvasRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 40);
+  ctx.clip();
+  ctx.fillStyle = apertureGlow;
+  ctx.fillRect(cardX + cardWidth - 300, cardY, 300, cardHeight);
+  ctx.restore();
 
-  let cursorY = 205;
+  ctx.save();
+  ctx.fillStyle = colors.muted;
+  ctx.globalAlpha = 0.2;
+  ctx.font = "700 320px Georgia, \"Times New Roman\", serif";
   ctx.textAlign = "start";
-  ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  ctx.fillText("“", cardX + 46, cardY + 260);
+  ctx.textAlign = "right";
+  ctx.fillText("”", cardX + cardWidth - 40, cardY + cardHeight - 48);
+  ctx.restore();
+
+  const referenceLabel = String(confession.reference ?? ("// " + confession.id)).toUpperCase();
+  ctx.fillStyle = colors.accent;
+  ctx.font = "600 22px Satoshi, ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
+  ctx.textAlign = "start";
+  ctx.fillText("HIDN / THE ROOM", contentX, cardY + 68);
+
+  ctx.fillStyle = colors.code;
+  ctx.font = "500 19px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(referenceLabel.slice(0, 26), contentRight, cardY + 68);
+
+  const roomLabel = (confession.category || "GENERAL").toUpperCase();
+
+  let cursorY = quoteStartY;
+  ctx.textAlign = "start";
+  ctx.font = "500 " + quoteFontSize + "px Satoshi, ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
   messageLayouts.forEach(({ lines, lineHeight, blockHeight }, index) => {
-    ctx.fillStyle = index === 0 ? "#e8f0e6" : "#a1bca7";
+    ctx.fillStyle = index === 0 ? colors.text : colors.muted;
     lines.forEach((line, lineIndex) => {
       ctx.fillText(line, contentX, cursorY + lineIndex * lineHeight);
     });
-    cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 58 : 0);
+    cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 46 : 0);
   });
 
-  const identityY = identityBlockY + 52;
-  ctx.strokeStyle = "#5dff8f";
-  ctx.lineWidth = 6;
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(contentX, identityBlockY + 18);
-  ctx.lineTo(contentX, identityBlockY + 96);
+  ctx.moveTo(contentX, metadataLineY);
+  ctx.lineTo(contentRight, metadataLineY);
   ctx.stroke();
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "19px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(threadUrl, contentX + 38, identityY);
 
-  const badgeX = contentX;
-  const badgeY = identityBlockY + 121;
-  const badgeWidth = 410;
-  const badgeHeight = 82;
-  drawCanvasRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 0);
-  ctx.fillStyle = "rgba(93, 255, 143, 0.05)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(160, 180, 82, 0.62)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 20px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("A ROOM WITHOUT NAMES", badgeX + 20, badgeY + 51);
+  ctx.fillStyle = colors.muted;
+  ctx.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "start";
+  ctx.fillText(roomLabel, contentX, metadataTextY);
+  ctx.textAlign = "right";
+  ctx.fillText(formatShareCardTime(confession.time || "PRIVATE"), contentRight, metadataTextY);
+
+  ctx.fillStyle = colors.muted;
+  ctx.font = "600 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "start";
+  ctx.fillText("HIDN://THE_ROOM", contentX, footerY);
+  ctx.fillStyle = colors.accent;
+  ctx.font = "500 19px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText("PRIVATE ROOMS WITHOUT NAMES", contentRight, footerY);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -2354,7 +2457,11 @@ function setSelectionStatus(root: ParentNode, message: string): void {
   }
 }
 
-async function shareSelectedTexts(root: ParentNode, items: SelectedTextItem[], mode: "save" | "share"): Promise<void> {
+async function shareSelectedTexts(
+  root: ParentNode,
+  items: SelectedTextItem[],
+  mode: "save" | "share",
+): Promise<void> {
   if (!items.length) {
     return;
   }
@@ -2416,7 +2523,12 @@ function replyIndexFromButton(button: HTMLButtonElement): number | undefined {
   return Number.isInteger(index) && index >= 0 ? index : undefined;
 }
 
-async function shareThreadImage(root: ParentNode, id: string, mode: "save" | "share" | "x", replyIndex?: number): Promise<void> {
+async function shareThreadImage(
+  root: ParentNode,
+  id: string,
+  mode: "save" | "share" | "x",
+  replyIndex?: number,
+): Promise<void> {
   const confession = shareableConfessionForId(id);
   if (!confession) {
     return;
@@ -2431,7 +2543,7 @@ async function shareThreadImage(root: ParentNode, id: string, mode: "save" | "sh
     const cardConfession = focusReply
       ? { ...confession, reference: `// REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, text: focusReply.reply.text, time: focusReply.reply.time }
       : confession;
-    const blob = await createThreadImage(cardConfession, undefined, focusReply ? "REPLY" : "TEXT", []);
+    const blob = await createThreadImage(cardConfession, undefined, focusReply ? "REPLY" : "TEXT");
     const filename = focusReply
       ? `hidn-reply-${confession.id}-${focusReply.index + 1}.png`
       : `hidn-thread-${confession.id}.png`;
@@ -2782,21 +2894,15 @@ function publicWindowTitle(path: string): string {
 function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus = false): string {
   const normalizedPath = normalizePath(path);
 
-  return `<div class="public-page__window-chrome">
-    <div class="public-page__window-bar">
-      <div class="public-page__window-controls" aria-hidden="true">
-        <span class="public-page__window-control public-page__window-control--close"></span>
-        <span class="public-page__window-control public-page__window-control--minimize"></span>
-        <span class="public-page__window-control public-page__window-control--maximize"></span>
-      </div>
-      <span class="public-page__window-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN://${publicWindowTitle(path)}</span>
-      <div class="public-page__window-actions">
-        ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
+  return `<div class="public-page__signal-bar">
+      <span class="public-page__signal-brand">HIDN</span>
+      <span class="public-page__signal-title" aria-label="HIDN ${publicWindowTitle(path)}">${normalizedPath.startsWith("/room") || normalizedPath.startsWith("/c/") ? "PRIVATE ROOM" : "HIDN"}</span>
+      <div class="public-page__signal-actions">
+        ${showZcashStatus ? `<span class="public-page__signal-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
         ${renderAmbientAudioControl()}
-        ${renderVisitorTimeSignal("public-page__window-meta")}
+        ${renderVisitorTimeSignal("public-page__signal-meta")}
       </div>
       ${showRoomMenu ? renderRoomMenu() : ""}
-    </div>
   </div>`;
 }
 
@@ -2851,7 +2957,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
-    ${isRoomSurface || isAdminPage ? "" : publicNavigation(path)}
+    ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
     ${main}
     ${isRoomSurface ? renderRoomTipDialog() : ""}
     ${isRoomSurface ? renderSelectionTools() : ""}
@@ -3953,10 +4059,10 @@ function renderMobileRoomIndex(): string {
 function renderExplore(path = "/room"): string {
   const isChannelRoute = Boolean(roomChannelFromPath(path));
   const channel = roomChannelOption(activeRoomChannel);
-  const headerLabel = isChannelRoute ? `${channel.label} / PRIVATE CHANNEL` : "PRIVATE ROOM / OPEN THREADS";
-  const headerTitle = isChannelRoute ? channel.label : "THE ROOM";
+  const headerLabel = isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS";
+  const headerTitle = isChannelRoute ? `// ${channel.label} / THOUGHTS IN MOTION` : "THE ROOM";
   const headerCopy = isChannelRoute
-    ? `${channel.description}. Anonymous thoughts and replies stay inside this room.`
+    ? `${channel.description}. Thoughts and replies stay inside this room, without public names.`
     : "Thoughts move through the room without names. Follow one thread or leave one behind.";
 
   if (!hasRoomSession()) {
@@ -3982,19 +4088,20 @@ function renderExplore(path = "/room"): string {
         <header class="explore-header">
           ${isChannelRoute ? `<a class="room-channel-back" href="/room">← ALL ROOMS</a>` : ""}
           ${TerminalLabel(headerLabel)}
-          <h1 class="type-display-lg">${escapeHtml(headerTitle)}</h1>
+          <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
+          ${isChannelRoute ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
         </header>
         <div class="explore-layout">
-          <section class="explore-feed" aria-labelledby="explore-feed-title">
-            <div class="explore-feed__heading">
+          <section class="explore-feed" aria-labelledby="${isChannelRoute ? "room-channel-title" : "explore-feed-title"}">
+            ${isChannelRoute ? "" : `<div class="explore-feed__heading">
               <div>
-        ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
+                ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
                 <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
               <div class="explore-feed__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
-            </div>
+            </div>`}
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
           </section>
@@ -4580,8 +4687,8 @@ function renderRoomEntryTransition(kind = roomEntryTransitionKind): string {
     ${isReturning
       ? `<div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>`
       : `<div class="room-entry-transition__loader" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>`}
-    <p class="room-entry-transition__label">${isReturning ? "RECONNECTING / PRIVATE ROOM" : "SEARCHING / PRIVATE ROOM"}<span aria-hidden="true">_</span></p>
-    <span class="room-entry-transition__subline">${isReturning ? "ACCESS KEY ACCEPTED / RETURNING" : "ESTABLISHING ANONYMOUS CHANNEL"}</span>
+    <p class="room-entry-transition__label">${isReturning ? "REOPENING / PRIVATE ROOM" : "LOCATING / PRIVATE ROOM"}<span aria-hidden="true">_</span></p>
+    <span class="room-entry-transition__subline">${isReturning ? "PRIVATE SIGNAL RECONNECTED" : "ESTABLISHING ANONYMOUS SIGNAL"}</span>
   </div>`;
 }
 
@@ -5260,6 +5367,7 @@ function renderRoomAccess(): RenderedProductRoute {
       "/room/access",
       `<main id="main-content" class="public-main room-main room-access-main hidn-pointer-surface" data-pointer-surface>
         ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
+        ${renderLiveRoomActivity()}
         <div class="room-access-atmosphere" aria-hidden="true">
           ${renderPointerSpotlight()}
           <div class="room-access-atmosphere__cards">${renderHomeRoomCards(6)}</div>
@@ -5377,31 +5485,26 @@ function renderHome(): RenderedProductRoute {
           <div class="home-room-stars" aria-hidden="true"></div>
           <div class="home-room-noise" aria-hidden="true"></div>
           ${renderPointerSpotlight()}
-          <div class="home-room-window">
-            <div class="home-room-window__bar">
-              <div class="home-room-window__controls">
-                <span class="home-room-window__control home-room-window__control--close"></span>
-                <span class="home-room-window__control home-room-window__control--minimize"></span>
-                <span class="home-room-window__control home-room-window__control--maximize"></span>
-              </div>
-              <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
-              <div class="home-room-window__right">
+          <div class="home-room-signal">
+              <span class="home-room-signal__brand">HIDN</span>
+              <span class="home-room-signal__title">PRIVATE ROOM / LIVE SIGNAL</span>
+              <div class="home-room-signal__actions">
                 ${renderAmbientAudioControl()}
-                ${renderVisitorTimeSignal("home-room-window__meta")}
+                ${renderVisitorTimeSignal("home-room-signal__meta")}
               </div>
-            </div>
           </div>
           <div class="home-room-card-field" aria-hidden="true">
-            ${renderHomeRoomCards()}
+            ${renderHomeRoomCards(8)}
           </div>
           <div class="home-room-core">
             <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
-            <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO${renderRoomEyeWatcher()}</span>M<br />WITHOUT <em>NAMES.</em></h1>
-            <p class="home-room-core__copy">A private room for anonymous thoughts and unnamed conversations.</p>
+            <div class="home-room-core__watcher">${renderRoomEyeWatcher()}</div>
+            <h1 id="home-room-title">WRITE<br /><em>FREELY.</em><br />STAY UNKNOWN.</h1>
+            <p class="home-room-core__copy">A private room for thoughts, confessions, and conversations without public names.</p>
             <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
             </a>
-            <p class="home-room-core__status">WRITE FREELY / STAY UNKNOWN</p>
+            <p class="home-room-core__status">PRIVATE SIGNAL / NO NAME REQUIRED</p>
           </div>
           <aside class="home-room-invite" data-home-invite hidden aria-label="Private room invitation">
             <button class="home-room-invite__close" type="button" data-action="home-invite-close" aria-label="Dismiss room invitation">×</button>
@@ -6278,10 +6381,14 @@ export function bindProductRoute(root: ParentNode = document): void {
           void updateAdminModeratorFromRoot(button, true);
           break;
         case "selection-save":
-          void shareSelectedTexts(root, activeTextSelection ? [activeTextSelection] : [], "save");
+          if (activeTextSelection) {
+            void shareSelectedTexts(root, [activeTextSelection], "save");
+          }
           break;
         case "selection-share":
-          void shareSelectedTexts(root, activeTextSelection ? [activeTextSelection] : [], "share");
+          if (activeTextSelection) {
+            void shareSelectedTexts(root, [activeTextSelection], "share");
+          }
           break;
         case "selection-add":
           if (activeTextSelection) {
@@ -6296,7 +6403,9 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
           break;
         case "selection-batch-share":
-          void shareSelectedTexts(root, selectedTextBatch, "share");
+          if (selectedTextBatch.length) {
+            void shareSelectedTexts(root, [...selectedTextBatch], "share");
+          }
           break;
         case "selection-batch-clear":
           selectedTextBatch = [];

@@ -1,30 +1,78 @@
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi-medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi-bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/clash-display-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/clash-display-medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/clash-display-semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
 
   /* Semantic HIDN palette: near-black, bone, and signal green first. */
-  --hidn-bg: #090b09;
-  --hidn-surface: #111511;
-  --hidn-surface-raised: #171c17;
-  --hidn-surface-inset: #0d100d;
+  --hidn-bg: #080808;
+  --hidn-surface: #151514;
+  --hidn-surface-raised: #1d1c1a;
+  --hidn-surface-inset: #0f0f0e;
 
-  --hidn-text: #ebe8de;
-  --hidn-text-muted: #a1a89d;
-  --hidn-text-dim: #70796f;
-  --hidn-bone: #f3efe3;
+  --hidn-text: #eeeae0;
+  --hidn-text-muted: #aaa59b;
+  --hidn-text-dim: #77736b;
+  --hidn-bone: #f5f1e8;
 
-  --hidn-signal: #b8dc68;
-  --hidn-signal-soft: #789449;
-  --hidn-zcash: #c8a252;
-  --hidn-warning: #d59b4f;
-  --hidn-danger: #d06b63;
+  --hidn-signal: #b6d3ae;
+  --hidn-signal-soft: #879d82;
+  --hidn-zcash: #c5a56d;
+  --hidn-warning: #c9a36b;
+  --hidn-danger: #c88379;
 
-  --hidn-border: #2b352b;
-  --hidn-border-strong: #506049;
-  --hidn-focus: #ddf79a;
+  --hidn-border: #2b2a27;
+  --hidn-border-strong: #5b5850;
+  --hidn-focus: #e6deca;
 
-  /* Typography roles. No remote font request is required. */
-  --hidn-font-display: Georgia, "Times New Roman", serif;
-  --hidn-font-body: var(--hidn-font-mono);
+  /* Typography roles. The mono face remains reserved for terminal metadata. */
+  --hidn-font-display: "Clash Display", "Helvetica Neue", Arial, sans-serif;
+  --hidn-font-body: "Satoshi", "Helvetica Neue", Arial, sans-serif;
   --hidn-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
   /* Responsive type scale. */
@@ -56,9 +104,9 @@
   --hidn-content-max: 1200px;
   --hidn-wide-max: 1440px;
   --hidn-reading-max: 68ch;
-  --hidn-radius-sm: 0.24rem;
-  --hidn-radius-md: 0.45rem;
-  --hidn-radius-lg: 0.72rem;
+  --hidn-radius-sm: 0.3rem;
+  --hidn-radius-md: 0.55rem;
+  --hidn-radius-lg: 0.85rem;
 
   /* Motion: short, purposeful, and easy to disable. */
   --hidn-motion-fast: 140ms;
