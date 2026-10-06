@@ -4889,20 +4889,7 @@ async function refreshRoomPayment(): Promise<void> {
 function renderRoomAccessChooser(): string {
   return `<div class="room-access-page">
     <header class="room-access-header">
-      ${TerminalLabel("HIDN / ROOM ACCESS")}
       <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
-      <div class="room-access-threshold-scene" aria-hidden="true">
-        <span class="room-access-threshold-scene__opening"></span>
-        <span class="room-access-threshold-scene__ladder"></span>
-        <span class="room-access-threshold-scene__traveler">
-          <span class="room-access-threshold-scene__head"></span>
-          <span class="room-access-threshold-scene__torso"></span>
-          <span class="room-access-threshold-scene__arm room-access-threshold-scene__arm--left"></span>
-          <span class="room-access-threshold-scene__arm room-access-threshold-scene__arm--right"></span>
-          <span class="room-access-threshold-scene__leg room-access-threshold-scene__leg--left"></span>
-          <span class="room-access-threshold-scene__leg room-access-threshold-scene__leg--right"></span>
-        </span>
-      </div>
     </header>
     <div class="room-access-options">
       <article class="room-access-option">
@@ -4920,7 +4907,7 @@ function renderRoomAccessChooser(): string {
         ${SecondaryButton({ label: "ENTER WITH RECOVERY KEY", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("PRIVATE ACCESS", "Create anonymous access or return with your recovery key for room access", "LIVE")}
+    ${SystemMessage("PRIVATE ACCESS", "Create anonymous access or return with your recovery key to enter the room.", "LIVE")}
   </div>`;
 }
 
@@ -5487,7 +5474,7 @@ function renderHome(): RenderedProductRoute {
           ${renderPointerSpotlight()}
           <div class="home-room-signal">
               <span class="home-room-signal__brand">HIDN</span>
-              <span class="home-room-signal__title">PRIVATE ROOM / LIVE SIGNAL</span>
+              <span class="home-room-signal__title">// HIDN / PRIVATE ROOM</span>
               <div class="home-room-signal__actions">
                 ${renderAmbientAudioControl()}
                 ${renderVisitorTimeSignal("home-room-signal__meta")}
@@ -5497,7 +5484,6 @@ function renderHome(): RenderedProductRoute {
             ${renderHomeRoomCards(8)}
           </div>
           <div class="home-room-core">
-            <p class="home-room-core__eyebrow">${TerminalLabel("HIDN / PRIVATE ROOM")}</p>
             <div class="home-room-core__watcher">${renderRoomEyeWatcher()}</div>
             <h1 id="home-room-title">WRITE<br /><em>FREELY.</em><br />STAY UNKNOWN.</h1>
             <p class="home-room-core__copy">A private room for thoughts, confessions, and conversations without public names.</p>
