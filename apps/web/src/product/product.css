@@ -9410,15 +9410,18 @@
   align-items: center;
   color: var(--hidn-paper);
   display: inline-flex;
+  flex: 0 0 auto;
   font-family: var(--hidn-font-display);
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: -0.04em;
+  line-height: 0;
 }
 
 .public-page__signal-logo {
-  height: 1.45rem;
-  width: 4.55rem;
+  display: block;
+  height: 1.15rem;
+  width: 3.6rem;
 }
 
 .public-page__signal-title {
@@ -9576,17 +9579,21 @@
   align-items: center;
   color: var(--hidn-paper);
   display: inline-flex;
+  line-height: 0;
   font-family: var(--hidn-font-display);
   font-size: 1.05rem;
   font-weight: 600;
   left: 0;
   letter-spacing: -0.04em;
   position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .home-room-signal__logo {
-  height: 1.45rem;
-  width: 4.55rem;
+  display: block;
+  height: 1.15rem;
+  width: 3.6rem;
 }
 
 @media (max-width: 760px) {
@@ -11401,6 +11408,69 @@
   }
 }
 
+/* Mobile channel rows — keep the room switcher stable and legible while tapping. */
+@media (max-width: 760px) {
+  .public-page--explore .room-directory__folder-children {
+    padding: 0.25rem 0 0.4rem;
+  }
+
+  .public-page--explore .room-directory__folder-children .room-directory__room,
+  .public-page--room-index .room-mobile-index__room {
+    align-items: center;
+    box-sizing: border-box;
+    gap: 0.7rem;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    min-height: 4.15rem;
+    min-width: 0;
+    padding: 0.82rem 0.7rem;
+    touch-action: manipulation;
+    width: 100%;
+  }
+
+  .public-page--explore .room-directory__room-copy,
+  .public-page--room-index .room-mobile-index__copy {
+    gap: 0.3rem;
+    min-width: 0;
+  }
+
+  .public-page--explore .room-directory__room-copy strong,
+  .public-page--explore .room-directory__room-copy small,
+  .public-page--room-index .room-mobile-index__copy strong,
+  .public-page--room-index .room-mobile-index__copy small {
+    line-height: 1.3;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .public-page--explore .room-directory__room-copy strong,
+  .public-page--room-index .room-mobile-index__copy strong {
+    font-size: 0.88rem;
+  }
+
+  .public-page--explore .room-directory__room-copy small,
+  .public-page--room-index .room-mobile-index__copy small {
+    font-size: 0.78rem;
+  }
+
+  .public-page--explore .room-directory__room--active,
+  .public-page--explore .room-directory__room[aria-pressed="true"],
+  .public-page--explore .room-directory__room:focus-visible,
+  .public-page--room-index .room-mobile-index__room:focus-visible {
+    background: rgba(245, 241, 232, 0.09);
+    border-color: var(--hidn-border-strong);
+    box-shadow: inset 0.2rem 0 var(--hidn-paper-muted);
+    color: var(--hidn-paper);
+    outline: none;
+    transform: none;
+  }
+
+  .public-page--explore .room-directory__room:active,
+  .public-page--room-index .room-mobile-index__room:active {
+    background: rgba(245, 241, 232, 0.13);
+    transform: scale(0.99);
+  }
+}
+
 /* Keep confession actions compact while preserving a clear tap target. */
 .public-page :is(.transmission-row__actions, .thread-room__message-actions, .detail-actions) .room-message__action {
   font-size: 0.7rem;
@@ -11484,5 +11554,169 @@
   .public-page--explore .room-post-composer__actions .ui-button {
     flex: 1 1 0;
     justify-content: center;
+  }
+}
+
+/* Mobile channel drawer — open into the viewport instead of behind the left edge. */
+@media (max-width: 760px) {
+  .public-page__signal-bar > .room-menu .room-menu__panel {
+    left: 0;
+    max-height: calc(100svh - 7rem);
+    min-width: min(17rem, calc(100vw - 2rem));
+    overflow-y: auto;
+    right: auto;
+    width: min(17rem, calc(100vw - 2rem));
+  }
+}
+
+/* Channel drawer — translate the old terminal panel into the current HIDN surface. */
+.public-page .room-menu__panel {
+  background: rgba(12, 12, 11, 0.98);
+  border-color: var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-md);
+  box-shadow: 0 1.4rem 3.5rem rgba(0, 0, 0, 0.52);
+  padding: 0.7rem;
+}
+
+.public-page .room-menu__panel-head {
+  justify-content: flex-end;
+  padding: 0.3rem 0.35rem 0.7rem;
+}
+
+.public-page .room-menu__signal {
+  color: var(--hidn-paper-muted);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.public-page .room-menu__signal i {
+  background: var(--hidn-paper-muted);
+  box-shadow: 0 0 0.45rem rgba(245, 241, 232, 0.35);
+  height: 0.3rem;
+  width: 0.3rem;
+}
+
+.public-page .room-menu__profile {
+  background: rgba(245, 241, 232, 0.045);
+  border: 1px solid transparent;
+  border-radius: var(--hidn-radius-sm);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
+  letter-spacing: 0.02em;
+  min-height: 3.5rem;
+  padding: 0.65rem 0.7rem;
+  text-transform: none;
+}
+
+.public-page .room-menu__profile:hover,
+.public-page .room-menu__profile[aria-expanded="true"] {
+  background: rgba(245, 241, 232, 0.09);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
+}
+
+.public-page .room-menu__profile-mark {
+  color: var(--hidn-paper-muted);
+}
+
+.public-page .room-menu__profile-state {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.52rem;
+}
+
+.public-page .room-menu__profile-copy {
+  gap: 0.24rem;
+}
+
+.public-page .room-menu__profile-copy strong {
+  font-family: var(--hidn-font-body);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.public-page .room-menu__profile-copy small {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+}
+
+.public-page .room-menu__panel nav {
+  border-color: var(--hidn-border);
+  margin-top: 0.65rem;
+  padding-top: 0.35rem;
+}
+
+.public-page .room-menu__panel nav a,
+.public-page .room-menu__leave {
+  border: 0;
+  border-radius: var(--hidn-radius-sm);
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  min-height: 2.7rem;
+  padding: 0.55rem 0.7rem;
+  text-transform: none;
+}
+
+.public-page .room-menu__panel nav a span {
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.58rem;
+}
+
+.public-page .room-menu__panel nav a b {
+  color: var(--hidn-text-dim);
+}
+
+.public-page .room-menu__panel nav a:hover,
+.public-page .room-menu__leave:hover {
+  background: rgba(245, 241, 232, 0.08);
+  color: var(--hidn-paper);
+}
+
+.public-page .room-menu__leave {
+  border-top: 1px solid var(--hidn-border);
+  color: var(--hidn-paper-muted);
+  margin-top: 0.6rem;
+  padding-top: 0.8rem;
+}
+
+/* Private activity control — smaller visual footprint with a preserved tap target. */
+.public-page .room-notifications__toggle {
+  font-size: 0.6rem;
+  gap: 0.32rem;
+  min-height: 1.9rem;
+  padding: 0.34rem 0.58rem;
+}
+
+.public-page .room-notifications__toggle-copy {
+  letter-spacing: 0.035em;
+}
+
+.public-page .room-notifications__bell-icon {
+  height: 0.86rem;
+  stroke-width: 1.6;
+  width: 0.86rem;
+}
+
+.public-page .room-notifications__badge {
+  border-width: 1px;
+  font-size: 0.4rem;
+  height: 0.76rem;
+  min-width: 0.76rem;
+  right: -0.48rem;
+  top: -0.4rem;
+}
+
+@media (max-width: 760px) {
+  .public-page .room-notifications__toggle {
+    min-height: 2rem;
+    padding-inline: 0.52rem;
   }
 }

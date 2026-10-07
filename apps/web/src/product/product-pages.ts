@@ -2835,8 +2835,7 @@ function renderRoomMenu(): string {
     </button>
     <div class="room-menu__panel" id="room-channel-menu" hidden>
       <div class="room-menu__panel-head">
-        <span>PRIVATE ROOM</span>
-        <span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>
+        <span class="room-menu__signal"><i aria-hidden="true"></i> PRIVATE ROOM</span>
       </div>
       <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
         <span class="room-menu__profile-mark" aria-hidden="true">◎</span>
@@ -4920,7 +4919,6 @@ function renderRoomCreate(): string {
 function renderRoomLogin(): string {
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${TerminalLabel("HIDN / RECOVERY ACCESS")}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
       <p class="room-access-header__copy">Use the recovery key you saved. It is the only credential; the browser proves you hold it without sending the key to HIDN.</p>
     </header>
@@ -5458,7 +5456,6 @@ function renderHome(): RenderedProductRoute {
           ${renderPointerSpotlight()}
           <div class="home-room-signal">
               <span class="home-room-signal__brand">${HidnDoorLogo({ className: "home-room-signal__logo", label: "HIDN home" })}</span>
-              <span class="home-room-signal__title">// HIDN / PRIVATE ROOM</span>
               <div class="home-room-signal__actions">
                 ${renderAmbientAudioControl()}
                 ${renderVisitorTimeSignal("home-room-signal__meta")}

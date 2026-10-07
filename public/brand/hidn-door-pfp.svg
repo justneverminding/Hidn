@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">HIDN door logo</title>
+  <desc id="desc">The HIDN wordmark with the D drawn as a door with a gold handle.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="42%" r="72%">
+      <stop offset="0" stop-color="#101912"/>
+      <stop offset="0.72" stop-color="#050806"/>
+      <stop offset="1" stop-color="#010201"/>
+    </radialGradient>
+    <filter id="handle-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <rect x="38" y="38" width="948" height="948" rx="78" fill="none" stroke="#294530" stroke-width="3"/>
+  <rect x="62" y="62" width="900" height="900" rx="62" fill="none" stroke="#142619" stroke-width="2"/>
+
+  <g transform="translate(146 397) scale(6.52)" fill="#f2f0e8" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="700" letter-spacing="-1.5">
+    <text x="0" y="29">H</text>
+    <text x="27" y="29">I</text>
+    <g transform="translate(42 7) scale(0.72)" aria-hidden="true">
+      <path d="M0 0h13c11 0 19 6 19 14S24 28 13 28H0z" fill="none" stroke="#f2f0e8" stroke-linejoin="round" stroke-width="3"/>
+      <path d="M6 4v20h7c7 0 12-4 12-10S20 4 13 4H6z" fill="#f2f0e8" fill-opacity="0.16" stroke="#f2f0e8" stroke-linejoin="round" stroke-width="1.8"/>
+      <circle cx="12" cy="14" r="2.3" fill="#c5a56d" filter="url(#handle-glow)"/>
+    </g>
+    <text x="73" y="29">N</text>
+  </g>
+</svg>

@@ -31,12 +31,12 @@ export function HidnDoorLogo({ className, label = "HIDN" }: HidnDoorLogoOptions 
   return `<svg class="${classNames("ui-door-logo", className)}" viewBox="0 0 112 36" role="img" aria-label="${escapeHtml(label)}" focusable="false">
     <text class="ui-door-logo__letter" x="0" y="29">H</text>
     <text class="ui-door-logo__letter" x="27" y="29">I</text>
-    <g class="ui-door-logo__door" transform="translate(42 4)" aria-hidden="true">
+    <g class="ui-door-logo__door" transform="translate(42 5) scale(0.64 0.82)" aria-hidden="true">
       <path class="ui-door-logo__door-frame" d="M0 0h13c11 0 19 6 19 14S24 28 13 28H0z" />
       <path class="ui-door-logo__door-panel" d="M6 4v20h7c7 0 12-4 12-10S20 4 13 4H6z" />
       <circle class="ui-door-logo__door-handle" cx="12" cy="14" r="2.3" />
     </g>
-    <text class="ui-door-logo__letter" x="79" y="29">N</text>
+    <text class="ui-door-logo__letter" x="68" y="29">N</text>
   </svg>`;
 }
 
