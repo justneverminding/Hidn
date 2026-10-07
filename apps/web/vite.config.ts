@@ -157,6 +157,10 @@ const apiProxy = {
     changeOrigin: true,
     target: roomApiTarget,
   },
+  "/admin/api": {
+    changeOrigin: true,
+    target: roomApiTarget,
+  },
   "/api/moderation": {
     changeOrigin: true,
     target: roomApiTarget,

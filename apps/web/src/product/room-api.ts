@@ -620,6 +620,16 @@ async function adminRequest<T>(path: string, token = "", init: RequestInit = {})
     credentials: "same-origin",
     cache: "no-store",
   });
+
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("text/html")) {
+    throw new Error(
+      response.redirected || response.url.includes("cloudflareaccess.com")
+        ? "Cloudflare Access sign-in is required before using the admin console."
+        : "The admin API returned the application page instead of JSON. Please reload the admin console.",
+    );
+  }
+
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
     const message = typeof payload?.error === "string" ? payload.error : `Admin reports returned HTTP ${response.status}.`;
