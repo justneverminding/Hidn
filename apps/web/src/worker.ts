@@ -1788,7 +1788,10 @@ async function enrollAnonymousMember(request: Request, env: HidnWorkerEnv): Prom
 
   const rateLimit = await enforceEdgeRateLimit(request, env, {
     action: "anonymous-enroll",
-    limit: 4,
+    // Fresh recovery keys are generated locally, so legitimate visitors may
+    // restart the flow without sharing an account identity. Keep a bounded
+    // edge limit for abuse, but leave room for shared networks and retries.
+    limit: 20,
     windowMs: 30 * 60 * 1000,
   });
   if (rateLimit) {
