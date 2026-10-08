@@ -348,11 +348,11 @@ const roomChannelOptions: Array<{
   categories?: MockCategory[];
 }> = [
   { key: "general", label: "GENERAL", description: "all signals" },
-  { key: "love", label: "LOVE", description: "what stays unsaid", categories: ["RELATIONSHIPS", "JOY"] },
+  { key: "love", label: "LETTING GO", description: "what remains after goodbye", categories: ["RELATIONSHIPS", "REGRET", "LONELINESS"] },
   { key: "blackbox", label: "BLACKBOX", description: "strange ideas, no explanations", categories: ["UNCERTAINTY", "IDENTITY", "FEAR"] },
   { key: "redacted", label: "REDACTED", description: "what you won’t say publicly", categories: ["IDENTITY", "UNCERTAINTY"] },
   { key: "night-shift", label: "NIGHT SHIFT", description: "posts made after midnight", categories: ["LONELINESS", "FEAR", "IDENTITY"] },
-  { key: "underground", label: "THE UNDERGROUND", description: "fringe ideas and hidden interests", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
+  { key: "underground", label: "THE UNDERGROUND", description: "what stays unsaid", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
 ];
 
 interface HomeAmbientAudioSession {
