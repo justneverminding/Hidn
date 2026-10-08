@@ -127,7 +127,7 @@ export interface RenderedProductRoute {
 }
 
 type FeedTab = "latest" | "random" | "felt";
-type RoomChannel = "general" | "love" | "privacy" | "redacted" | "family" | "work";
+type RoomChannel = "general" | "love" | "redacted" | "blackbox" | "night-shift" | "underground";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type RoomEntryTransitionKind = "first" | "return";
@@ -349,10 +349,10 @@ const roomChannelOptions: Array<{
 }> = [
   { key: "general", label: "GENERAL", description: "all signals" },
   { key: "love", label: "LOVE", description: "what stays unsaid", categories: ["RELATIONSHIPS", "JOY"] },
-  { key: "privacy", label: "PRIVACY", description: "the hidden layer", categories: ["IDENTITY", "LONELINESS"] },
+  { key: "blackbox", label: "BLACKBOX", description: "strange ideas, no explanations", categories: ["UNCERTAINTY", "IDENTITY", "FEAR"] },
   { key: "redacted", label: "REDACTED", description: "what you won’t say publicly", categories: ["IDENTITY", "UNCERTAINTY"] },
-  { key: "family", label: "FAMILY", description: "the rooms we inherit", categories: ["FAMILY", "RELATIONSHIPS"] },
-  { key: "work", label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
+  { key: "night-shift", label: "NIGHT SHIFT", description: "posts made after midnight", categories: ["LONELINESS", "FEAR", "IDENTITY"] },
+  { key: "underground", label: "THE UNDERGROUND", description: "fringe ideas and hidden interests", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
 ];
 
 interface HomeAmbientAudioSession {

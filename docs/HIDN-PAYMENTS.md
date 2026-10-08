@@ -37,14 +37,14 @@ npx wrangler secret put ROOM_SHIELDED_ADDRESS
 npx wrangler secret put ROOM_PAYMENT_ZATOSHIS
 npx wrangler secret put PAYMENT_WATCHER_SECRET
 npx wrangler secret put REFUND_ENCRYPTION_KEY
-npx wrangler secret put REPORT_ADMIN_TOKEN
 ```
 
 - `ROOM_SHIELDED_ADDRESS`: the receiving shielded address watched by the separate watcher.
 - `ROOM_PAYMENT_ZATOSHIS`: the exact fixed amount expected for a payment intent. Store zatoshis, not a floating-point ZEC amount.
 - `PAYMENT_WATCHER_SECRET`: a long random secret shared only by the watcher and this Worker.
 - `REFUND_ENCRYPTION_KEY`: exactly 32 bytes, supplied as 64 hex characters or base64. Keep it separate from D1 and the watcher.
-- `REPORT_ADMIN_TOKEN`: a long random secret used only for the private `/admin/reports` console and `/api/admin/reports` endpoints. Never commit it or place it in frontend source.
+- `REPORT_ADMIN_TOKEN`: a long random migration secret. It is ignored unless `ALLOW_LEGACY_ADMIN_TOKEN=true`; Cloudflare Access remains the required administrator boundary by default. Never commit it or place it in frontend source.
+- `ALLOW_LEGACY_ADMIN_TOKEN`: keep unset or `false` in normal operation. Set it to `true` only for a time-boxed migration window while Cloudflare Access is being configured, then remove the token and variable.
 - `PAYMENT_MIN_CONFIRMATIONS` may be set as a Wrangler variable; it defaults to `3`.
 
 The amount is fixed by configuration so a price change cannot silently change an already-created payment request. Change it deliberately and document the effective time.
@@ -97,15 +97,16 @@ rate-limited and duplicate open reports from the same account for the same
 target are rejected.
 
 The private operator console is available at `/admin/reports` after the Worker
-has `REPORT_ADMIN_TOKEN` configured. The token is entered in memory, sent as a
-Bearer token, and is not saved by the browser. The admin API can list and
-update report statuses, hide reported thread/reply content, and restore a
-previously hidden item. Hiding is reversible and records an event rather than
-deleting the report or content. Public room surfaces read
-`GET /api/moderation/visibility` so the demo UI can respect those decisions;
-when a matching D1 content row exists, the Worker also updates its moderation
-state. It never returns recovery-code hashes, session hashes, or wallet
-secrets.
+is protected by Cloudflare Access and the Access identity is provisioned as an
+active HIDN administrator. A short-lived migration can opt into the legacy
+`REPORT_ADMIN_TOKEN` path with `ALLOW_LEGACY_ADMIN_TOKEN=true`; the token is
+entered in memory, sent as a Bearer token, and is not saved by the browser.
+The admin API can list and update report statuses, hide reported thread/reply
+content, and restore a previously hidden item. Hiding is reversible and
+records an event rather than deleting the report or content. Moderation
+visibility is administrator-only; public room queries already filter hidden
+content server-side. It never returns recovery-code hashes, session hashes, or
+wallet secrets.
 
 ## Inspecting D1
 

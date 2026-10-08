@@ -46,6 +46,8 @@ const ABUSE_BURST_THRESHOLD = 5;
 const ABUSE_COOLDOWN_RISK_THRESHOLD = 3;
 const ABUSE_COOLDOWN_BASE_MS = 30 * 1000;
 const ABUSE_COOLDOWN_MAX_MS = 15 * 60 * 1000;
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+const MAX_WATCHER_BODY_BYTES = 32 * 1024;
 const LIVE_ACTIVITY_LIMIT = 8;
 const LIVE_ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
 const NOTIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -69,7 +71,7 @@ const AMBIENT_ROOM_THREAD_IDS = new Set([
 type AccessLevel = "read_only" | "full";
 type AuthMethod = "recovery_code" | "schnorr";
 type LegacyRoomStatus = "pending" | "verified";
-type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
+type RoomChannel = "general" | "love" | "redacted" | "blackbox" | "night-shift" | "underground";
 type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED" | "JUST REPLIED";
 type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT" | "A THREAD";
 type NotificationEventType = "reaction" | "reply";
@@ -113,6 +115,7 @@ interface HidnWorkerEnv {
   PAYMENT_WATCHER_SECRET?: string;
   REFUND_ENCRYPTION_KEY?: string;
   REPORT_ADMIN_TOKEN?: string;
+  ALLOW_LEGACY_ADMIN_TOKEN?: string;
   CLOUDFLARE_ACCESS_TEAM_DOMAIN?: string;
   CLOUDFLARE_ACCESS_AUD?: string;
   HIDN_SUPER_ADMIN_ACCESS_SUBJECT?: string;
@@ -343,7 +346,7 @@ const REPORT_REASONS: readonly ReportReason[] = [
   "self_harm",
   "other",
 ];
-const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "privacy", "politics", "family", "work"];
+const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "redacted", "blackbox", "night-shift", "underground"];
 const ROOM_POST_CATEGORIES = new Set([
   "REGRET",
   "CAREER",
@@ -375,9 +378,46 @@ function jsonResponse(
     headers: {
       "Cache-Control": cacheControl,
       "Content-Type": "application/json; charset=utf-8",
+      ...securityHeaders(),
       ...extraHeaders,
     },
   });
+}
+
+function securityHeaders(): Record<string, string> {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+  };
+}
+
+function htmlSecurityHeaders(request: Request): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...securityHeaders(),
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "script-src 'self' 'wasm-unsafe-eval'",
+      "worker-src 'self' blob:",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "media-src 'self'",
+      "connect-src 'self'",
+      "manifest-src 'self'",
+    ].join("; "),
+  };
+
+  if (new URL(request.url).protocol === "https:") {
+    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+  }
+
+  return headers;
 }
 
 function anonymousZkAssetContentType(pathname: string): string | null {
@@ -465,9 +505,59 @@ async function getShieldedScanStats(): Promise<ShieldedScanStatsResponse> {
   };
 }
 
-async function requestBody(request: Request): Promise<Record<string, unknown>> {
+async function boundedRequestText(request: Request, maxBytes: number): Promise<string | null> {
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isSafeInteger(declaredLength) && declaredLength > maxBytes) {
+    return null;
+  }
+
+  if (!request.body) {
+    const text = await request.text();
+    return new TextEncoder().encode(text).byteLength <= maxBytes ? text : null;
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   try {
-    const value: unknown = await request.json();
+    while (true) {
+      const next = await reader.read();
+      if (next.done) {
+        break;
+      }
+
+      totalBytes += next.value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(next.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function requestBody(request: Request): Promise<Record<string, unknown>> {
+  const contentType = request.headers.get("Content-Type")?.split(";", 1)[0].trim().toLowerCase();
+  if (contentType && contentType !== "application/json") {
+    return {};
+  }
+
+  try {
+    const rawBody = await boundedRequestText(request, MAX_JSON_BODY_BYTES);
+    if (rawBody === null) {
+      return {};
+    }
+    const value: unknown = JSON.parse(rawBody);
     return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   } catch {
     return {};
@@ -741,6 +831,72 @@ async function abuseSignalKeyForEdge(request: Request, now: number): Promise<str
   return `edge:${digest}`;
 }
 
+interface EdgeRateLimitOptions {
+  action: string;
+  limit: number;
+  windowMs: number;
+}
+
+async function enforceEdgeRateLimit(
+  request: Request,
+  env: HidnWorkerEnv,
+  options: EdgeRateLimitOptions,
+): Promise<Response | undefined> {
+  if (!env.ROOM_DB || options.limit < 1 || options.windowMs < 1) {
+    return undefined;
+  }
+
+  const edgeAddress = request.headers.get("CF-Connecting-IP")?.trim();
+  if (!edgeAddress) {
+    // Cloudflare supplies CF-Connecting-IP in production. Do not persist a
+    // caller-controlled forwarding header as an identity signal in local or
+    // alternate runtimes.
+    return undefined;
+  }
+
+  const now = Date.now();
+  const windowStartedAtMs = Math.floor(now / options.windowMs) * options.windowMs;
+  const windowStartedAt = new Date(windowStartedAtMs).toISOString();
+  const expiresAt = new Date(windowStartedAtMs + options.windowMs).toISOString();
+  const digest = await hashText(
+    `hidn-rate-v1:${options.action}:${windowStartedAtMs}:${edgeAddress}`,
+  );
+  const signalKey = `rate:${options.action}:${digest}`;
+
+  try {
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_abuse_signals
+        (signal_key, window_started_at, action_count, risk_score,
+         last_content_hash, last_content_at, cooldown_until, expires_at, updated_at)
+       VALUES (?, ?, 1, 0, NULL, NULL, NULL, ?, ?)
+       ON CONFLICT(signal_key) DO UPDATE SET
+         action_count = hidn_abuse_signals.action_count + 1,
+         updated_at = excluded.updated_at`,
+    )
+      .bind(signalKey, windowStartedAt, expiresAt, new Date(now).toISOString())
+      .run();
+
+    const row = await env.ROOM_DB.prepare(
+      `SELECT action_count
+       FROM hidn_abuse_signals
+       WHERE signal_key = ?
+       LIMIT 1`,
+    )
+      .bind(signalKey)
+      .first<{ action_count: number }>();
+    const actionCount = Number(row?.action_count ?? 0);
+    if (actionCount <= options.limit) {
+      return undefined;
+    }
+
+    return abuseCooldownResponse(expiresAt);
+  } catch {
+    // Keep the product available during a partial migration. The signal is
+    // short-lived and contains only a rotating digest, never the raw address.
+    return undefined;
+  }
+}
+
 async function updateAbuseSignal(
   env: HidnWorkerEnv,
   signalKey: string,
@@ -908,7 +1064,7 @@ function requestSessionToken(request: Request): string {
 
 function sessionCookie(request: Request, token: string, maxAgeSeconds: number): string {
   const secure = new URL(request.url).protocol === "https:" ? " Secure;" : "";
-  return `hidn_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax;${secure} Max-Age=${maxAgeSeconds}`;
+  return `hidn_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Strict;${secure} Max-Age=${maxAgeSeconds}`;
 }
 
 function configuredInteger(value: string | undefined, fallback: number | null): number | null {
@@ -1051,6 +1207,15 @@ async function signupAccount(request: Request, env: HidnWorkerEnv): Promise<Resp
     return unavailable;
   }
 
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "account-signup",
+    limit: 5,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
   const body = await requestBody(request);
   const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
   if (!isValidUsername(username)) {
@@ -1102,6 +1267,15 @@ async function loginAccount(request: Request, env: HidnWorkerEnv): Promise<Respo
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "account-login",
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -1607,6 +1781,15 @@ async function enrollAnonymousMember(request: Request, env: HidnWorkerEnv): Prom
     return unavailable;
   }
 
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "anonymous-enroll",
+    limit: 4,
+    windowMs: 30 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
   const body = await requestBody(request);
   const commitment = normalizeAnonymousField(body.commitment);
   const notificationCapability = typeof body.notificationCapability === "string"
@@ -1692,6 +1875,15 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "anonymous-post",
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -1791,6 +1983,15 @@ async function createAnonymousReply(request: Request, env: HidnWorkerEnv): Promi
   const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "anonymous-reply",
+    limit: 30,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -1898,6 +2099,15 @@ async function createAnonymousReaction(request: Request, env: HidnWorkerEnv): Pr
   const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "anonymous-reaction",
+    limit: 60,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -2884,6 +3094,15 @@ async function signupZkAccount(request: Request, env: HidnWorkerEnv): Promise<Re
     return unavailable;
   }
 
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "zk-account-signup",
+    limit: 5,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
   const body = await requestBody(request);
   const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
   const identityCommitment = typeof body.identityCommitment === "string"
@@ -2950,6 +3169,15 @@ async function createZkChallenge(request: Request, env: HidnWorkerEnv): Promise<
     return unavailable;
   }
 
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "zk-challenge",
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
   const body = await requestBody(request);
   const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
   if (!isValidUsername(username)) {
@@ -2998,6 +3226,15 @@ async function verifyZkLogin(request: Request, env: HidnWorkerEnv): Promise<Resp
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "zk-login-verify",
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -3100,6 +3337,15 @@ async function submitReport(request: Request, env: HidnWorkerEnv): Promise<Respo
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "report-submit",
+    limit: 30,
+    windowMs: 60 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const user = await getAuthenticatedUser(request, env);
@@ -3424,7 +3670,8 @@ async function requireAdminRole(
     return { actor };
   }
 
-  if (await hasValidAdminToken(request, env)) {
+  const legacyTokenEnabled = env.ALLOW_LEGACY_ADMIN_TOKEN?.trim().toLowerCase() === "true";
+  if (legacyTokenEnabled && await hasValidAdminToken(request, env)) {
     const actor: AdminActor = {
       adminId: "legacy-token",
       email: null,
@@ -3433,6 +3680,14 @@ async function requireAdminRole(
       source: "legacy_token",
     };
     return roles.includes(actor.role) ? { actor } : jsonResponse({ error: "Administrator role required." }, 403);
+  }
+
+  if (!legacyTokenEnabled) {
+    return jsonResponse(
+      { error: "Cloudflare Access is required for administrator routes." },
+      503,
+      "no-store",
+    );
   }
 
   if (!env.REPORT_ADMIN_TOKEN?.trim()) {
@@ -3850,10 +4105,15 @@ async function moderateAdminContent(request: Request, env: HidnWorkerEnv): Promi
   });
 }
 
-async function listModerationVisibility(env: HidnWorkerEnv): Promise<Response> {
+async function listModerationVisibility(request: Request, env: HidnWorkerEnv): Promise<Response> {
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const authorization = await requireAdminRole(request, env, ["super_admin", "moderator", "reviewer"]);
+  if (authorization instanceof Response) {
+    return authorization;
   }
 
   const result = await env.ROOM_DB!.prepare(
@@ -3925,6 +4185,15 @@ async function createPaymentIntent(request: Request, env: HidnWorkerEnv): Promis
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "payment-intent",
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const user = await getAuthenticatedUser(request, env);
@@ -4123,7 +4392,10 @@ async function ingestWatcherPayment(request: Request, env: HidnWorkerEnv): Promi
     return jsonResponse({ error: "Payment watcher intake is not configured." }, 503);
   }
 
-  const rawBody = await request.text();
+  const rawBody = await boundedRequestText(request, MAX_WATCHER_BODY_BYTES);
+  if (rawBody === null) {
+    return jsonResponse({ error: "Watcher event body is too large." }, 413);
+  }
   if (!(await verifyWatcherSignature(request, rawBody, env))) {
     return jsonResponse({ error: "Watcher signature is invalid or expired." }, 401);
   }
@@ -4289,6 +4561,15 @@ async function createRoomSession(request: Request, env: HidnWorkerEnv): Promise<
     return unavailable;
   }
 
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "legacy-room-create",
+    limit: 5,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
   const body = await requestBody(request);
   const memoReference = typeof body.memoReference === "string" ? body.memoReference.trim() : "";
   const returnAddress = typeof body.returnAddress === "string" ? body.returnAddress.trim() : "";
@@ -4325,6 +4606,15 @@ async function verifyRoomDemoPayment(roomId: string, request: Request, env: Hidn
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "legacy-room-verify",
+    limit: 10,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -4367,6 +4657,15 @@ async function loginRoom(request: Request, env: HidnWorkerEnv): Promise<Response
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
     return unavailable;
+  }
+
+  const rateLimit = await enforceEdgeRateLimit(request, env, {
+    action: "legacy-room-login",
+    limit: 10,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (rateLimit) {
+    return rateLimit;
   }
 
   const body = await requestBody(request);
@@ -4763,7 +5062,7 @@ const worker = {
       }
 
       try {
-        return await listModerationVisibility(env);
+        return await listModerationVisibility(request, env);
       } catch {
         return jsonResponse({ error: "Moderation visibility could not be loaded." }, 500);
       }
@@ -4952,6 +5251,7 @@ const worker = {
         const body = await upstream.text();
         return new Response(body, {
           headers: {
+            ...securityHeaders(),
             "Cache-Control": "public, max-age=15, stale-while-revalidate=60",
             "Content-Type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
           },
@@ -4986,6 +5286,7 @@ const worker = {
         return new Response("Anonymous proof assets are not available on this deployment.", {
           status: 503,
           headers: {
+            ...securityHeaders(),
             "Cache-Control": "no-store",
             "Content-Type": "text/plain; charset=utf-8",
           },
@@ -4993,6 +5294,9 @@ const worker = {
       }
 
       const headers = new Headers(assetResponse.headers);
+      for (const [name, value] of Object.entries(securityHeaders())) {
+        headers.set(name, value);
+      }
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
       headers.set("Content-Type", anonymousZkContentType);
       headers.set("X-Content-Type-Options", "nosniff");
@@ -5004,10 +5308,21 @@ const worker = {
     }
 
     if (!contentType.toLowerCase().includes("text/html")) {
-      return assetResponse;
+      const headers = new Headers(assetResponse.headers);
+      for (const [name, value] of Object.entries(securityHeaders())) {
+        headers.set(name, value);
+      }
+      return new Response(assetResponse.body, {
+        headers,
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+      });
     }
 
     const headers = new Headers(assetResponse.headers);
+    for (const [name, value] of Object.entries(htmlSecurityHeaders(request))) {
+      headers.set(name, value);
+    }
     headers.set("X-Robots-Tag", crawlerPolicyForHtmlPath(url.pathname));
     return new Response(assetResponse.body, {
       headers,
