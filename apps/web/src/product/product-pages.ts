@@ -128,6 +128,7 @@ export interface RenderedProductRoute {
 }
 
 type FeedTab = "latest" | "random" | "felt";
+type HidnTheme = "quiet" | "signal";
 type RoomChannel = "general" | "love" | "redacted" | "blackbox" | "night-shift" | "underground";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
@@ -181,6 +182,7 @@ const ROOM_SESSION_TTL_MS = 60 * 60 * 1000;
 const ROOM_SESSION_EXPIRES_AT_STORAGE = "hidn:room:session-expires-at";
 const ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE = "hidn:anonymous:tip-address";
 const ROOM_DEVICE_HISTORY_STORAGE = "hidn:signals:device-history";
+const HIDN_THEME_STORAGE = "hidn:visual-theme";
 const ROOM_RECOVERY_CONFIRMATIONS = [
   "Do you understand that this is your recovery key to the private room?",
   "Do you understand that HIDN cannot recover this key if you lose it?",
@@ -204,6 +206,33 @@ function roomReplyLimitCopy(): string {
   return roomAccountAccessLevel === "full"
     ? `VERIFIED ACCESS / UP TO ${roomReplyCharacterLimit().toLocaleString()} CHARACTERS.`
     : `FREE ACCESS / UP TO ${roomReplyCharacterLimit()} CHARACTERS. VERIFY WITH ZEC FOR MORE.`;
+}
+
+function activeHidnTheme(): HidnTheme {
+  if (typeof window === "undefined") {
+    return "signal";
+  }
+
+  // Signal is the public first-visit default; an explicit Quiet selection is
+  // still remembered locally for visitors who choose the calmer surface.
+  return window.localStorage.getItem(HIDN_THEME_STORAGE) === "quiet" ? "quiet" : "signal";
+}
+
+function renderThemePicker(): string {
+  const activeTheme = activeHidnTheme();
+  return `<fieldset class="hidn-theme-picker" aria-label="Choose HIDN visual theme">
+    <legend>CHOOSE YOUR ATMOSPHERE</legend>
+    <div class="hidn-theme-picker__options">
+      <button class="hidn-theme-picker__option${activeTheme === "quiet" ? " hidn-theme-picker__option--active" : ""}" type="button" data-action="theme-set" data-theme="quiet" aria-pressed="${activeTheme === "quiet"}">
+        <span class="hidn-theme-picker__name">QUIET MODE</span>
+        <span class="hidn-theme-picker__description">BLACK / OFF-WHITE</span>
+      </button>
+      <button class="hidn-theme-picker__option${activeTheme === "signal" ? " hidn-theme-picker__option--active" : ""}" type="button" data-action="theme-set" data-theme="signal" aria-pressed="${activeTheme === "signal"}">
+        <span class="hidn-theme-picker__name">SIGNAL MODE</span>
+        <span class="hidn-theme-picker__description">GREEN / TERMINAL</span>
+      </button>
+    </div>
+  </fieldset>`;
 }
 
 let activeFeedTab: FeedTab = "latest";
@@ -359,6 +388,18 @@ const roomChannelOptions: Array<{
   { key: "underground", label: "THE UNDERGROUND", description: "what stays unsaid", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
 ];
 
+// Signal Mode keeps the room keys and live data contracts introduced later,
+// while restoring the visible room index copy from the former terminal build.
+// Quiet Mode continues to use the current editorial names.
+const signalRoomChannelCopy: Record<RoomChannel, { label: string; description: string; categories?: MockCategory[] }> = {
+  general: { label: "GENERAL", description: "all signals" },
+  love: { label: "LOVE", description: "what stays unsaid", categories: ["RELATIONSHIPS", "JOY"] },
+  blackbox: { label: "PRIVACY", description: "the hidden layer", categories: ["IDENTITY", "LONELINESS"] },
+  redacted: { label: "POLITICS", description: "power / public life", categories: ["UNCERTAINTY", "MONEY"] },
+  "night-shift": { label: "FAMILY", description: "the rooms we inherit", categories: ["FAMILY", "RELATIONSHIPS"] },
+  underground: { label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
+};
+
 interface HomeAmbientAudioSession {
   audio: HTMLAudioElement;
   graph: HomeAudioGraph;
@@ -381,6 +422,7 @@ const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
 const ROOM_ENTRY_SIGNAL_VOLUME = 0.16;
+const ROOM_ENTRY_TRANSITION_DURATION_MS = 3200;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const SHIELDEDSCAN_CACHE_DURATION_MS = 60_000;
@@ -2230,9 +2272,174 @@ function drawCanvasRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: numb
   ctx.closePath();
 }
 
+function wrapLegacyCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (current && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(current);
+      current = word;
+      if (lines.length === maxLines - 1) {
+        break;
+      }
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+  }
+
+  if (lines.length === maxLines && words.length > 0) {
+    const lastIndex = lines.length - 1;
+    let last = lines[lastIndex];
+    while (ctx.measureText(`${last}…`).width > maxWidth && last.length > 1) {
+      last = last.slice(0, -1).trim();
+    }
+    lines[lastIndex] = `${last}…`;
+  }
+
+  return lines;
+}
+
 interface ThreadImageReply {
   index: number;
   reply: AnonymousReply;
+}
+
+async function createLegacySignalThreadImage(
+  confession: MockConfession,
+  focusReply?: ThreadImageReply,
+  cardType: ShareCardType = "THREAD",
+  suppliedReplies?: AnonymousReply[],
+): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1170;
+  canvas.height = 972;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+
+  const threadUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(confession.id)}`;
+  const messageItems = focusReply
+    ? [confession.text, focusReply.reply.text]
+    : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
+  const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
+  const messageCount = Math.max(visibleMessageItems.length, 1);
+  const frameX = 48;
+  const frameY = 53;
+  const frameWidth = canvas.width - frameX * 2;
+  const frameHeight = canvas.height - frameY - 38;
+  const contentX = 124;
+  const contentWidth = canvas.width - contentX * 2;
+  const maxLines = messageCount === 1 ? 5 : Math.max(2, Math.floor(6 / messageCount));
+  const fontSize = messageCount === 1 ? 72 : 52;
+  const measuringContext = ctx;
+  measuringContext.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  const messageLayouts = visibleMessageItems.map((text) => {
+    const normalizedText = text.replace(/\s+/g, " ").trim();
+    const lines = wrapLegacyCanvasText(measuringContext, `“${normalizedText}”`, contentWidth - 24, maxLines);
+    const lineHeight = Math.round(fontSize * 1.18);
+    return { lines, lineHeight, blockHeight: lines.length * lineHeight };
+  });
+  const messageBlockHeight = messageLayouts.reduce(
+    (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 58 : 0),
+    0,
+  );
+  const identityBlockY = Math.min(650, Math.max(600, 205 + messageBlockHeight + 80));
+
+  const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  background.addColorStop(0, "#031009");
+  background.addColorStop(0.46, "#06150c");
+  background.addColorStop(1, "#020704");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const glow = ctx.createRadialGradient(980, 150, 20, 980, 150, 720);
+  glow.addColorStop(0, "rgba(93, 255, 143, 0.12)");
+  glow.addColorStop(1, "rgba(93, 255, 143, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "rgba(40, 94, 61, 0.16)";
+  for (let y = 0; y < canvas.height; y += 8) {
+    ctx.fillRect(0, y, canvas.width, 1);
+  }
+
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.07)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= canvas.width; x += 336) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  }
+
+  drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 0);
+  ctx.fillStyle = "rgba(7, 23, 13, 0.54)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93, 255, 143, 0.36)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.strokeStyle = "#5dff8f";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(frameX, frameY + 40);
+  ctx.lineTo(frameX, frameY);
+  ctx.lineTo(frameX + 40, frameY);
+  ctx.stroke();
+
+  let cursorY = 205;
+  ctx.textAlign = "start";
+  ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  messageLayouts.forEach(({ lines, lineHeight, blockHeight }, index) => {
+    ctx.fillStyle = index === 0 ? "#e8f0e6" : "#a1bca7";
+    lines.forEach((line, lineIndex) => {
+      ctx.fillText(line, contentX, cursorY + lineIndex * lineHeight);
+    });
+    cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 58 : 0);
+  });
+
+  const identityY = identityBlockY + 52;
+  ctx.strokeStyle = "#5dff8f";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(contentX, identityBlockY + 18);
+  ctx.lineTo(contentX, identityBlockY + 96);
+  ctx.stroke();
+  ctx.fillStyle = "#a1bca7";
+  ctx.font = "19px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(threadUrl, contentX + 38, identityY);
+
+  const badgeX = contentX;
+  const badgeY = identityBlockY + 121;
+  const badgeWidth = 410;
+  const badgeHeight = 82;
+  drawCanvasRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 0);
+  ctx.fillStyle = "rgba(93, 255, 143, 0.05)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(160, 180, 82, 0.62)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#5dff8f";
+  ctx.font = "700 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText("A ROOM WITHOUT NAMES", badgeX + 20, badgeY + 51);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("The thread image could not be created."));
+      }
+    }, "image/png");
+  });
 }
 
 async function createThreadImage(
@@ -2241,6 +2448,10 @@ async function createThreadImage(
   cardType: ShareCardType = "THREAD",
   suppliedReplies?: AnonymousReply[],
 ): Promise<Blob> {
+  if (activeHidnTheme() === "signal") {
+    return createLegacySignalThreadImage(confession, focusReply, cardType, suppliedReplies);
+  }
+
   const canvas = document.createElement("canvas");
   // Keep the export compact enough to feel like a shareable conversation card,
   // not a poster with a large empty tail.
@@ -2831,6 +3042,7 @@ function publicNavigation(path: string): string {
 function renderRoomMenu(): string {
   const profileName = roomAnonymousIdentity ? "ANONYMOUS" : roomAccountUsername || "HIDN-LOCAL";
   const profileVerified = roomAccountAccessLevel === "full";
+  const signalMode = activeHidnTheme() === "signal";
 
   return `<div class="room-menu" data-room-menu>
     <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
@@ -2839,7 +3051,9 @@ function renderRoomMenu(): string {
     </button>
     <div class="room-menu__panel" id="room-channel-menu" hidden>
       <div class="room-menu__panel-head">
-        <span class="room-menu__signal"><i aria-hidden="true"></i> PRIVATE ROOM</span>
+        ${signalMode
+          ? `<span>PRIVATE ROOM / INDEX</span><span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>`
+          : `<span class="room-menu__signal"><i aria-hidden="true"></i> PRIVATE ROOM</span>`}
       </div>
       <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
         <span class="room-menu__profile-mark" aria-hidden="true">◎</span>
@@ -2883,6 +3097,25 @@ function publicWindowTitle(path: string): string {
 function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus = false): string {
   const normalizedPath = normalizePath(path);
 
+  if (activeHidnTheme() === "signal") {
+    return `<div class="public-page__window-chrome">
+      <div class="public-page__window-bar">
+        <div class="public-page__window-controls" aria-hidden="true">
+          <span class="public-page__window-control public-page__window-control--close"></span>
+          <span class="public-page__window-control public-page__window-control--minimize"></span>
+          <span class="public-page__window-control public-page__window-control--maximize"></span>
+        </div>
+        <span class="public-page__window-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN://${publicWindowTitle(path)}</span>
+        <div class="public-page__window-actions">
+          ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
+          ${renderAmbientAudioControl()}
+          ${renderVisitorTimeSignal("public-page__window-meta")}
+        </div>
+        ${showRoomMenu ? renderRoomMenu() : ""}
+      </div>
+    </div>`;
+  }
+
   return `<div class="public-page__signal-bar">
       <span class="public-page__signal-brand">${HidnDoorLogo({ className: "public-page__signal-logo", label: "HIDN home" })}</span>
       ${normalizedPath.startsWith("/room") || normalizedPath.startsWith("/c/") ? "" : `<span class="public-page__signal-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN</span>`}
@@ -2924,6 +3157,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isAdminPage = normalizedPath.startsWith("/admin/");
   const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/profile" || Boolean(roomChannelFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
+  const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
     ? []
     : isHome || isRoomCreation
@@ -2942,7 +3176,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
         { label: "PRIVACY", href: "/privacy" },
       ];
 
-  return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
+  return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
     ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
@@ -2957,8 +3191,27 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   </div>`;
 }
 
+function visibleRoomChannelOptions(): Array<(typeof roomChannelOptions)[number]> {
+  if (activeHidnTheme() !== "signal") {
+    return roomChannelOptions;
+  }
+
+  return roomChannelOptions.map((channel) => ({
+    ...channel,
+    ...signalRoomChannelCopy[channel.key],
+  }));
+}
+
 function roomChannelOption(key: RoomChannel): (typeof roomChannelOptions)[number] {
-  return roomChannelOptions.find((channel) => channel.key === key) ?? roomChannelOptions[0];
+  const channel = roomChannelOptions.find((candidate) => candidate.key === key) ?? roomChannelOptions[0];
+  if (activeHidnTheme() !== "signal") {
+    return channel;
+  }
+
+  return {
+    ...channel,
+    ...signalRoomChannelCopy[channel.key],
+  };
 }
 
 function roomPostRandomKey(id: string): number {
@@ -3575,17 +3828,18 @@ function renderRoomPostTipControls(): string {
 function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
   const showFooter = options.showFooter ?? true;
   const activeChannel = roomChannelOption(activeRoomChannel);
+  const channels = visibleRoomChannelOptions();
   const folderGroups: Array<{ key: string; label: string; channels: typeof roomChannelOptions; open: boolean }> = [
     {
       key: "discussion",
       label: "DISCUSSION ROOMS",
-      channels: roomChannelOptions.filter((channel) => channel.key !== "general"),
+      channels: channels.filter((channel) => channel.key !== "general"),
       open: true,
     },
     {
       key: "system",
       label: "SYSTEM CHANNELS",
-      channels: roomChannelOptions.filter((channel) => channel.key === "general"),
+      channels: channels.filter((channel) => channel.key === "general"),
       open: activeRoomChannel === "general",
     },
   ];
@@ -3593,7 +3847,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
   return `<aside class="room-directory" aria-label="Discussion rooms">
     <div class="room-directory__header">
     ${TerminalLabel("CHANNELS / PRIVATE ROOMS")}
-    <span class="room-directory__count">${roomChannelOptions.length} OPEN</span>
+    <span class="room-directory__count">${channels.length} OPEN</span>
     </div>
     <h2>Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
@@ -4025,8 +4279,9 @@ function renderMobilePostSurface(): string {
 }
 
 function renderMobileRoomIndex(): string {
-  const rooms = roomChannelOptions
-    .map((channel, index) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
+  const signalMode = activeHidnTheme() === "signal";
+  const rooms = visibleRoomChannelOptions()
+    .map((channel) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
       <span class="room-mobile-index__number" aria-hidden="true">ᙇ</span>
       <span class="room-mobile-index__copy"><strong>${escapeHtml(channel.label)}</strong><small>${escapeHtml(channel.description)}</small></span>
       <span class="room-mobile-index__arrow" aria-hidden="true">→</span>
@@ -4038,7 +4293,7 @@ function renderMobileRoomIndex(): string {
     `<main id="main-content" class="public-main room-mobile-index-main">
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
-          ${TerminalLabel("PRIVATE ROOM")}
+          ${TerminalLabel(signalMode ? "PRIVATE ROOM / INDEX" : "PRIVATE ROOM")}
           <h1>CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
           <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
@@ -4055,11 +4310,16 @@ function renderMobileRoomIndex(): string {
 
 function renderExplore(path = "/room"): string {
   const isChannelRoute = Boolean(roomChannelFromPath(path));
+  const signalMode = activeHidnTheme() === "signal";
   const channel = roomChannelOption(activeRoomChannel);
-  const headerLabel = isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS";
+  const headerLabel = signalMode
+    ? (isChannelRoute ? `${channel.label} / PRIVATE CHANNEL` : "PRIVATE ROOM / OPEN THREADS")
+    : (isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS");
   const headerTitle = isChannelRoute ? channel.label : "THE ROOM";
   const headerCopy = isChannelRoute
-    ? `${channel.description}. Thoughts and replies stay inside this room, without public names.`
+    ? signalMode
+      ? `${channel.description}. Anonymous thoughts and replies stay inside this room.`
+      : `${channel.description}. Thoughts and replies stay inside this room, without public names.`
     : "Thoughts move through the room without names. Follow one thread or leave one behind.";
 
   if (!hasRoomSession()) {
@@ -4080,25 +4340,25 @@ function renderExplore(path = "/room"): string {
   return publicFrame(
     path,
     `<main id="main-content" class="public-main explore-main">
-      ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
+        ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
           ${isChannelRoute ? `<a class="room-channel-back" href="/room">← ALL ROOMS</a>` : ""}
           ${TerminalLabel(headerLabel)}
           <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
-          ${isChannelRoute ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
+          ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
         </header>
         <div class="explore-layout">
           <section class="explore-feed" aria-labelledby="${isChannelRoute ? "room-channel-title" : "explore-feed-title"}">
-            ${isChannelRoute ? "" : `<div class="explore-feed__heading">
+            ${signalMode || !isChannelRoute ? `<div class="explore-feed__heading">
               <div>
                 ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
                 <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
               <div class="explore-feed__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
-            </div>`}
+            </div>` : ""}
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
           </section>
@@ -4705,12 +4965,18 @@ function formattedZecAmount(zatoshis: number): string {
 
 function renderRoomEntryTransition(kind = roomEntryTransitionKind): string {
   const isReturning = kind === "return";
+  const signalMode = activeHidnTheme() === "signal";
+  const label = isReturning
+    ? signalMode ? "RECONNECTING / PRIVATE ROOM" : "REOPENING / PRIVATE ROOM"
+    : signalMode ? "SEARCHING / PRIVATE ROOM" : "LOCATING / PRIVATE ROOM";
+  const subline = isReturning
+    ? signalMode ? "ACCESS KEY ACCEPTED / RETURNING" : "PRIVATE SIGNAL RECONNECTED"
+    : signalMode ? "ESTABLISHING ANONYMOUS CHANNEL" : "ESTABLISHING ANONYMOUS SIGNAL";
   return `<div class="room-entry-transition room-entry-transition--${isReturning ? "return" : "first"}" role="status" aria-live="polite">
-    ${isReturning
-      ? `<div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>`
-      : `<div class="room-entry-transition__loader" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>`}
-    <p class="room-entry-transition__label">${isReturning ? "REOPENING / PRIVATE ROOM" : "LOCATING / PRIVATE ROOM"}<span aria-hidden="true">_</span></p>
-    <span class="room-entry-transition__subline">${isReturning ? "PRIVATE SIGNAL RECONNECTED" : "ESTABLISHING ANONYMOUS SIGNAL"}</span>
+    <div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    ${isReturning ? "" : `<div class="room-entry-transition__loader" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>`}
+    <p class="room-entry-transition__label">${label}<span aria-hidden="true">_</span></p>
+    <span class="room-entry-transition__subline">${subline}</span>
   </div>`;
 }
 
@@ -4727,7 +4993,7 @@ function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind 
     roomEntryTransitionActive = false;
     roomEntryTimer = undefined;
     rerenderProductRoute();
-  }, 2500);
+  }, ROOM_ENTRY_TRANSITION_DURATION_MS);
 }
 
 async function registerRoomAccount(username: string): Promise<void> {
@@ -4909,6 +5175,7 @@ async function refreshRoomPayment(): Promise<void> {
 }
 
 function renderRoomAccessChooser(): string {
+  const signalMode = activeHidnTheme() === "signal";
   return `<div class="room-access-page">
     <header class="room-access-header">
       <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
@@ -4916,20 +5183,20 @@ function renderRoomAccessChooser(): string {
     <div class="room-access-options">
       <article class="room-access-option">
         <div>
-          <h2>BEGIN WITHOUT A NAME</h2>
-          <p>Create a private recovery key to access the room. No username is required.</p>
+          <h2>ENTER WITHOUT A NAME</h2>
+          <p>Create a private recovery key. No name or handle is required.</p>
         </div>
-        ${SecondaryButton({ label: "SET UP ANONYMOUS ACCESS", dataAction: "room-create" })}
+        ${SecondaryButton({ label: "CREATE PRIVATE ACCESS →", dataAction: "room-create" })}
       </article>
       <article class="room-access-option">
         <div>
-          <h2>RETURN WITH YOUR KEY</h2>
-          <p>Use the recovery key you saved. It is the only return credential.</p>
+          <h2>RETURN THROUGH THE KEY</h2>
+          <p>Use the key you kept. It is the only way back in.</p>
         </div>
-        ${SecondaryButton({ label: "ENTER WITH RECOVERY KEY", dataAction: "room-login" })}
+        ${SecondaryButton({ label: "USE RECOVERY KEY →", dataAction: "room-login" })}
       </article>
     </div>
-    ${SystemMessage("PRIVATE ACCESS", "Create anonymous access or return with your recovery key to enter the room.", "LIVE")}
+    ${SystemMessage("PRIVATE ACCESS", signalMode ? "Open private access or return through the recovery key." : "Create private access or return through the recovery key.", "LIVE")}
   </div>`;
 }
 
@@ -4939,12 +5206,10 @@ function renderRoomCreate(): string {
       <h1 class="type-display-lg room-access-header__title">KEEP YOUR<br /><em>KEY.</em></h1>
       <p class="room-access-header__copy">HIDN creates a private recovery key on this device. No username, handle, or public identity is needed.</p>
     </header>
-    <form class="room-login-card room-account-card" novalidate>
-      <div class="room-access-key room-access-key--pending">
-        <span class="room-access-key__label">PRIVATE CREDENTIAL / GENERATED IN YOUR BROWSER</span>
-        <p>The browser creates the secret locally and sends only a membership commitment to the Worker. Save the recovery key when it appears; HIDN cannot recover it.</p>
-      </div>
-    </form>
+    <section class="room-access-key room-access-key--pending" aria-label="Private credential">
+      <span class="room-access-key__label">PRIVATE CREDENTIAL / GENERATED IN YOUR BROWSER</span>
+      <p>Save the recovery key when it appears; HIDN cannot recover it.</p>
+    </section>
     ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
     <div class="room-access-actions">
       ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
@@ -4954,8 +5219,10 @@ function renderRoomCreate(): string {
 }
 
 function renderRoomLogin(): string {
+  const signalMode = activeHidnTheme() === "signal";
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
+      ${signalMode ? TerminalLabel("HIDN / RECOVERY ACCESS") : ""}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
       <p class="room-access-header__copy">Use the recovery key you saved. It is the only credential; the browser proves you hold it without sending the key to HIDN.</p>
     </header>
@@ -5037,7 +5304,6 @@ function renderRoomRecoveryPanel(): string {
         <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
           <code>${escapeHtml(roomAccountRecoveryCode)}</code>
         </button>
-        <span class="room-access-key__warning">VISIBLE FOR 20 SECONDS / REPEAT THE CONFIRMATIONS TO REVEAL IT AGAIN.</span>
       </section>`;
     }
 
@@ -5085,6 +5351,7 @@ function renderRoomRecoveryPanel(): string {
 function renderRoomReady(): string {
   const isFull = roomAccountAccessLevel === "full";
   const isNewAccount = roomAccountWasCreated;
+  const signalMode = activeHidnTheme() === "signal";
   const payment = roomPayment;
   const accountLabel = roomAnonymousIdentity ? "ANONYMOUS ACCESS" : roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
   const showVerification = roomVerificationRequested && !isFull;
@@ -5092,15 +5359,16 @@ function renderRoomReady(): string {
   const titlePrefix = isNewAccount ? "SAVE YOUR" : "THE ROOM IS";
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
-    ? "The private room is ready. Save the recovery key below, then enter the room."
+    ? signalMode ? `${accountLabel} is ready. Save the recovery key below, then enter the room.` : "The private room is ready. Save the recovery key below, then enter the room."
     : isFull
       ? `${accountLabel} is active with full room access.`
       : `${accountLabel} is active with free room access. Enter the private room to post, reply, and keep your history.`;
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
+      ${signalMode ? TerminalLabel(isFull ? "HIDN / VERIFIED ACCESS" : "HIDN / FREE ACCESS") : ""}
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
-        ${escapeHtml(titlePrefix)}<br />
+        ${escapeHtml(signalMode ? "THE ROOM IS" : titlePrefix)}<br />
         <em>${escapeHtml(titleSignal)}</em>
       </h1>
       <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
@@ -5483,6 +5751,7 @@ function renderNotFound(): RenderedProductRoute {
 }
 
 function renderHome(): RenderedProductRoute {
+  const signalMode = activeHidnTheme() === "signal";
   return {
     metadata: HOME_METADATA,
     html: publicFrame(
@@ -5492,17 +5761,38 @@ function renderHome(): RenderedProductRoute {
           <div class="home-room-stars" aria-hidden="true"></div>
           <div class="home-room-noise" aria-hidden="true"></div>
           ${renderPointerSpotlight()}
-          <div class="home-room-signal">
-              <span class="home-room-signal__brand">${HidnDoorLogo({ className: "home-room-signal__logo", label: "HIDN home" })}</span>
-              <div class="home-room-signal__actions">
-                ${renderAmbientAudioControl()}
-                ${renderVisitorTimeSignal("home-room-signal__meta")}
+          ${signalMode ? `<div class="home-room-window">
+            <div class="home-room-window__bar">
+              <div class="home-room-window__controls">
+                <span class="home-room-window__control home-room-window__control--close"></span>
+                <span class="home-room-window__control home-room-window__control--minimize"></span>
+                <span class="home-room-window__control home-room-window__control--maximize"></span>
               </div>
-          </div>
+              <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
+              <div class="home-room-window__right">
+                ${renderAmbientAudioControl()}
+                ${renderVisitorTimeSignal("home-room-window__meta")}
+              </div>
+            </div>
+          </div>` : `<div class="home-room-signal">
+            <span class="home-room-signal__brand">${HidnDoorLogo({ className: "home-room-signal__logo", label: "HIDN home" })}</span>
+            <div class="home-room-signal__actions">
+              ${renderAmbientAudioControl()}
+              ${renderVisitorTimeSignal("home-room-signal__meta")}
+            </div>
+          </div>`}
           <div class="home-room-card-field" aria-hidden="true">
-            ${renderHomeRoomCards(8)}
+            ${renderHomeRoomCards(signalMode ? undefined : 8)}
           </div>
-          <div class="home-room-core">
+          ${signalMode ? `<div class="home-room-core">
+            <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO${renderRoomEyeWatcher()}</span>M<br />WITHOUT <em>NAMES.</em></h1>
+            <p class="home-room-core__copy">A private room for anonymous thoughts and unnamed conversations.</p>
+            <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
+              <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
+            </a>
+            <p class="home-room-core__status">WRITE FREELY / STAY UNKNOWN</p>
+            <div class="home-room-theme-picker">${renderThemePicker()}</div>
+          </div>` : `<div class="home-room-core">
             <div class="home-room-core__watcher">${renderRoomEyeWatcher()}</div>
             <h1 id="home-room-title">WRITE<br /><em>FREELY.</em><br />STAY PRIVATE.</h1>
             <p class="home-room-core__copy">A private room for thoughts, confessions, and conversations without public names.</p>
@@ -5510,7 +5800,8 @@ function renderHome(): RenderedProductRoute {
               <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
             </a>
             <p class="home-room-core__status">PRIVATE SIGNAL / NO NAME REQUIRED</p>
-          </div>
+            <div class="home-room-theme-picker">${renderThemePicker()}</div>
+          </div>`}
           <aside class="home-room-invite" data-home-invite hidden aria-label="Private room invitation">
             <button class="home-room-invite__close" type="button" data-action="home-invite-close" aria-label="Dismiss room invitation">×</button>
             <div class="home-room-invite__watcher" aria-hidden="true">
@@ -6469,6 +6760,16 @@ export function bindProductRoute(root: ParentNode = document): void {
             invite.dataset.state = "dismissed";
             scheduleHomeInvite(root, 30000);
           }
+          break;
+        }
+        case "theme-set": {
+          const theme = button.dataset.theme;
+          if (theme !== "quiet" && theme !== "signal") {
+            break;
+          }
+
+          window.localStorage.setItem(HIDN_THEME_STORAGE, theme);
+          rerenderProductRoute();
           break;
         }
         case "room-tip": {
