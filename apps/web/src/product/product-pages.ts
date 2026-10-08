@@ -4987,7 +4987,7 @@ function renderRecoveryRevealPrompt(className: string): string {
       <p class="room-payment-card__note">${note}</p>
       <div class="room-access-actions">
         ${GhostButton({ label: "CANCEL", dataAction: "room-recovery-cancel" })}
-        ${SecondaryButton({ label: roomRecoveryVerificationSubmitting ? "CHECKING CONFIRMATIONS..." : "REVEAL RECOVERY KEY →", disabled: roomRecoveryVerificationSubmitting, dataAction: "room-recovery-submit" })}
+        ${SecondaryButton({ type: "submit", label: roomRecoveryVerificationSubmitting ? "CHECKING CONFIRMATIONS..." : "REVEAL RECOVERY KEY →", disabled: roomRecoveryVerificationSubmitting })}
       </div>
     </form>`;
 }
