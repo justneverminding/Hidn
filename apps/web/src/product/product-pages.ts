@@ -388,18 +388,6 @@ const roomChannelOptions: Array<{
   { key: "underground", label: "THE UNDERGROUND", description: "what stays unsaid", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
 ];
 
-// Signal Mode keeps the room keys and live data contracts introduced later,
-// while restoring the visible room index copy from the former terminal build.
-// Quiet Mode continues to use the current editorial names.
-const signalRoomChannelCopy: Record<RoomChannel, { label: string; description: string; categories?: MockCategory[] }> = {
-  general: { label: "GENERAL", description: "all signals" },
-  love: { label: "LOVE", description: "what stays unsaid", categories: ["RELATIONSHIPS", "JOY"] },
-  blackbox: { label: "PRIVACY", description: "the hidden layer", categories: ["IDENTITY", "LONELINESS"] },
-  redacted: { label: "POLITICS", description: "power / public life", categories: ["UNCERTAINTY", "MONEY"] },
-  "night-shift": { label: "FAMILY", description: "the rooms we inherit", categories: ["FAMILY", "RELATIONSHIPS"] },
-  underground: { label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
-};
-
 interface HomeAmbientAudioSession {
   audio: HTMLAudioElement;
   graph: HomeAudioGraph;
@@ -3192,26 +3180,11 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
 }
 
 function visibleRoomChannelOptions(): Array<(typeof roomChannelOptions)[number]> {
-  if (activeHidnTheme() !== "signal") {
-    return roomChannelOptions;
-  }
-
-  return roomChannelOptions.map((channel) => ({
-    ...channel,
-    ...signalRoomChannelCopy[channel.key],
-  }));
+  return roomChannelOptions;
 }
 
 function roomChannelOption(key: RoomChannel): (typeof roomChannelOptions)[number] {
-  const channel = roomChannelOptions.find((candidate) => candidate.key === key) ?? roomChannelOptions[0];
-  if (activeHidnTheme() !== "signal") {
-    return channel;
-  }
-
-  return {
-    ...channel,
-    ...signalRoomChannelCopy[channel.key],
-  };
+  return roomChannelOptions.find((candidate) => candidate.key === key) ?? roomChannelOptions[0];
 }
 
 function roomPostRandomKey(id: string): number {
