@@ -4057,7 +4057,7 @@ function renderExplore(path = "/room"): string {
   const isChannelRoute = Boolean(roomChannelFromPath(path));
   const channel = roomChannelOption(activeRoomChannel);
   const headerLabel = isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS";
-  const headerTitle = isChannelRoute ? `// ${channel.label} / THOUGHTS IN MOTION` : "THE ROOM";
+  const headerTitle = isChannelRoute ? channel.label : "THE ROOM";
   const headerCopy = isChannelRoute
     ? `${channel.description}. Thoughts and replies stay inside this room, without public names.`
     : "Thoughts move through the room without names. Follow one thread or leave one behind.";
