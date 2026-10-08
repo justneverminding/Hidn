@@ -1033,13 +1033,13 @@
 /* Version 1 — direct Zcash testnet tips. The request is non-custodial: the
    modal only prepares a wallet URI and QR for the author's shielded address. */
 .room-message__action--tip {
-  color: var(--hidn-broadcast-amber);
+  color: var(--hidn-text-muted);
 }
 
 .room-message__action--tip:hover,
 .room-message__action--tip:focus-visible {
-  border-color: rgba(219, 167, 74, 0.55);
-  color: var(--hidn-broadcast-amber);
+  border-color: var(--hidn-border-strong);
+  color: var(--hidn-paper);
 }
 
 .room-profile-card--tips {
@@ -1047,13 +1047,13 @@
 }
 
 .room-profile-card--tips h2 {
-  color: var(--hidn-bone);
-  font-family: var(--hidn-font-mono);
-  font-size: clamp(0.95rem, 2vw, 1.25rem);
-  font-weight: 400;
-  letter-spacing: 0.1em;
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-display);
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
   margin: 0.55rem 0 0;
-  text-transform: uppercase;
 }
 
 .room-tip-address-form {
@@ -1077,11 +1077,11 @@
 }
 
 .room-tip-address-form input {
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(93, 255, 143, 0.2);
-  border-radius: 0;
-  color: var(--hidn-bone);
-  font-family: var(--hidn-font-mono);
+  background: var(--hidn-surface-inset);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-body);
   font-size: 0.76rem;
   letter-spacing: 0.035em;
   min-height: 2.8rem;
@@ -1093,8 +1093,8 @@
 }
 
 .room-tip-address-form input:focus {
-  border-color: var(--hidn-signal);
-  box-shadow: 0 0 0 2px rgba(93, 255, 143, 0.12);
+  border-color: var(--hidn-border-strong);
+  box-shadow: 0 0 0 3px rgba(245, 241, 232, 0.08);
   outline: none;
 }
 
@@ -1104,20 +1104,21 @@
 
 .room-tip-address-form__hint,
 .room-tip-address-form__feedback {
-  color: var(--hidn-text-dim);
-  font-family: var(--hidn-font-mono);
-  font-size: 0.58rem;
-  letter-spacing: 0.045em;
-  line-height: 1.6;
+  color: var(--hidn-text-muted);
+  font-family: var(--hidn-font-body);
+  font-size: 0.84rem;
+  letter-spacing: 0;
+  line-height: 1.62;
   margin: 0;
 }
 
 .room-tip-address-form__hint code {
-  color: var(--hidn-signal-soft);
+  color: var(--hidn-paper);
+  font-family: var(--hidn-font-mono);
 }
 
 .room-tip-address-form__feedback {
-  color: var(--hidn-signal);
+  color: var(--hidn-paper);
 }
 
 .room-tip-address-form__feedback--error {
@@ -1126,7 +1127,7 @@
 
 .room-tip-dialog {
   align-items: center;
-  background: rgba(0, 2, 1, 0.78);
+  background: rgba(3, 3, 3, 0.86);
   display: grid;
   inset: 0;
   isolation: isolate;
@@ -1136,7 +1137,7 @@
 }
 
 .room-tip-dialog::before {
-  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(93, 255, 143, 0.04) 3px 4px);
+  background: repeating-linear-gradient(0deg, transparent 0 4px, rgba(245, 241, 232, 0.025) 4px 5px);
   content: "";
   inset: 0;
   pointer-events: none;
@@ -1145,7 +1146,7 @@
 }
 
 .room-tip-dialog__backdrop {
-  background: radial-gradient(circle at 50% 45%, rgba(18, 68, 42, 0.18), transparent 42rem), rgba(0, 2, 1, 0.62);
+  background: radial-gradient(circle at 50% 45%, rgba(245, 241, 232, 0.06), transparent 42rem), rgba(3, 3, 3, 0.68);
   border: 0;
   cursor: pointer;
   inset: 0;
@@ -1156,10 +1157,11 @@
 
 .room-tip-dialog__panel {
   background:
-    repeating-linear-gradient(0deg, rgba(93, 255, 143, 0.026) 0 1px, transparent 1px 4px),
-    linear-gradient(145deg, rgba(15, 50, 29, 0.96), rgba(2, 10, 5, 0.98));
-  border: 1px solid rgba(93, 255, 143, 0.38);
-  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.58), 0 0 2rem rgba(12, 89, 46, 0.15);
+    repeating-linear-gradient(0deg, rgba(245, 241, 232, 0.025) 0 1px, transparent 1px 4px),
+    linear-gradient(145deg, rgba(27, 27, 26, 0.98), rgba(8, 8, 7, 0.99));
+  border: 1px solid var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-lg);
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.68), 0 0 2rem rgba(245, 241, 232, 0.045);
   margin: 0 auto;
   max-height: min(46rem, calc(100vh - 2rem));
   max-width: 48rem;
@@ -1187,13 +1189,13 @@
 }
 
 .room-tip-dialog__header h2 em {
-  color: var(--hidn-signal);
+  color: var(--hidn-paper);
   font-style: normal;
 }
 
 .room-tip-dialog__close {
   background: transparent;
-  border: 1px solid rgba(93, 255, 143, 0.2);
+  border: 1px solid var(--hidn-border);
   color: var(--hidn-text-muted);
   cursor: pointer;
   font: inherit;
@@ -1205,24 +1207,24 @@
 
 .room-tip-dialog__close:hover,
 .room-tip-dialog__close:focus-visible {
-  border-color: var(--hidn-signal);
-  color: var(--hidn-signal);
+  border-color: var(--hidn-paper-muted);
+  color: var(--hidn-paper);
   outline: none;
 }
 
 .room-tip-dialog__intro,
 .room-tip-dialog__note {
   color: var(--hidn-text-muted);
-  font-family: var(--hidn-font-mono);
-  font-size: 0.66rem;
-  line-height: 1.7;
+  font-family: var(--hidn-font-body);
+  font-size: 0.92rem;
+  line-height: 1.62;
   margin: 1.25rem 0 0;
   max-width: 58ch;
 }
 
 .room-tip-dialog__request {
   align-items: center;
-  border-block: 1px solid rgba(93, 255, 143, 0.14);
+  border-block: 1px solid var(--hidn-border);
   display: grid;
   gap: 1.4rem;
   grid-template-columns: minmax(11rem, 14rem) minmax(0, 1fr);
@@ -1231,8 +1233,9 @@
 }
 
 .room-tip-dialog__qr {
-  background: #031008;
-  border: 1px solid rgba(93, 255, 143, 0.22);
+  background: #0b0b0a;
+  border: 1px solid var(--hidn-border-strong);
+  border-radius: var(--hidn-radius-md);
   display: block;
   height: auto;
   max-width: 100%;
@@ -1251,7 +1254,7 @@
 }
 
 .room-tip-dialog__label {
-  color: var(--hidn-broadcast-amber);
+  color: var(--hidn-text-dim);
   font-family: var(--hidn-font-mono);
   font-size: 0.52rem;
   letter-spacing: 0.12em;
@@ -1259,7 +1262,7 @@
 }
 
 .room-tip-dialog__details code {
-  color: var(--hidn-signal-soft);
+  color: var(--hidn-paper);
   font-family: var(--hidn-font-mono);
   font-size: 0.6rem;
   letter-spacing: 0.03em;
@@ -1269,8 +1272,9 @@
 
 .room-tip-dialog__address {
   align-items: stretch;
-  background: rgba(93, 255, 143, 0.035);
-  border: 1px solid rgba(93, 255, 143, 0.2);
+  background: rgba(245, 241, 232, 0.045);
+  border: 1px solid var(--hidn-border);
+  border-radius: var(--hidn-radius-md);
   color: inherit;
   cursor: pointer;
   display: grid;
@@ -1283,8 +1287,8 @@
 
 .room-tip-dialog__address:hover,
 .room-tip-dialog__address:focus-visible {
-  background: rgba(93, 255, 143, 0.1);
-  border-color: var(--hidn-signal);
+  background: rgba(245, 241, 232, 0.09);
+  border-color: var(--hidn-paper-muted);
   outline: none;
 }
 
@@ -1320,7 +1324,7 @@
 }
 
 .room-tip-dialog__note {
-  color: var(--hidn-broadcast-amber);
+  color: var(--hidn-text-dim);
   font-size: 0.54rem;
   letter-spacing: 0.08em;
   margin-top: 1rem;
@@ -1339,6 +1343,7 @@
   }
 
   .room-tip-dialog__panel {
+    border-radius: var(--hidn-radius-md);
     padding: 1.15rem;
   }
 
@@ -1348,6 +1353,7 @@
 
   .room-tip-dialog__qr {
     justify-self: center;
+    width: min(11rem, 68vw);
   }
 }
 

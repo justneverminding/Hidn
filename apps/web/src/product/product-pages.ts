@@ -127,7 +127,7 @@ export interface RenderedProductRoute {
 }
 
 type FeedTab = "latest" | "random" | "felt";
-type RoomChannel = "general" | "love" | "privacy" | "politics" | "family" | "work";
+type RoomChannel = "general" | "love" | "privacy" | "redacted" | "family" | "work";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type RoomEntryTransitionKind = "first" | "return";
@@ -350,7 +350,7 @@ const roomChannelOptions: Array<{
   { key: "general", label: "GENERAL", description: "all signals" },
   { key: "love", label: "LOVE", description: "what stays unsaid", categories: ["RELATIONSHIPS", "JOY"] },
   { key: "privacy", label: "PRIVACY", description: "the hidden layer", categories: ["IDENTITY", "LONELINESS"] },
-  { key: "politics", label: "POLITICS", description: "power / public life", categories: ["UNCERTAINTY", "MONEY"] },
+  { key: "redacted", label: "REDACTED", description: "what you won’t say publicly", categories: ["IDENTITY", "UNCERTAINTY"] },
   { key: "family", label: "FAMILY", description: "the rooms we inherit", categories: ["FAMILY", "RELATIONSHIPS"] },
   { key: "work", label: "WORK", description: "survival / ambition", categories: ["CAREER", "AMBITION", "MONEY"] },
 ];
