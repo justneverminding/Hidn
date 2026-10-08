@@ -4502,9 +4502,6 @@ function restoreAnonymousSession(): boolean {
     roomAccountRecoveryCode = roomAnonymousIdentity.recoveryCode;
     roomAccountAccessLevel = "read_only";
     roomBackendStatus = "connected";
-    if (roomAccessMode === "choose") {
-      roomAccessMode = "ready";
-    }
     return true;
   } catch {
     sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
@@ -4673,9 +4670,6 @@ function restoreRoomAccountState(): void {
   roomPaymentIntentId = sessionStorage.getItem("hidn:account:payment-intent") ?? "";
   roomVerificationRequested = sessionStorage.getItem("hidn:account:verification-requested") === "true" || Boolean(roomPaymentIntentId);
   roomBackendStatus = roomBackendId && roomAccountUsername ? "connected" : "offline";
-  if (roomBackendStatus === "connected" && roomAccessMode === "choose") {
-    roomAccessMode = "ready";
-  }
 }
 
 function persistAccountSession(account: AccountResponse, refreshExpiry = true): void {
@@ -5095,6 +5089,7 @@ function renderRoomReady(): string {
   const accountLabel = roomAnonymousIdentity ? "ANONYMOUS ACCESS" : roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
   const showVerification = roomVerificationRequested && !isFull;
   const titleText = isNewAccount ? "SAVE YOUR KEY." : "THE ROOM IS OPEN.";
+  const titlePrefix = isNewAccount ? "SAVE YOUR" : "THE ROOM IS";
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
     ? "The private room is ready. Save the recovery key below, then enter the room."
@@ -5105,7 +5100,7 @@ function renderRoomReady(): string {
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
-        THE ROOM IS<br />
+        ${escapeHtml(titlePrefix)}<br />
         <em>${escapeHtml(titleSignal)}</em>
       </h1>
       <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
@@ -5544,14 +5539,6 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   if (isProtectedRoomPath(normalizedPath) && !hasRoomSession()) {
     window.history.replaceState({}, "", "/");
     return renderHome();
-  }
-
-  if (normalizedPath === "/room/access" && hasRoomSession()) {
-    window.history.replaceState({}, "", "/room");
-    return {
-      metadata: EXPLORE_METADATA,
-      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room"),
-    };
   }
 
   if (isModerationSurfacePath(normalizedPath) && !moderationVisibilityReady) {
