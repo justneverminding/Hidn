@@ -507,7 +507,9 @@ export async function fetchAccountSession(): Promise<AccountResponse> {
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
     const message = typeof payload?.error === "string" ? payload.error : `Account session returned HTTP ${response.status}.`;
-    throw new Error(message);
+    const error = new Error(message) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
 
   return (await response.json()) as AccountResponse;

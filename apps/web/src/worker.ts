@@ -24,7 +24,7 @@ const COINGECKO_ZEC_PRICE_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd";
 const ROOM_USD_TARGET_CENTS = 100;
 const ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const ACCOUNT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const ACCOUNT_SESSION_TTL_MS = 60 * 60 * 1000;
 const PAYMENT_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
 const ZK_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const WATCHER_CLOCK_SKEW_MS = 5 * 60 * 1000;
@@ -1084,7 +1084,7 @@ function minimumPaymentConfirmations(env: HidnWorkerEnv): number {
   return configuredInteger(env.PAYMENT_MIN_CONFIRMATIONS, 3) ?? 3;
 }
 
-async function issueAccountSession(userId: string, request: Request, env: HidnWorkerEnv): Promise<{ token: string; cookie: string }> {
+async function issueAccountSession(userId: string, request: Request, env: HidnWorkerEnv): Promise<{ token: string; cookie: string; expiresAt: string }> {
   const token = createRandomHex(32);
   const sessionHash = await hashText(token);
   const createdAt = new Date();
@@ -1105,7 +1105,7 @@ async function issueAccountSession(userId: string, request: Request, env: HidnWo
     )
     .run();
 
-  return { token, cookie: sessionCookie(request, token, ACCOUNT_SESSION_TTL_MS / 1000) };
+  return { token, cookie: sessionCookie(request, token, ACCOUNT_SESSION_TTL_MS / 1000), expiresAt: expiresAt.toISOString() };
 }
 
 async function getAuthenticatedUser(request: Request, env: HidnWorkerEnv): Promise<AuthenticatedUser | null> {
@@ -1120,7 +1120,7 @@ async function getAuthenticatedUser(request: Request, env: HidnWorkerEnv): Promi
 
   const sessionHash = await hashText(token);
   const row = await env.ROOM_DB.prepare(
-    `SELECT s.session_id, s.expires_at, u.user_id, u.username, u.access_level
+    `SELECT s.session_id, s.created_at, s.expires_at, u.user_id, u.username, u.access_level
      FROM hidn_sessions s
      JOIN hidn_users u ON u.user_id = s.user_id
      WHERE s.session_hash = ?
@@ -1129,13 +1129,18 @@ async function getAuthenticatedUser(request: Request, env: HidnWorkerEnv): Promi
     .bind(sessionHash)
     .first<{
       session_id: string;
+      created_at: string;
       expires_at: string;
       user_id: string;
       username: string;
       access_level: AccessLevel;
     }>();
 
-  if (!row || Date.parse(row.expires_at) <= Date.now()) {
+  if (
+    !row
+    || Date.parse(row.expires_at) <= Date.now()
+    || Date.parse(row.created_at) + ACCOUNT_SESSION_TTL_MS <= Date.now()
+  ) {
     return null;
   }
 

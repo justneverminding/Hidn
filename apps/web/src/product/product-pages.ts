@@ -72,6 +72,7 @@ import {
   fetchAnonymousNotifications,
   fetchAnonymousPosts,
   fetchAnonymousThread,
+  fetchAccountSession,
   fetchAdminAudit,
   fetchAdminModerators,
   fetchAdminSession,
@@ -176,6 +177,8 @@ const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
 const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ROOM_ACCOUNT_RECOVERY_KEY_STORAGE = "hidn:account:recovery-key";
 const ROOM_ANONYMOUS_SESSION_STORAGE = "hidn:anonymous:session";
+const ROOM_SESSION_TTL_MS = 60 * 60 * 1000;
+const ROOM_SESSION_EXPIRES_AT_STORAGE = "hidn:room:session-expires-at";
 const ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE = "hidn:anonymous:tip-address";
 const ROOM_DEVICE_HISTORY_STORAGE = "hidn:signals:device-history";
 const ROOM_RECOVERY_CONFIRMATIONS = [
@@ -216,6 +219,7 @@ let roomAccountUsername = "";
 let roomAccountAccessLevel: AccountAccessLevel = "read_only";
 let roomAccountRecoveryCode = "";
 let roomAccountWasCreated = false;
+let roomSessionValidationRequest: Promise<void> | undefined;
 let roomAnonymousIdentity: AnonymousIdentity | undefined;
 let roomAnonymousWitness: AnonymousMerkleWitness | undefined;
 let roomAnonymousStatus: AnonymousStatusResponse | undefined;
@@ -3923,6 +3927,14 @@ function roomThreadIdFromPath(path: string): string | undefined {
   }
 }
 
+function isProtectedRoomPath(path: string): boolean {
+  return path === "/room"
+    || path === "/explore"
+    || path === "/room/profile"
+    || Boolean(roomChannelFromPath(path))
+    || Boolean(roomThreadIdFromPath(path));
+}
+
 function isRoomMobileViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
 }
@@ -4447,13 +4459,32 @@ function persistAnonymousSession(): void {
     identity: roomAnonymousIdentity,
     witness: roomAnonymousWitness,
   }));
+  sessionStorage.setItem(ROOM_SESSION_EXPIRES_AT_STORAGE, String(Date.now() + ROOM_SESSION_TTL_MS));
   sessionStorage.setItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE, roomAnonymousIdentity.recoveryCode);
+}
+
+function roomSessionIsExpired(): boolean {
+  const storedExpiry = sessionStorage.getItem(ROOM_SESSION_EXPIRES_AT_STORAGE);
+  if (!storedExpiry) {
+    return false;
+  }
+
+  const expiresAt = Number(storedExpiry);
+  return !Number.isFinite(expiresAt) || expiresAt <= Date.now();
 }
 
 function restoreAnonymousSession(): boolean {
   const stored = sessionStorage.getItem(ROOM_ANONYMOUS_SESSION_STORAGE);
   if (!stored) {
     return false;
+  }
+
+  if (roomSessionIsExpired()) {
+    clearRoomSession();
+    return false;
+  }
+  if (!sessionStorage.getItem(ROOM_SESSION_EXPIRES_AT_STORAGE)) {
+    sessionStorage.setItem(ROOM_SESSION_EXPIRES_AT_STORAGE, String(Date.now() + ROOM_SESSION_TTL_MS));
   }
 
   try {
@@ -4555,6 +4586,7 @@ function clearRoomSession(): void {
   sessionStorage.removeItem("hidn:account:access-level");
   sessionStorage.removeItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE);
   sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
+  sessionStorage.removeItem(ROOM_SESSION_EXPIRES_AT_STORAGE);
   sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
   sessionStorage.removeItem("hidn:account:payment-intent");
   sessionStorage.removeItem("hidn:account:verification-requested");
@@ -4626,6 +4658,14 @@ function restoreRoomAccountState(): void {
     return;
   }
 
+  if (roomSessionIsExpired()) {
+    clearRoomSession();
+    return;
+  }
+  if (!sessionStorage.getItem(ROOM_SESSION_EXPIRES_AT_STORAGE)) {
+    sessionStorage.setItem(ROOM_SESSION_EXPIRES_AT_STORAGE, String(Date.now() + ROOM_SESSION_TTL_MS));
+  }
+
   roomBackendId = sessionStorage.getItem("hidn:account:user-id") ?? "";
   roomAccountUsername = sessionStorage.getItem("hidn:account:username") ?? "";
   roomAccountAccessLevel = sessionStorage.getItem("hidn:account:access-level") === "full" ? "full" : "read_only";
@@ -4638,7 +4678,7 @@ function restoreRoomAccountState(): void {
   }
 }
 
-function persistAccountSession(account: AccountResponse): void {
+function persistAccountSession(account: AccountResponse, refreshExpiry = true): void {
   roomBackendId = account.userId;
   roomAccountUsername = account.username;
   roomAccountAccessLevel = account.accessLevel;
@@ -4654,12 +4694,15 @@ function persistAccountSession(account: AccountResponse): void {
   sessionStorage.setItem("hidn:account:user-id", account.userId);
   sessionStorage.setItem("hidn:account:username", account.username);
   sessionStorage.setItem("hidn:account:access-level", account.accessLevel);
+  if (refreshExpiry || !sessionStorage.getItem(ROOM_SESSION_EXPIRES_AT_STORAGE)) {
+    sessionStorage.setItem(ROOM_SESSION_EXPIRES_AT_STORAGE, String(Date.now() + ROOM_SESSION_TTL_MS));
+  }
 }
 
 function hasRoomSession(): boolean {
-  return Boolean(roomAnonymousIdentity && roomAnonymousWitness)
+  return !roomSessionIsExpired() && (Boolean(roomAnonymousIdentity && roomAnonymousWitness)
     || sessionStorage.getItem("hidn:account:logged-in") === "true"
-    || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret")));
+    || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret"))));
 }
 
 function formattedZecAmount(zatoshis: number): string {
@@ -5497,6 +5540,20 @@ function renderHome(): RenderedProductRoute {
 export function renderProductRoute(path: string): RenderedProductRoute {
   const normalizedPath = normalizePath(path);
 
+  restoreRoomAccountState();
+  if (isProtectedRoomPath(normalizedPath) && !hasRoomSession()) {
+    window.history.replaceState({}, "", "/");
+    return renderHome();
+  }
+
+  if (normalizedPath === "/room/access" && hasRoomSession()) {
+    window.history.replaceState({}, "", "/room");
+    return {
+      metadata: EXPLORE_METADATA,
+      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room"),
+    };
+  }
+
   if (isModerationSurfacePath(normalizedPath) && !moderationVisibilityReady) {
     return renderModerationGate(path);
   }
@@ -5664,6 +5721,39 @@ function navigateProductRoute(path: string): void {
   roomTipAddressCopyFeedback = "";
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
+}
+
+function validateRestoredRoomSession(path: string): void {
+  if (
+    !hasRoomSession()
+    || roomAnonymousIdentity
+    || sessionStorage.getItem("hidn:account:logged-in") !== "true"
+    || roomSessionValidationRequest
+  ) {
+    return;
+  }
+
+  const shouldReturnHome = isProtectedRoomPath(path) || path === "/room/access";
+  roomSessionValidationRequest = fetchAccountSession()
+    .then((account) => {
+      persistAccountSession(account, false);
+    })
+    .catch((error: unknown) => {
+      const status = error instanceof Error
+        ? (error as Error & { status?: number }).status
+        : undefined;
+      if (status !== 401) {
+        return;
+      }
+
+      clearRoomSession();
+      if (shouldReturnHome) {
+        navigateProductRoute("/");
+      }
+    })
+    .finally(() => {
+      roomSessionValidationRequest = undefined;
+    });
 }
 
 function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
@@ -6173,6 +6263,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
+  validateRestoredRoomSession(normalizedPath);
   root.querySelectorAll<HTMLAnchorElement>("[data-room-notification-link]").forEach((link) => {
     link.addEventListener("click", () => {
       void markRoomNotificationRead(link.dataset.notificationId ?? "");
