@@ -3,7 +3,7 @@ import "./product/product.css";
 import "./system/system-page.css";
 
 import { applyMetadata, SYSTEM_METADATA } from "./metadata";
-import { bindProductRoute, renderProductRoute } from "./product/product-pages";
+import { bindProductRoute, disposeProductRoute, renderProductRoute } from "./product/product-pages";
 import { bindSystemPage, renderSystemPage } from "./system/system-page";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -20,6 +20,7 @@ function currentPath(): string {
 }
 
 function renderCurrentRoute(): void {
+  disposeProductRoute();
   if (currentPath() === "/system") {
     applyMetadata(SYSTEM_METADATA);
     mount.innerHTML = renderSystemPage();

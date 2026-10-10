@@ -57,6 +57,7 @@ import {
   type AnonymousMerkleWitness,
 } from "@hidn/anonymous-zk";
 import * as QRCode from "qrcode";
+import type { MuseumPost } from "./room-museum";
 import {
   createPaymentIntent,
   createAnonymousPost,
@@ -298,6 +299,10 @@ let roomPendingPostIds = new Set<string>();
 let roomPostsLoadedChannel: RoomChannel | undefined;
 let roomPostsRequest: Promise<void> | undefined;
 let roomRefreshSubmitting = false;
+let roomHallIndex = 0;
+let roomHallZoom = 1;
+let roomMuseumCleanup: (() => void) | undefined;
+let roomMuseumLoadVersion = 0;
 const roomThreadDetailRequests = new Map<string, Promise<void>>();
 const roomThreadDetailLoaded = new Set<string>();
 const roomThreadDetailErrors = new Map<string, string>();
@@ -307,6 +312,8 @@ let roomLiveActivityEvents: RoomActivityEvent[] = [];
 let roomLiveActivityRequest: Promise<void> | undefined;
 let roomLiveActivityTimer: number | undefined;
 let roomLiveActivityStatus: "connecting" | "live" | "offline" = "connecting";
+let roomSpacePosition = 0;
+let roomSpaceSelection = 0;
 let activeReportTarget: ReportTarget | undefined;
 let roomReportReason: ReportReason = "spam";
 let roomReportDetails = "";
@@ -3143,7 +3150,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/profile" || Boolean(roomChannelFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
@@ -3245,6 +3252,97 @@ function renderExploreTabs(): string {
   </div>`;
 }
 
+function roomHallTransmissions(): TransmissionView[] {
+  const liveTransmissions = roomPostsLoadedChannel === activeRoomChannel
+    ? liveRoomPostsForTab("latest").map(transmissionViewFromRoomPost)
+    : [];
+
+  return (liveTransmissions.length
+    ? liveTransmissions
+    : MOCK_CONFESSIONS.slice(0, 12).map(transmissionViewFromConfession))
+    .slice(0, 12);
+}
+
+function renderRoomHallPanel(transmission: TransmissionView, index: number): string {
+  const threadId = transmission.id;
+  const threadHref = threadId ? `/c/${encodeURIComponent(threadId)}` : "";
+  const tipAction = threadId && transmission.tipAddress
+    ? `<button class="room-hall__action room-hall__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(threadId)}">TIP WITH ZEC</button>`
+    : "";
+  const shareTextAttributes = threadId
+    ? `data-share-text data-share-id="${escapeHtml(threadId)}" data-share-kind="thread" data-share-label="${escapeHtml(transmission.reference ?? "ANONYMOUS WALL")}" data-share-category="${escapeHtml(transmission.category ?? "IDENTITY")}" data-share-time="${escapeHtml(transmission.time)}"`
+    : "";
+
+  return `<article class="room-hall__panel" data-room-hall-panel data-room-hall-active="${index === 0}" tabindex="-1">
+    <div class="room-hall__panel-topline">
+      <span>WALL ${String(index + 1).padStart(2, "0")}</span>
+      <time>${escapeHtml(formatTransmissionTime(transmission.time))}</time>
+    </div>
+    <span class="room-hall__panel-category">// ${escapeHtml(transmission.category ?? "IDENTITY")}</span>
+    <p class="room-hall__panel-text" ${shareTextAttributes}>“${escapeHtml(transmission.text)}”</p>
+    <footer class="room-hall__panel-footer">
+      <span>${escapeHtml(transmission.reference ?? "ANONYMOUS WALL")}</span>
+      <div class="room-hall__panel-actions">
+        ${threadHref ? `<a class="room-hall__action" href="${escapeHtml(threadHref)}">OPEN THREAD →</a>` : ""}
+        ${tipAction}
+      </div>
+    </footer>
+  </article>`;
+}
+
+function renderRoomHall(): string {
+  const signalMode = activeHidnTheme() === "signal";
+  const panels = roomHallTransmissions();
+  const safeIndex = panels.length ? Math.min(roomHallIndex, panels.length - 1) : 0;
+  roomHallIndex = safeIndex;
+
+  return publicFrame(
+    "/room/hall",
+    `<main id="main-content" class="public-main room-hall-main">
+      <div class="room-hall" data-room-hall tabindex="0" aria-label="Explore the anonymous confession hall">
+        <header class="room-hall__header">
+          <div>
+            <a class="room-hall__back" href="/room">← EXIT HALL</a>
+            ${TerminalLabel(signalMode ? "ADVENTURE MODE / PRIVATE ROOM" : "ADVENTURE MODE / ANONYMOUS WALLS")}
+            <h1>THE HALL<br /><em>OF UNSAID THOUGHTS.</em></h1>
+            <p>Move slowly through anonymous thoughts. Nothing here reveals the person behind the wall.</p>
+          </div>
+          <div class="room-hall__header-status">${renderRoomZcashStatus()}</div>
+        </header>
+        <section class="room-hall__gallery" aria-label="Anonymous confession gallery">
+          <div class="room-hall__gallery-light" aria-hidden="true"></div>
+          <div class="room-hall__viewport" data-room-hall-viewport>
+            <div class="room-hall__track" data-room-hall-track style="--room-hall-index: ${safeIndex};">
+              ${panels.length ? panels.map(renderRoomHallPanel).join("") : EmptyState("THE HALL IS QUIET", "There are no walls to explore in this room yet.")}
+            </div>
+          </div>
+        </section>
+        <footer class="room-hall__controls">
+          <button class="room-hall__move" type="button" data-room-hall-step="-1" aria-label="Move to the previous wall">←</button>
+          <span class="room-hall__position" data-room-hall-status role="status" aria-live="polite">WALL ${String(safeIndex + 1).padStart(2, "0")} / ${String(Math.max(panels.length, 1)).padStart(2, "0")}</span>
+          <button class="room-hall__move" type="button" data-room-hall-step="1" aria-label="Move to the next wall">→</button>
+        </footer>
+        <div class="room-hall__view-tools" aria-label="Museum view controls">
+          <span>VIEW</span>
+          <button type="button" data-room-hall-zoom="-1" aria-label="Zoom out">−</button>
+          <span data-room-hall-zoom-status>${Math.round(roomHallZoom * 100)}%</span>
+          <button type="button" data-room-hall-zoom="1" aria-label="Zoom in">+</button>
+          <button type="button" data-room-hall-reset>RESET VIEW</button>
+        </div>
+        <p class="room-hall__hint">DRAG TO LOOK <span aria-hidden="true">·</span> WHEEL / ARROWS TO MOVE <span aria-hidden="true">·</span> TAP A WALL TO OPEN</p>
+      </div>
+    </main>`,
+    "public-page--explore public-page--room-hall",
+  );
+}
+
+function renderRoomHallLaunch(): string {
+  return `<a class="room-hall-launch" href="/room/hall">
+    <span>EXPLORE THE HALL <b aria-hidden="true">→</b></span>
+    <small>MOVE THROUGH ANONYMOUS WALLS</small>
+  </a>`;
+}
+
 function renderRoomRefreshControl(): string {
   return `<button class="room-refresh-button${roomRefreshSubmitting ? " room-refresh-button--loading" : ""}" type="button" data-action="room-refresh" aria-label="Refresh room posts" title="Refresh room posts" aria-busy="${roomRefreshSubmitting}"${roomRefreshSubmitting ? " disabled" : ""}>
     <span class="room-refresh-button__icon" aria-hidden="true">↻</span>
@@ -3290,7 +3388,7 @@ async function refreshRoomPosts(force = false): Promise<void> {
       roomPostsLoadedChannel = requestedChannel;
       roomPostError = "";
       const normalizedPath = normalizePath(window.location.pathname);
-      if (normalizedPath === "/room" || Boolean(roomChannelFromPath(normalizedPath))) {
+      if (normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelFromPath(normalizedPath))) {
         rerenderProductRoute();
       }
     })
@@ -3492,6 +3590,8 @@ async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
 
 function isRoomNotificationSurface(path = normalizePath(window.location.pathname)): boolean {
   return path === "/room"
+    || path === "/room/orb"
+    || path === "/room/hall"
     || path === "/room/profile"
     || Boolean(roomChannelFromPath(path))
     || path.startsWith("/c/");
@@ -3826,6 +3926,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     <h2>Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
     ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`}
+    ${renderRoomHallLaunch()}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -4158,6 +4259,8 @@ function roomThreadIdFromPath(path: string): string | undefined {
 function isProtectedRoomPath(path: string): boolean {
   return path === "/room"
     || path === "/explore"
+    || path === "/room/orb"
+    || path === "/room/hall"
     || path === "/room/profile"
     || Boolean(roomChannelFromPath(path))
     || Boolean(roomThreadIdFromPath(path));
@@ -4169,6 +4272,73 @@ function isRoomMobileViewport(): boolean {
 
 function renderRoomZcashStatus(): string {
   return `<span class="ui-status-indicator zcash-status-carousel" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
+}
+
+function roomMuseumPosts(): TransmissionView[] {
+  return roomPostsLoadedChannel === activeRoomChannel
+    ? liveRoomPostsForTab("latest").map(transmissionViewFromRoomPost).slice(0, 12)
+    : MOCK_CONFESSIONS.slice(0, 12).map(transmissionViewFromConfession);
+}
+
+function renderRoomMuseum(): string {
+  const posts = roomMuseumPosts();
+  const demo = roomPostsLoadedChannel !== activeRoomChannel;
+  return publicFrame(
+    "/room",
+    `<main id="main-content" class="public-main room-museum-main">
+      <section class="room-museum" data-room-museum aria-label="HIDN museum room">
+        <div class="room-museum__stage" data-museum-stage>
+          <p class="room-museum__loading" data-museum-loading role="status">OPENING THE ROOM…</p>
+        </div>
+        <header class="room-museum__location">
+          ${TerminalLabel("HIDN / THE ROOM")}
+          <h1>A room without names.</h1>
+          <p>SHOW THE THOUGHT. HIDE THE PERSON.</p>
+          ${demo ? '<span class="room-museum__demo">SAMPLE EXHIBITION</span>' : ""}
+        </header>
+        <div class="room-museum__links"><a href="/room/channel/general">LIVE ROOM ↗</a></div>
+        <details class="room-museum__exhibition" data-museum-exhibition>
+          <summary>EXHIBITION INDEX</summary>
+          <div class="room-museum__exhibition-list">
+            ${posts.length ? posts.map((post, index) => `<article>
+              <button type="button" data-museum-exhibit="${index}" aria-label="Visit framed thought ${index + 1}">
+                <span>${String(index + 1).padStart(2, "0")} / ${escapeHtml(post.category ?? "THOUGHT")}</span>
+                <span>${escapeHtml(post.text.slice(0, 100))}${post.text.length > 100 ? "…" : ""}</span>
+              </button>
+              <p>${escapeHtml(post.text)}</p>
+              ${post.id ? `<a href="/c/${encodeURIComponent(post.id)}">OPEN THREAD →</a>` : ""}
+            </article>`).join("") : "<p>No thoughts on the walls yet. Add yours in the live room.</p>"}
+          </div>
+        </details>
+        <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="museum-reader-title">
+          <div class="room-museum__reader-top"><span id="museum-reader-title" data-museum-post-category>THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
+          <blockquote data-museum-post-text></blockquote>
+          <footer><span>WITHOUT A NAME</span><a data-museum-post-link href="/room" hidden>OPEN THREAD →</a></footer>
+        </aside>
+        <nav class="room-museum__view-controls" aria-label="Museum view controls">
+          <button type="button" class="room-museum__compass" data-museum-action="reset" aria-label="Reset museum view"><span data-museum-compass aria-hidden="true">↑</span><small>N</small></button>
+          <div class="room-museum__zoom"><button type="button" data-museum-action="zoom-in" aria-label="Zoom in">+</button><button type="button" data-museum-action="zoom-out" aria-label="Zoom out">−</button></div>
+          <button type="button" data-museum-action="map" aria-expanded="false" aria-controls="museum-map" aria-label="Show room map">⌑</button>
+        </nav>
+        <div class="room-museum__map" id="museum-map" data-museum-map hidden>
+          <span>THE ROOM / FLOOR PLAN</span>
+          <svg viewBox="0 0 120 125" role="img" aria-label="Your position and direction in the museum">
+            <path d="M24 13H96V115H24Z M38 43H54 M38 76H54" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M-4 0 0-8 4 0Z" fill="#b8dc68" data-museum-map-heading/>
+            <circle r="2.5" fill="#f3efe3" data-museum-map-position/>
+          </svg>
+        </div>
+        <nav class="room-museum__walk-controls" aria-label="Move through the room">
+          <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
+          <button type="button" data-museum-action="forward" aria-label="Walk forward">⌃</button>
+          <button type="button" data-museum-action="back" aria-label="Walk backward">⌄</button>
+          <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
+        </nav>
+        <p class="room-museum__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ</p>
+      </section>
+    </main>`,
+    "public-page--room-museum",
+  );
 }
 
 function roomNotificationLabel(notification: AccountNotification): string {
@@ -4252,6 +4422,101 @@ function renderMobilePostSurface(): string {
   </div>`;
 }
 
+function renderRoomSpaceFrame(transmission: TransmissionView, index: number): string {
+  const category = transmission.category ?? "UNSORTED";
+  const horizontalOffset = Math.round((index - 3.5) * 18 * 10) / 10;
+  const lane = index % 2 === 0 ? "left" : "right";
+  const top = lane === "left" ? 24 : 34;
+  return `<button class="room-space__frame${index === roomSpaceSelection ? " room-space__frame--active" : ""}" type="button" data-room-space-frame="${index}" style="--room-space-x: ${horizontalOffset}rem; --room-space-top: ${top}%;" aria-label="Open confession frame ${String(index + 1).padStart(2, "0")}, ${escapeHtml(category)}">
+    <span class="room-space__frame-glass" aria-hidden="true"></span>
+    <span class="room-space__frame-meta">FRAME ${String(index + 1).padStart(2, "0")} / ${escapeHtml(category)}</span>
+    <span class="room-space__frame-title">OPEN<br /><em>SIGNAL</em></span>
+    <span class="room-space__frame-cue">TAP TO READ</span>
+  </button>`;
+}
+
+function renderRoomSpaceDetail(transmission: TransmissionView | undefined, index: number): string {
+  if (!transmission) {
+    return `<aside class="room-space__detail room-space__detail--empty" data-room-space-detail aria-live="polite">
+      <span class="room-space__detail-label">MUSEUM SPACE</span>
+      <p>No signals are mounted in this chamber yet.</p>
+    </aside>`;
+  }
+
+  const threadHref = transmission.id ? `/c/${encodeURIComponent(transmission.id)}` : "";
+  return `<aside class="room-space__detail" data-room-space-detail aria-live="polite">
+    <div class="room-space__detail-topline">
+      <span data-room-space-detail-category>${escapeHtml(transmission.category ?? "UNSORTED")}</span>
+      <span data-room-space-detail-position>FRAME ${String(index + 1).padStart(2, "0")}</span>
+    </div>
+    <span class="room-space__detail-label">ANONYMOUS SIGNAL / ${escapeHtml(transmission.reference ?? "WITHOUT A NAME")}</span>
+    <blockquote data-room-space-detail-text>“${escapeHtml(transmission.text)}”</blockquote>
+    <div class="room-space__detail-footer">
+      <time data-room-space-detail-time>${escapeHtml(formatTransmissionTime(transmission.time))}</time>
+      ${threadHref ? `<a href="${escapeHtml(threadHref)}">OPEN THREAD <span aria-hidden="true">→</span></a>` : `<span>LOCAL SIGNAL</span>`}
+    </div>
+  </aside>`;
+}
+
+function renderRoomSpace(): string {
+  const signalMode = activeHidnTheme() === "signal";
+  const transmissions = roomHallTransmissions().slice(0, 8);
+  const safeSelection = transmissions.length ? Math.min(roomSpaceSelection, transmissions.length - 1) : 0;
+  roomSpaceSelection = safeSelection;
+
+  return publicFrame(
+    "/room",
+    `<main id="main-content" class="public-main room-space-main">
+      <div class="room-space" data-room-space tabindex="0" aria-label="Explore the HIDN museum space">
+        <header class="room-space__header">
+          <div>
+            <a class="room-space__back" href="/room">← ROOM</a>
+            ${TerminalLabel(signalMode ? "HIDN / MUSEUM SPACE" : "PRIVATE ROOM / GALLERY WING")}
+            <h1>THE SPACE<br /><em>OF UNSAID THOUGHTS.</em></h1>
+            <p>Walk the quiet hall. Frames wait along the walls. The thought is visible; the person stays hidden.</p>
+          </div>
+          <div class="room-space__header-status">
+            ${renderRoomZcashStatus()}
+            <span class="room-space__status-line"><i aria-hidden="true"></i> WING OPEN / ${String(Math.max(transmissions.length, 0)).padStart(2, "0")} FRAMES</span>
+          </div>
+        </header>
+        <section class="room-space__experience" aria-label="HIDN museum hall">
+          <div class="room-space__atmosphere" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="room-space__world">
+            <div class="room-space__ceiling" aria-hidden="true"></div>
+            <div class="room-space__wall room-space__wall--left" aria-hidden="true"></div>
+            <div class="room-space__wall room-space__wall--right" aria-hidden="true"></div>
+            <div class="room-space__floor" aria-hidden="true"></div>
+            <div class="room-space__horizon" aria-hidden="true"><span></span></div>
+            <a class="room-space__portal" href="/room/channel/general">
+              <span>PORTAL / GENERAL ROOM</span>
+              <strong>ENTER THE NEXT SPACE <b aria-hidden="true">→</b></strong>
+            </a>
+            <div class="room-space__frame-rail" data-room-space-rail style="--room-space-shift: ${(3.5 - safeSelection) * 18}rem;">
+              ${transmissions.length ? transmissions.map(renderRoomSpaceFrame).join("") : ""}
+            </div>
+          </div>
+          ${renderRoomSpaceDetail(transmissions[safeSelection], safeSelection)}
+        </section>
+        <footer class="room-space__controls" aria-label="Museum space controls">
+          <div class="room-space__control-group">
+            <button type="button" data-room-space-step="-1" aria-label="Move backward through the museum">←</button>
+            <span data-room-space-status role="status" aria-live="polite">POSITION ${String(safeSelection + 1).padStart(2, "0")} / ${String(Math.max(transmissions.length, 1)).padStart(2, "0")}</span>
+            <button type="button" data-room-space-step="1" aria-label="Move forward through the museum">→</button>
+            <button type="button" data-room-space-reset>RETURN TO THRESHOLD</button>
+          </div>
+          <nav class="room-space__routes" aria-label="Museum space routes">
+            <a href="/room/channel/general">OPEN LIVE ROOM <span aria-hidden="true">→</span></a>
+            <a href="/room">RETURN TO ROOM <span aria-hidden="true">→</span></a>
+          </nav>
+        </footer>
+        <p class="room-space__hint">DRAG OR SWIPE TO MOVE <span aria-hidden="true">·</span> TAP A FRAME TO READ <span aria-hidden="true">·</span> R / RETURN TO THRESHOLD</p>
+      </div>
+    </main>`,
+    "public-page--explore public-page--room-space",
+  );
+}
+
 function renderMobileRoomIndex(): string {
   const signalMode = activeHidnTheme() === "signal";
   const rooms = visibleRoomChannelOptions()
@@ -4272,6 +4537,7 @@ function renderMobileRoomIndex(): string {
           <p>Read quietly or leave a thought without a public name.</p>
           <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
           ${renderMobilePostSurface()}
+          ${renderRoomHallLaunch()}
         </header>
         <section class="room-mobile-index__list" aria-label="Private rooms">
           ${rooms}
@@ -5800,6 +6066,13 @@ function renderHome(): RenderedProductRoute {
 export function renderProductRoute(path: string): RenderedProductRoute {
   const normalizedPath = normalizePath(path);
 
+  if (import.meta.env.DEV && normalizedPath === "/museum-preview") {
+    return {
+      metadata: { ...EXPLORE_METADATA, title: "HIDN — Museum Preview", canonicalPath: "/museum-preview" },
+      html: renderRoomMuseum(),
+    };
+  }
+
   restoreRoomAccountState();
   if (isProtectedRoomPath(normalizedPath) && !hasRoomSession()) {
     window.history.replaceState({}, "", "/");
@@ -5816,8 +6089,34 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room") {
     return {
-      metadata: EXPLORE_METADATA,
-      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room"),
+      metadata: {
+        ...EXPLORE_METADATA,
+        title: "HIDN — The Room",
+        canonicalPath: "/room",
+      },
+      html: renderRoomMuseum(),
+    };
+  }
+
+  if (normalizedPath === "/room/orb") {
+    return {
+      metadata: {
+        ...EXPLORE_METADATA,
+        title: "HIDN — The Room",
+        canonicalPath: normalizedPath,
+      },
+      html: renderRoomMuseum(),
+    };
+  }
+
+  if (normalizedPath === "/room/hall") {
+    return {
+      metadata: {
+        ...EXPLORE_METADATA,
+        title: "HIDN — The Hall",
+        canonicalPath: normalizedPath,
+      },
+      html: renderRoomHall(),
     };
   }
 
@@ -6475,6 +6774,326 @@ function bindRoomPostComposerInteractions(root: ParentNode): void {
   });
 }
 
+function bindRoomSpaceInteractions(root: ParentNode): void {
+  const space = root.querySelector<HTMLElement>("[data-room-space]");
+  const rail = root.querySelector<HTMLElement>("[data-room-space-rail]");
+  const experience = root.querySelector<HTMLElement>(".room-space__experience");
+  const frames = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-room-space-frame]"));
+  if (!space || !rail || !frames.length) {
+    return;
+  }
+
+  const transmissions = roomHallTransmissions().slice(0, 8);
+  const applyScenePosition = (): void => {
+    rail.style.setProperty("--room-space-shift", `${(3.5 - roomSpacePosition) * 18}rem`);
+    experience?.style.setProperty("--room-space-view", `${Math.max(18, Math.min(82, 50 + roomSpacePosition * 4.5))}%`);
+  };
+  const applyPosition = (): void => {
+    applyScenePosition();
+    const status = root.querySelector<HTMLElement>("[data-room-space-status]");
+    if (status) {
+      status.textContent = `POSITION ${String(roomSpaceSelection + 1).padStart(2, "0")} / ${String(Math.max(frames.length, 1)).padStart(2, "0")}`;
+    }
+  };
+
+  const selectFrame = (requestedIndex: number): void => {
+    const index = Math.max(0, Math.min(frames.length - 1, requestedIndex));
+    roomSpaceSelection = index;
+    roomSpacePosition = index;
+    frames.forEach((frame, frameIndex) => {
+      frame.classList.toggle("room-space__frame--active", frameIndex === index);
+      frame.setAttribute("aria-pressed", String(frameIndex === index));
+    });
+
+    const transmission = transmissions[index];
+    if (!transmission) {
+      return;
+    }
+
+    const category = root.querySelector<HTMLElement>("[data-room-space-detail-category]");
+    const position = root.querySelector<HTMLElement>("[data-room-space-detail-position]");
+    const text = root.querySelector<HTMLElement>("[data-room-space-detail-text]");
+    const time = root.querySelector<HTMLElement>("[data-room-space-detail-time]");
+    if (category) category.textContent = transmission.category ?? "UNSORTED";
+    if (position) position.textContent = `FRAME ${String(index + 1).padStart(2, "0")}`;
+    if (text) text.textContent = `“${transmission.text}”`;
+    if (time) time.textContent = formatTransmissionTime(transmission.time);
+    applyPosition();
+  };
+
+  frames.forEach((frame, index) => {
+    frame.setAttribute("aria-pressed", String(index === roomSpaceSelection));
+    frame.addEventListener("click", () => {
+      selectFrame(index);
+    });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-room-space-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectFrame(roomSpaceSelection + Number(button.dataset.roomSpaceStep ?? "0"));
+    });
+  });
+
+  root.querySelector<HTMLButtonElement>("[data-room-space-reset]")?.addEventListener("click", () => {
+    selectFrame(0);
+  });
+
+  space.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      selectFrame(roomSpaceSelection - 1);
+    } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      selectFrame(roomSpaceSelection + 1);
+    } else if (event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      selectFrame(0);
+    }
+  });
+
+  let pointerStartX: number | undefined;
+  let positionStart = 0;
+  let pointerMoved = false;
+  space.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest("button, a")) {
+      return;
+    }
+    pointerStartX = event.clientX;
+    positionStart = roomSpacePosition;
+    pointerMoved = false;
+    space.dataset.roomSpaceDragging = "true";
+    space.setPointerCapture?.(event.pointerId);
+  });
+
+  space.addEventListener("pointermove", (event) => {
+    if (pointerStartX === undefined) {
+      return;
+    }
+    const distance = event.clientX - pointerStartX;
+    if (Math.abs(distance) > 8) {
+      pointerMoved = true;
+    }
+    const nextPosition = Math.max(0, Math.min(frames.length - 1, positionStart - distance / 120));
+    if (nextPosition !== roomSpacePosition) {
+      roomSpacePosition = nextPosition;
+      applyScenePosition();
+    }
+  });
+
+  const releaseSpacePointer = (): void => {
+    pointerStartX = undefined;
+    space.dataset.roomSpaceDragging = "false";
+    if (pointerMoved) {
+      selectFrame(Math.round(roomSpacePosition));
+    }
+    pointerMoved = false;
+  };
+  space.addEventListener("pointerup", releaseSpacePointer);
+  space.addEventListener("pointercancel", releaseSpacePointer);
+  space.addEventListener("wheel", (event) => {
+    if (event.target instanceof Element && event.target.closest("a, button")) {
+      return;
+    }
+    event.preventDefault();
+    selectFrame(roomSpaceSelection + ((event.deltaY || event.deltaX) > 0 ? 1 : -1));
+  }, { passive: false });
+
+  selectFrame(roomSpaceSelection);
+}
+
+export function disposeProductRoute(): void {
+  roomMuseumLoadVersion += 1;
+  roomMuseumCleanup?.();
+  roomMuseumCleanup = undefined;
+}
+
+function bindRoomMuseumInteractions(root: ParentNode): void {
+  const museum = root.querySelector<HTMLElement>("[data-room-museum]");
+  if (!museum) return;
+  const version = ++roomMuseumLoadVersion;
+  const posts: MuseumPost[] = roomMuseumPosts();
+  const signal = activeHidnTheme() === "signal";
+  void import("./room-museum").then(({ mountRoomMuseum }) => {
+    if (version !== roomMuseumLoadVersion || !museum.isConnected) return;
+    roomMuseumCleanup = mountRoomMuseum(museum, posts, signal);
+  }).catch(() => {
+    if (!museum.isConnected) return;
+    const loading = museum.querySelector<HTMLElement>("[data-museum-loading]");
+    if (loading) loading.textContent = "The 3D view is unavailable on this device. Read the thoughts in the exhibition index.";
+    const exhibition = museum.querySelector<HTMLDetailsElement>("[data-museum-exhibition]");
+    if (exhibition) exhibition.open = true;
+  });
+}
+
+function updateRoomHallPosition(root: ParentNode, requestedIndex: number): void {
+  const panels = Array.from(root.querySelectorAll<HTMLElement>("[data-room-hall-panel]"));
+  if (!panels.length) {
+    return;
+  }
+
+  roomHallIndex = Math.max(0, Math.min(panels.length - 1, requestedIndex));
+  const track = root.querySelector<HTMLElement>("[data-room-hall-track]");
+  track?.style.setProperty("--room-hall-index", String(roomHallIndex));
+  track?.style.setProperty("--room-hall-drag", "0px");
+  panels.forEach((panel, index) => {
+    panel.dataset.roomHallActive = String(index === roomHallIndex);
+  });
+
+  const status = root.querySelector<HTMLElement>("[data-room-hall-status]");
+  if (status) {
+    status.textContent = `WALL ${String(roomHallIndex + 1).padStart(2, "0")} / ${String(panels.length).padStart(2, "0")}`;
+  }
+}
+
+function updateRoomHallZoom(root: ParentNode, requestedZoom: number): void {
+  roomHallZoom = Math.max(0.88, Math.min(1.18, requestedZoom));
+  root.querySelector<HTMLElement>("[data-room-hall-track]")?.style.setProperty("--room-hall-zoom", String(roomHallZoom));
+  const status = root.querySelector<HTMLElement>("[data-room-hall-zoom-status]");
+  if (status) {
+    status.textContent = `${Math.round(roomHallZoom * 100)}%`;
+  }
+}
+
+function resetRoomHallView(root: ParentNode): void {
+  updateRoomHallPosition(root, 0);
+  updateRoomHallZoom(root, 1);
+}
+
+function bindRoomHallInteractions(root: ParentNode): void {
+  const hall = root.querySelector<HTMLElement>("[data-room-hall]");
+  if (!hall) {
+    return;
+  }
+
+  updateRoomHallPosition(root, roomHallIndex);
+  updateRoomHallZoom(root, roomHallZoom);
+
+  root.querySelectorAll<HTMLButtonElement>("[data-room-hall-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.dataset.roomHallStep ?? "0");
+      updateRoomHallPosition(root, roomHallIndex + direction);
+    });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-room-hall-zoom]").forEach((button) => {
+    button.addEventListener("click", () => {
+      updateRoomHallZoom(root, roomHallZoom + Number(button.dataset.roomHallZoom ?? "0") * 0.06);
+    });
+  });
+
+  root.querySelector<HTMLButtonElement>("[data-room-hall-reset]")?.addEventListener("click", () => {
+    resetRoomHallView(root);
+  });
+
+  hall.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      updateRoomHallPosition(root, roomHallIndex - 1);
+    } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      updateRoomHallPosition(root, roomHallIndex + 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      updateRoomHallPosition(root, 0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      updateRoomHallPosition(root, root.querySelectorAll("[data-room-hall-panel]").length - 1);
+    } else if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      updateRoomHallZoom(root, roomHallZoom + 0.06);
+    } else if (event.key === "-") {
+      event.preventDefault();
+      updateRoomHallZoom(root, roomHallZoom - 0.06);
+    } else if (event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      resetRoomHallView(root);
+    }
+  });
+
+  let pointerStartX: number | undefined;
+  let isDragging = false;
+  let suppressNextClick = false;
+  hall.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest("button, a")) {
+      return;
+    }
+
+    pointerStartX = event.clientX;
+    isDragging = false;
+    const track = root.querySelector<HTMLElement>("[data-room-hall-track]");
+    if (track) {
+      track.dataset.roomHallDragging = "true";
+    }
+    hall.setPointerCapture?.(event.pointerId);
+  });
+  hall.addEventListener("pointermove", (event) => {
+    if (pointerStartX === undefined) {
+      return;
+    }
+
+    const distance = event.clientX - pointerStartX;
+    if (Math.abs(distance) > 6) {
+      isDragging = true;
+    }
+    root.querySelector<HTMLElement>("[data-room-hall-track]")?.style.setProperty("--room-hall-drag", `${distance}px`);
+  });
+  hall.addEventListener("pointerup", (event) => {
+    if (pointerStartX === undefined) {
+      return;
+    }
+
+    const distance = event.clientX - pointerStartX;
+    pointerStartX = undefined;
+    suppressNextClick = isDragging;
+    isDragging = false;
+    const track = root.querySelector<HTMLElement>("[data-room-hall-track]");
+    track?.style.setProperty("--room-hall-drag", "0px");
+    if (track) {
+      track.dataset.roomHallDragging = "false";
+    }
+    if (Math.abs(distance) < 32) {
+      return;
+    }
+
+    updateRoomHallPosition(root, roomHallIndex + (distance < 0 ? 1 : -1));
+  });
+  hall.addEventListener("pointercancel", () => {
+    pointerStartX = undefined;
+    isDragging = false;
+    const track = root.querySelector<HTMLElement>("[data-room-hall-track]");
+    track?.style.setProperty("--room-hall-drag", "0px");
+    if (track) {
+      track.dataset.roomHallDragging = "false";
+    }
+  });
+
+  hall.addEventListener("click", (event) => {
+    if (!suppressNextClick) {
+      return;
+    }
+
+    suppressNextClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+
+  root.querySelector<HTMLElement>("[data-room-hall-viewport]")?.addEventListener("wheel", (event) => {
+    if (Math.abs(event.deltaY) < 8 && Math.abs(event.deltaX) < 8) {
+      return;
+    }
+
+    event.preventDefault();
+    updateRoomHallPosition(root, roomHallIndex + ((event.deltaY || event.deltaX) > 0 ? 1 : -1));
+  }, { passive: false });
+}
+
 export function bindProductRoute(root: ParentNode = document): void {
   bindComponentInteractions(root);
   bindRoomLikeInteractions(root);
@@ -6484,6 +7103,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindRoomRecoveryInteractions(root);
   bindRoomTipAddressInteractions(root);
   bindRoomPostComposerInteractions(root);
+  bindRoomMuseumInteractions(root);
+  bindRoomSpaceInteractions(root);
+  bindRoomHallInteractions(root);
   hydrateRoomTipQr(root);
   void refreshZcashNetworkStatus(root);
   startVisitorClock(root);
@@ -6529,7 +7151,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (hasRoomSession() && roomReactionStateSignature(normalizedPath)) {
     void refreshRoomReactionState(normalizedPath);
   }
-  if ((normalizedPath === "/room" || Boolean(roomChannelFromPath(normalizedPath))) && hasRoomSession()) {
+  if ((normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
   }
   const notificationThreadId = roomThreadIdFromPath(normalizedPath);
