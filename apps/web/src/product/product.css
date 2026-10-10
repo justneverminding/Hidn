@@ -5,7 +5,6 @@
   min-height: 100vh;
   overflow-x: clip;
 }
-
 .public-page .public-main {
   flex: 1;
 }
@@ -8904,7 +8903,6 @@
     white-space: nowrap;
   }
 }
-
 @media (max-width: 760px) {
   .public-page--explore .explore-feed::before {
     display: none;
@@ -11252,7 +11250,7 @@
   text-wrap: balance;
 }
 
-.public-page--room-channel .explore-header p {
+.public-page--room-channel .explore-header > p {
   grid-area: copy;
   margin: 0;
   max-width: 42ch;
@@ -13143,5 +13141,79 @@
     font-size: 0.78rem !important;
     letter-spacing: 0.025em !important;
     line-height: 1.6 !important;
+  }
+}
+
+/* Keep the desktop composer readable inside the room sidebar. The sidebar is
+   intentionally narrow, so the two-column feed composer must collapse before
+   its text column becomes a vertical strip. */
+.public-page--explore .room-directory .room-post-composer {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.public-page--explore .room-directory .room-post-composer__field,
+.public-page--explore .room-directory .room-post-composer__note,
+.public-page--explore .room-directory .room-post-tips,
+.public-page--explore .room-directory .room-post-composer__actions {
+  grid-column: 1;
+  grid-row: auto;
+  min-width: 0;
+}
+
+.public-page--explore .room-directory .room-post-composer__field textarea,
+.public-page--explore .room-directory .room-post-tips__address-field input {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.public-page--explore .room-directory .room-post-composer__note,
+.public-page--explore .room-directory .room-post-tips__note,
+.public-page--explore .room-directory .room-post-tips__warning {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .public-page--room-channel .explore-header .room-post-composer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .public-page--room-channel .explore-header .room-post-composer__field,
+  .public-page--room-channel .explore-header .room-post-composer__note,
+  .public-page--room-channel .explore-header .room-post-tips,
+  .public-page--room-channel .explore-header .room-post-composer__actions {
+    grid-area: auto;
+    grid-column: 1;
+    grid-row: auto;
+    min-width: 0;
+  }
+}
+
+/* The index composer lives inside the header, so keep its access note from
+   inheriting the header copy's narrow measure and larger reading scale. */
+.public-page--room-index .room-mobile-index__header .room-post-composer__note {
+  box-sizing: border-box;
+  color: var(--hidn-text-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: clamp(0.62rem, 1.8vw, 0.72rem);
+  letter-spacing: 0.06em;
+  line-height: 1.55;
+  max-width: none;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+/* Keep the desktop room picker inside its narrow directory column. The eye
+   mark is part of the title, so the heading needs a smaller measure than the
+   full-width channel headings. */
+@media (min-width: 761px) {
+  .public-page.public-page--theme-signal.public-page--explore .room-directory h2 {
+    font-size: 1.9rem !important;
+    letter-spacing: -0.05em;
+    line-height: 1.08;
+    white-space: nowrap;
   }
 }

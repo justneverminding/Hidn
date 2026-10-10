@@ -29,7 +29,7 @@ export interface AccountResponse {
 }
 
 export interface AccountTipAddressResponse {
-  network: "testnet";
+  network: "mainnet";
   tipAddress: string | null;
 }
 

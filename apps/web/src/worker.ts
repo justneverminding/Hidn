@@ -714,14 +714,14 @@ function isValidUsername(username: string): boolean {
   return /^HIDN-[A-Z0-9]{1,20}$/.test(username);
 }
 
-function normalizeTestnetTipAddress(address: string): string {
+function normalizeMainnetTipAddress(address: string): string {
   return address.trim().toLowerCase();
 }
 
-function isValidTestnetTipAddress(address: string): boolean {
+function isValidMainnetTipAddress(address: string): boolean {
   return address.length >= 20
     && address.length <= 500
-    && /^(?:utest1|ztestsapling1)[0-9a-z]+$/.test(address);
+    && /^(?:u1|zs1)[0-9a-z]+$/.test(address);
 }
 
 function normalizeRecoveryAnswer(value: string): string {
@@ -1346,7 +1346,7 @@ async function getAccountTipAddress(request: Request, env: HidnWorkerEnv): Promi
 
   const user = await getAuthenticatedUser(request, env);
   if (!user) {
-    return jsonResponse({ error: "Log in before configuring a testnet tip address." }, 401);
+    return jsonResponse({ error: "Log in before configuring a mainnet tip address." }, 401);
   }
 
   const row = await env.ROOM_DB!.prepare(
@@ -1358,9 +1358,12 @@ async function getAccountTipAddress(request: Request, env: HidnWorkerEnv): Promi
     .bind(user.userId)
     .first<{ tip_address: string | null }>();
 
+  const tipAddress = typeof row?.tip_address === "string"
+    ? normalizeMainnetTipAddress(row.tip_address)
+    : "";
   return jsonResponse({
-    network: "testnet",
-    tipAddress: row?.tip_address ?? null,
+    network: "mainnet",
+    tipAddress: tipAddress && isValidMainnetTipAddress(tipAddress) ? tipAddress : null,
   }, 200, "no-store");
 }
 
@@ -1372,15 +1375,15 @@ async function saveAccountTipAddress(request: Request, env: HidnWorkerEnv): Prom
 
   const user = await getAuthenticatedUser(request, env);
   if (!user) {
-    return jsonResponse({ error: "Log in before configuring a testnet tip address." }, 401);
+    return jsonResponse({ error: "Log in before configuring a mainnet tip address." }, 401);
   }
 
   const body = await requestBody(request);
   const rawAddress = typeof body.tipAddress === "string" ? body.tipAddress : "";
-  const tipAddress = normalizeTestnetTipAddress(rawAddress);
-  if (tipAddress && !isValidTestnetTipAddress(tipAddress)) {
+  const tipAddress = normalizeMainnetTipAddress(rawAddress);
+  if (tipAddress && !isValidMainnetTipAddress(tipAddress)) {
     return jsonResponse(
-      { error: "Use a shielded Zcash testnet address beginning with utest1 or ztestsapling1. Transparent addresses are not accepted." },
+      { error: "Use a shielded Zcash mainnet address beginning with u1 or zs1. Transparent addresses are not accepted." },
       400,
     );
   }
@@ -1394,7 +1397,7 @@ async function saveAccountTipAddress(request: Request, env: HidnWorkerEnv): Prom
     .run();
 
   return jsonResponse({
-    network: "testnet",
+    network: "mainnet",
     tipAddress: tipAddress || null,
   }, 200, "no-store");
 }
@@ -1466,6 +1469,7 @@ async function listLiveActivity(request: Request, env: HidnWorkerEnv): Promise<R
 }
 
 function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
+  const tipAddress = typeof row.tip_address === "string" ? normalizeMainnetTipAddress(row.tip_address) : "";
   return {
     id: row.thread_id,
     reference: `// ${row.thread_id.replace(/^THR-/, "").slice(0, 8)}`,
@@ -1476,7 +1480,7 @@ function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
     reactions: Number(row.reactions ?? 0),
     replies: Number(row.reply_count ?? 0),
     liked: row.liked_by_current_user === 1,
-    ...(row.tip_address ? { tipAddress: row.tip_address } : {}),
+    ...(tipAddress && isValidMainnetTipAddress(tipAddress) ? { tipAddress } : {}),
   };
 }
 
@@ -1898,7 +1902,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   const content = typeof body.content === "string" ? body.content.trim() : "";
   const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
   const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
-  const tipAddress = normalizeTestnetTipAddress(typeof body.tipAddress === "string" ? body.tipAddress : "");
+  const tipAddress = normalizeMainnetTipAddress(typeof body.tipAddress === "string" ? body.tipAddress : "");
   const alias = anonymousAliasFromBody(body);
   const notificationCapability = anonymousCapabilityFromBody(body);
   if (!content) {
@@ -1916,9 +1920,9 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   if (!ROOM_POST_CATEGORIES.has(category)) {
     return jsonResponse({ error: "Choose a valid post category." }, 400);
   }
-  if (tipAddress && !isValidTestnetTipAddress(tipAddress)) {
+  if (tipAddress && !isValidMainnetTipAddress(tipAddress)) {
     return jsonResponse(
-      { error: "Use a shielded Zcash testnet address beginning with utest1 or ztestsapling1. Transparent addresses are not accepted." },
+      { error: "Use a shielded Zcash mainnet address beginning with u1 or zs1. Transparent addresses are not accepted." },
       400,
     );
   }
@@ -3024,7 +3028,7 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
   const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
   const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
   const requestedTipAddress = typeof body.tipAddress === "string"
-    ? normalizeTestnetTipAddress(body.tipAddress)
+    ? normalizeMainnetTipAddress(body.tipAddress)
     : undefined;
   if (!content) {
     return jsonResponse({ error: "Write something before creating the post." }, 400);
@@ -3039,9 +3043,9 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
   if (!ROOM_POST_CATEGORIES.has(category)) {
     return jsonResponse({ error: "Choose a valid post category." }, 400);
   }
-  if (requestedTipAddress && !isValidTestnetTipAddress(requestedTipAddress)) {
+  if (requestedTipAddress && !isValidMainnetTipAddress(requestedTipAddress)) {
     return jsonResponse(
-      { error: "Use a shielded Zcash testnet address beginning with utest1 or ztestsapling1. Transparent addresses are not accepted." },
+      { error: "Use a shielded Zcash mainnet address beginning with u1 or zs1. Transparent addresses are not accepted." },
       400,
     );
   }
@@ -3061,7 +3065,12 @@ async function createRoomPost(request: Request, env: HidnWorkerEnv): Promise<Res
     )
       .bind(user.userId)
       .first<{ tip_address: string | null }>();
-    tipAddress = tipAddressRow?.tip_address ?? null;
+    const storedTipAddress = typeof tipAddressRow?.tip_address === "string"
+      ? normalizeMainnetTipAddress(tipAddressRow.tip_address)
+      : "";
+    tipAddress = storedTipAddress && isValidMainnetTipAddress(storedTipAddress)
+      ? storedTipAddress
+      : null;
   }
 
   const post: RoomPostRow = {
@@ -4816,7 +4825,7 @@ const worker = {
           ? await getAccountTipAddress(request, env)
           : await saveAccountTipAddress(request, env);
       } catch {
-        return jsonResponse({ error: "The testnet tip address could not be saved." }, 500);
+        return jsonResponse({ error: "The mainnet tip address could not be saved." }, 500);
       }
     }
 

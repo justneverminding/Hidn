@@ -697,21 +697,21 @@ function renderRoomTipDialog(): string {
 
   const paymentUri = roomTipPaymentUri(post);
   return `<div class="room-tip-dialog" role="dialog" aria-modal="true" aria-labelledby="room-tip-dialog-title">
-    <button class="room-tip-dialog__backdrop" type="button" data-action="room-tip-close" aria-label="Close testnet tip dialog"></button>
+    <button class="room-tip-dialog__backdrop" type="button" data-action="room-tip-close" aria-label="Close mainnet tip dialog"></button>
     <section class="room-tip-dialog__panel">
       <header class="room-tip-dialog__header">
         <div>
-          ${TerminalLabel("TESTNET / DIRECT TIP")}
+          ${TerminalLabel("MAINNET / DIRECT TIP")}
           <h2 id="room-tip-dialog-title">SUPPORT THIS<br /><em>THOUGHT.</em></h2>
         </div>
-        <button class="room-tip-dialog__close" type="button" data-action="room-tip-close" aria-label="Close testnet tip dialog">×</button>
+        <button class="room-tip-dialog__close" type="button" data-action="room-tip-close" aria-label="Close mainnet tip dialog">×</button>
       </header>
-      <p class="room-tip-dialog__intro">Send any amount of TAZ directly from your shielded testnet wallet to the post author. Choose the amount in your wallet. HIDN never holds the funds.</p>
+      <p class="room-tip-dialog__intro">Send any amount of ZEC directly from your shielded mainnet wallet to the post author. Choose the amount in your wallet. HIDN never holds the funds.</p>
       <div class="room-tip-dialog__request">
-        <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code for a direct Zcash testnet tip"></canvas>
+        <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code for a direct Zcash mainnet tip"></canvas>
         <div class="room-tip-dialog__details">
-          <span class="room-tip-dialog__label">SHIELDED TESTNET DESTINATION</span>
-          <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy shielded testnet destination">
+          <span class="room-tip-dialog__label">SHIELDED MAINNET DESTINATION</span>
+          <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy shielded mainnet destination">
             <code>${escapeHtml(post.tipAddress)}</code>
             <span>${roomTipAddressCopyFeedback || "TAP TO COPY ADDRESS"}</span>
           </button>
@@ -723,8 +723,8 @@ function renderRoomTipDialog(): string {
         <a class="ui-button ui-button--primary" href="${escapeHtml(paymentUri)}">OPEN IN WALLET →</a>
         <button class="ui-button ui-button--secondary" type="button" data-action="room-tip-copy" data-tip-uri="${escapeHtml(paymentUri)}">${roomTipCopyFeedback || "COPY PAYMENT REQUEST"}</button>
       </div>
-      <p class="room-tip-dialog__wallet-note">If no wallet opens here, copy the payment request and paste it into your testnet wallet.</p>
-      <p class="room-tip-dialog__note">TESTNET ONLY / TAZ HAS NO MONETARY VALUE. V1 creates the request; it does not issue a payment receipt or confirm a transaction yet.</p>
+      <p class="room-tip-dialog__wallet-note">If no wallet opens here, copy the payment request and paste it into your mainnet Zcash wallet.</p>
+      <p class="room-tip-dialog__note">MAINNET / REAL ZEC. HIDN never holds the funds. V1 creates the request; it does not issue a payment receipt or confirm a transaction.</p>
     </section>
   </div>`;
 }
@@ -1028,7 +1028,7 @@ function renderTransmissionRow(
     : "";
   const threadId = transmission.id;
   const tipAction = threadId && transmission.tipAddress
-    ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(threadId)}">TIP WITH TAZ</button>`
+    ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(threadId)}">TIP WITH ZEC</button>`
     : "";
   const shareTextAttributes = threadId
     ? `data-share-text data-share-id="${escapeHtml(threadId)}" data-share-kind="thread" data-share-label="${escapeHtml(transmission.reference ?? "ANONYMOUS THREAD")}" data-share-category="${escapeHtml(transmission.category ?? "IDENTITY")}" data-share-time="${escapeHtml(transmission.time)}"`
@@ -3382,11 +3382,11 @@ async function refreshRoomThread(threadId: string): Promise<void> {
   return request;
 }
 
-function isClientTestnetTipAddress(value: string): boolean {
+function isClientMainnetTipAddress(value: string): boolean {
   const address = value.trim().toLowerCase();
   return address.length >= 20
     && address.length <= 500
-    && /^(?:utest1|ztestsapling1)[0-9a-z]+$/.test(address);
+    && /^(?:u1|zs1)[0-9a-z]+$/.test(address);
 }
 
 async function refreshRoomTipAddress(): Promise<void> {
@@ -3395,7 +3395,8 @@ async function refreshRoomTipAddress(): Promise<void> {
   }
 
   if (roomAnonymousIdentity) {
-    roomTipAddress = sessionStorage.getItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE) ?? "";
+    const storedTipAddress = sessionStorage.getItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE) ?? "";
+    roomTipAddress = isClientMainnetTipAddress(storedTipAddress) ? storedTipAddress : "";
     roomTipAddressDraft = roomTipAddress;
     if (!roomPostTipAddressEdited) {
       roomPostTipAddressDraft = roomTipAddress;
@@ -3420,7 +3421,7 @@ async function refreshRoomTipAddress(): Promise<void> {
     })
     .catch((error) => {
       roomTipAddressLoaded = true;
-      roomTipAddressError = error instanceof Error ? error.message : "The testnet tip address could not be loaded.";
+      roomTipAddressError = error instanceof Error ? error.message : "The mainnet tip address could not be loaded.";
     })
     .finally(() => {
       roomTipAddressRequest = undefined;
@@ -3439,8 +3440,8 @@ async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
 
   const input = root.querySelector<HTMLInputElement>("#room-tip-address");
   const draft = input?.value.trim().toLowerCase() ?? roomTipAddressDraft.trim().toLowerCase();
-  if (draft && !isClientTestnetTipAddress(draft)) {
-    roomTipAddressError = "USE A SHIELDED TESTNET ADDRESS / UTEST1 OR ZTESTSAPLING1";
+  if (draft && !isClientMainnetTipAddress(draft)) {
+    roomTipAddressError = "USE A SHIELDED MAINNET ADDRESS / U1 OR ZS1";
     roomTipAddressFeedback = "";
     rerenderProductRoute();
     return;
@@ -3462,8 +3463,8 @@ async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
       roomTipAddress = draft;
       roomTipAddressLoaded = true;
       roomTipAddressFeedback = roomTipAddress
-        ? "TESTNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
-        : "TESTNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
+        ? "MAINNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
+        : "MAINNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
     } catch {
       roomTipAddressError = "THE BROWSER COULD NOT SAVE THIS LOCAL DESTINATION";
     } finally {
@@ -3479,10 +3480,10 @@ async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
     roomTipAddressDraft = roomTipAddress;
     roomTipAddressLoaded = true;
     roomTipAddressFeedback = roomTipAddress
-      ? "TESTNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
-      : "TESTNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
+      ? "MAINNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
+      : "MAINNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
   } catch (error) {
-    roomTipAddressError = error instanceof Error ? error.message : "The testnet tip address could not be saved.";
+    roomTipAddressError = error instanceof Error ? error.message : "The mainnet tip address could not be saved.";
   } finally {
     roomTipAddressSaving = false;
     rerenderProductRoute();
@@ -3643,8 +3644,8 @@ async function submitRoomPost(): Promise<void> {
     rerenderProductRoute();
     return;
   }
-  if (roomPostTipsEnabled && (!selectedTipAddress || !isClientTestnetTipAddress(selectedTipAddress))) {
-    roomPostError = "USE A SHIELDED TESTNET ADDRESS / UTEST1 OR ZTESTSAPLING1";
+  if (roomPostTipsEnabled && (!selectedTipAddress || !isClientMainnetTipAddress(selectedTipAddress))) {
+    roomPostError = "USE A SHIELDED MAINNET ADDRESS / U1 OR ZS1";
     rerenderProductRoute();
     return;
   }
@@ -3779,7 +3780,7 @@ function renderRoomPostTipControls(): string {
         <input id="room-post-allow-tips" type="checkbox" />
         <span>ALLOW TIPS ON THIS POST</span>
       </label>
-      <p class="room-post-tips__note">Let readers support this post directly with any amount of testnet TAZ.</p>
+      <p class="room-post-tips__note">Let readers support this post directly with any amount of mainnet ZEC.</p>
     </fieldset>`;
   }
 
@@ -3790,10 +3791,10 @@ function renderRoomPostTipControls(): string {
       <span>ALLOW TIPS ON THIS POST</span>
     </label>
     <label class="ui-field room-post-tips__address-field" for="room-post-tip-address">
-      <span class="ui-field__label">SHIELDED TESTNET ADDRESS / THIS POST</span>
-      <input id="room-post-tip-address" type="text" value="${escapeHtml(roomPostTipAddressDraft)}" placeholder="utest1..." autocomplete="off" spellcheck="false" maxlength="500" />
+      <span class="ui-field__label">SHIELDED MAINNET ADDRESS / THIS POST</span>
+      <input id="room-post-tip-address" type="text" value="${escapeHtml(roomPostTipAddressDraft)}" placeholder="u1..." autocomplete="off" spellcheck="false" maxlength="500" />
     </label>
-    <p class="room-post-tips__note">Use your saved default address or enter a different public shielded testnet address for this post.</p>
+    <p class="room-post-tips__note">Use your saved default address or enter a different public shielded mainnet address for this post.</p>
     <p class="room-post-tips__warning" data-warning="REUSING AN ADDRESS MAY MAKE POSTS EASIER TO ASSOCIATE." role="note">Reusing an address may make posts easier to associate.</p>
   </fieldset>`;
 }
@@ -4496,7 +4497,7 @@ function renderDetail(id: string): RenderedProductRoute {
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
             <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
             <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">SHARE IMAGE</button>
-            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">TIP WITH TAZ</button>` : ""}
+            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">TIP WITH ZEC</button>` : ""}
             <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">X / POST</button>
             <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">REPORT</button>
           </div>
@@ -5379,25 +5380,25 @@ function renderRoomReady(): string {
 function renderProfileTipAddress(): string {
   if (!roomTipAddressLoaded) {
     return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title" aria-busy="true">
-      ${TerminalLabel("TESTNET / TIP DESTINATION")}
+      ${TerminalLabel("MAINNET / TIP DESTINATION")}
       <h2 id="room-profile-tips-title">DIRECT SUPPORT</h2>
-      <p class="room-profile-card__note">READING YOUR TESTNET DESTINATION...</p>
+      <p class="room-profile-card__note">READING YOUR MAINNET DESTINATION...</p>
     </section>`;
   }
 
   return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title">
-    ${TerminalLabel("TESTNET / TIP DESTINATION")}
+    ${TerminalLabel("MAINNET / TIP DESTINATION")}
     <h2 id="room-profile-tips-title">LET THE ROOM SUPPORT YOU.</h2>
-    <p class="room-profile-card__note">Add a shielded Zcash testnet receiving address from your wallet. New room posts will show a direct TIP WITH TAZ action. HIDN stores only this public destination; it never stores a spending key or holds TAZ.</p>
+    <p class="room-profile-card__note">Add a shielded Zcash mainnet receiving address from your wallet. New room posts will show a direct TIP WITH ZEC action. HIDN stores only this public destination; it never stores a spending key or holds ZEC.</p>
     <form class="room-tip-address-form" data-room-tip-address-form novalidate>
       <label class="ui-field" for="room-tip-address">
-        <span class="ui-field__label">SHIELDED TESTNET ADDRESS / OPTIONAL</span>
-        <input id="room-tip-address" type="text" value="${escapeHtml(roomTipAddressDraft)}" placeholder="utest1..." autocomplete="off" spellcheck="false" maxlength="500" />
+        <span class="ui-field__label">SHIELDED MAINNET ADDRESS / OPTIONAL</span>
+        <input id="room-tip-address" type="text" value="${escapeHtml(roomTipAddressDraft)}" placeholder="u1..." autocomplete="off" spellcheck="false" maxlength="500" />
       </label>
-      <p class="room-tip-address-form__hint">Only shielded testnet addresses beginning with <code>utest1</code> or <code>ztestsapling1</code> are accepted. Leave it empty to turn tips off for future posts.</p>
+      <p class="room-tip-address-form__hint">Only shielded mainnet addresses beginning with <code>u1</code> or <code>zs1</code> are accepted. Leave it empty to turn tips off for future posts.</p>
       ${roomTipAddressError ? `<p class="room-tip-address-form__feedback room-tip-address-form__feedback--error" role="alert">${escapeHtml(roomTipAddressError)}</p>` : ""}
       ${roomTipAddressFeedback ? `<p class="room-tip-address-form__feedback" role="status">${escapeHtml(roomTipAddressFeedback)}</p>` : ""}
-      ${SecondaryButton({ label: roomTipAddressSaving ? "SAVING DESTINATION..." : "SAVE TESTNET DESTINATION →", type: "submit", disabled: roomTipAddressSaving, dataAction: "room-tip-address-save" })}
+      ${SecondaryButton({ label: roomTipAddressSaving ? "SAVING DESTINATION..." : "SAVE MAINNET DESTINATION →", type: "submit", disabled: roomTipAddressSaving, dataAction: "room-tip-address-save" })}
     </form>
   </section>`;
 }
@@ -6749,7 +6750,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           const threadId = button.dataset.threadId ?? "";
           const post = roomPosts.find((candidate) => candidate.id === threadId);
           if (!post?.tipAddress) {
-            roomChannelNotice = "THIS POST DOES NOT HAVE A SHIELDED TESTNET DESTINATION.";
+            roomChannelNotice = "THIS POST DOES NOT HAVE A SHIELDED MAINNET DESTINATION.";
             rerenderProductRoute();
             break;
           }
