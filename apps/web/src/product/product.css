@@ -15355,6 +15355,34 @@
   inset: 0;
   position: absolute;
 }
+.room-museum__stage::before {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(121, 175, 128, .12), transparent 42%),
+    linear-gradient(180deg, rgba(60, 106, 73, .1), transparent 58%, rgba(4, 12, 8, .18));
+  content: "";
+  inset: 0;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+.room-museum__stage::after {
+  animation: museum-glitch-light 4.6s steps(1, end) infinite;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(190, 226, 154, .12), transparent 16%),
+    radial-gradient(circle at 82% 22%, rgba(117, 190, 139, .06), transparent 24%);
+  content: "";
+  inset: 0;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+@keyframes museum-glitch-light {
+  0%, 11%, 16%, 44%, 49%, 78%, 100% { opacity: .62; }
+  12%, 15%, 45%, 48%, 79% { opacity: .2; }
+  13%, 47% { opacity: .88; }
+}
 .room-museum__canvas {
   cursor: grab;
   display: block;
@@ -15368,6 +15396,7 @@
 }
 .room-museum__location,
 .room-museum__links,
+.room-museum__room-nav,
 .room-museum__exhibition,
 .room-museum__reader,
 .room-museum__view-controls,
@@ -15408,10 +15437,17 @@
   margin-top: 10px;
 }
 .room-museum__links {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   right: clamp(20px, 3vw, 44px);
   top: 82px;
 }
+.room-museum__links--channel { justify-content: flex-end; max-width: min(390px, calc(100% - 40px)); }
 .room-museum__links a,
+.room-museum__room-nav a,
+.room-museum__room-nav span,
 .room-museum__exhibition summary,
 .room-museum__map > span {
   color: #d0daca;
@@ -15422,9 +15458,31 @@
   text-shadow: 0 2px 10px #000;
 }
 .room-museum__links a:hover { color: #b8dc68; }
+.room-museum__links--channel .room-museum__hallway-link {
+  background: rgba(12, 28, 20, .82);
+  border: 1px solid #61775c;
+  box-shadow: inset 0 0 18px rgba(151, 205, 137, .05);
+  padding: 8px 10px;
+}
+.room-museum__links--channel .room-museum__hallway-link:hover {
+  background: #1b3323;
+  border-color: #b8dc68;
+  color: #e1efce;
+}
+.room-museum__room-nav {
+  align-items: center;
+  display: flex;
+  gap: 13px;
+  justify-content: flex-end;
+  right: clamp(20px, 3vw, 44px);
+  top: 116px;
+}
+.room-museum__room-nav a,
+.room-museum__room-nav span { color: #9db4a4; font-size: 7px; white-space: nowrap; }
+.room-museum__room-nav a:hover { color: #c4eaa0; }
 .room-museum__exhibition {
   left: clamp(20px, 3vw, 44px);
-  max-width: min(370px, calc(100% - 40px));
+  max-width: min(330px, calc(100% - 40px));
   top: 176px;
 }
 .room-museum__exhibition summary {
@@ -15439,7 +15497,7 @@
   z-index: 5;
 }
 .room-museum__exhibition-list {
-  max-height: min(55dvh, 450px);
+  max-height: min(50dvh, 390px);
   overflow: auto;
   overscroll-behavior: contain;
   padding-top: 12px;
@@ -15461,12 +15519,65 @@
   font-family: var(--hidn-font-mono);
   font-size: 9px;
 }
-.room-museum__exhibition-list button span:last-child,
+.room-museum__exhibition-list button > span:nth-child(2),
 .room-museum__exhibition-list p { font: 14px/1.5 var(--hidn-font-body); }
+.room-museum__room-line {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  width: 100%;
+}
+.room-museum__room-line > span:first-child { color: #a4c89c; font: 9px/1.2 var(--hidn-font-mono); }
+.room-museum__room-signal {
+  align-items: center;
+  color: #718877;
+  display: inline-flex;
+  flex-shrink: 0;
+  font: 7px/1 var(--hidn-font-mono);
+  gap: 5px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+.room-museum__room-signal i {
+  background: #65776b;
+  border-radius: 50%;
+  display: block;
+  height: 5px;
+  width: 5px;
+}
+.room-museum__room-signal--new { color: #c4eaa0; }
+.room-museum__room-signal--new i {
+  animation: room-signal-pulse 1.8s ease-in-out infinite;
+  background: #b8dc68;
+  box-shadow: 0 0 0 3px #b8dc6825;
+}
+@keyframes room-signal-pulse {
+  50% { opacity: .35; transform: scale(.72); }
+}
+.room-museum__demo {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.room-museum__exhibition-list button small {
+  color: #748b77;
+  font: 8px/1.4 var(--hidn-font-mono);
+  letter-spacing: .06em;
+}
 .room-museum__exhibition-list article > p,
 .room-museum__exhibition-list article > a {
   /* Semantic full text remains available when WebGL is unavailable. */
   display: none;
+}
+.room-museum__exhibition-list article > a[href^="/room/channel/"] {
+  color: #b8dc68;
+  display: inline-block;
+  font: 8px/1.4 var(--hidn-font-mono);
+  letter-spacing: .06em;
+  margin-top: 4px;
+  text-decoration: none;
 }
 .room-museum__stage:has(.room-museum__loading:not([hidden])) ~ .room-museum__exhibition article > p,
 .room-museum__stage:has(.room-museum__loading:not([hidden])) ~ .room-museum__exhibition article > a {
@@ -15577,10 +15688,42 @@
   color: #63846a;
   padding: 14px;
   right: 88px;
-  width: 170px;
+  width: 204px;
 }
 .room-museum__map > span { font-size: 7px; }
 .room-museum__map svg { display: block; width: 100%; }
+.room-museum__map .museum-map-hall {
+  fill: rgba(51, 83, 59, .38);
+  stroke: #87a68a;
+  stroke-width: .7;
+}
+.room-museum__map .museum-map-room {
+  color: #6c8f72;
+}
+.room-museum__map .museum-map-room rect {
+  fill: rgba(20, 43, 28, .86);
+  stroke: currentColor;
+  stroke-width: .7;
+}
+.room-museum__map .museum-map-room path,
+.room-museum__map .museum-map-stairs {
+  fill: none;
+  stroke: #55745d;
+  stroke-width: .7;
+}
+.room-museum__map .museum-map-room text,
+.room-museum__map .museum-map-hall-label {
+  fill: #a1c0a0;
+  font: 3px var(--hidn-font-mono);
+  letter-spacing: .05em;
+}
+.room-museum__map .museum-map-hall-label { fill: #c1d5b5; font-size: 3.6px; }
+.room-museum__map .museum-map-room--active rect {
+  fill: rgba(91, 133, 88, .72);
+  stroke: #d0e9b0;
+  stroke-width: 1;
+}
+.room-museum__map .museum-map-room--active text { fill: #f0f4dd; }
 .room-museum__hint {
   bottom: max(10px, env(safe-area-inset-bottom));
   color: #c4d0bb;
@@ -15638,7 +15781,16 @@
   .room-museum__location .ui-terminal-label { font-size: 8px; }
   .room-museum__links { right: 18px; top: 66px; }
   .room-museum__links a { font-size: 7px; }
+  .room-museum__links--channel { max-width: calc(100% - 36px); }
+  .room-museum__room-nav {
+    gap: 8px;
+    right: 18px;
+    top: 108px;
+  }
+  .room-museum__room-nav a,
+  .room-museum__room-nav span { font-size: 6px; }
   .room-museum__exhibition { left: 18px; top: 158px; }
+  .room-museum__exhibition[open] { max-width: calc(100% - 36px); padding: 12px; }
   .room-museum__view-controls { bottom: 85px; gap: 8px; right: 12px; }
   .room-museum__reader {
     bottom: 98px;
@@ -15648,7 +15800,7 @@
     width: calc(100% - 24px);
   }
   .room-museum__reader blockquote { font-size: 17px; max-height: calc(48dvh - 120px); }
-  .room-museum__map { bottom: 90px; right: 73px; width: 145px; }
+  .room-museum__map { bottom: 90px; right: 73px; width: 172px; }
   .room-museum__walk-controls { bottom: max(36px, calc(env(safe-area-inset-bottom) + 26px)); }
   .room-museum__hint { bottom: max(11px, env(safe-area-inset-bottom)); font-size: 6px; left: 8px; right: 8px; }
   .room-museum--fallback .room-museum__exhibition { left: 12px; max-width: calc(100% - 24px); top: 158px; }
@@ -15656,6 +15808,7 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .room-museum__location { top: 55px; }
   .room-museum__exhibition { top: 128px; }
+  .room-museum__room-nav { top: 94px; }
   .room-museum__view-controls { bottom: 40px; display: flex; }
   .room-museum__zoom { display: flex; }
   .room-museum__zoom button + button { border-top: 1px solid rgba(161, 181, 155, .22); }

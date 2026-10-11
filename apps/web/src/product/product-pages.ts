@@ -57,7 +57,8 @@ import {
   type AnonymousMerkleWitness,
 } from "@hidn/anonymous-zk";
 import * as QRCode from "qrcode";
-import type { MuseumPost } from "./room-museum";
+import type { MuseumGallery, MuseumPost } from "./room-museum";
+import type { MuseumTheme } from "./museum-layout";
 import {
   createPaymentIntent,
   createAnonymousPost,
@@ -274,6 +275,9 @@ let roomPosts: RoomPost[] = [];
 let roomPendingPostIds = new Set<string>();
 let roomPostsLoadedChannel: RoomChannel | undefined;
 let roomPostsRequest: Promise<void> | undefined;
+let roomMuseumPostsByChannel = new Map<RoomChannel, RoomPost[]>();
+let roomMuseumLoaded = false;
+let roomMuseumRequest: Promise<void> | undefined;
 let roomRefreshSubmitting = false;
 let roomHallIndex = 0;
 let roomHallZoom = 1;
@@ -367,6 +371,15 @@ const roomChannelOptions: Array<{
   { key: "night-shift", label: "NIGHT SHIFT", description: "posts made after midnight", categories: ["LONELINESS", "FEAR", "IDENTITY"] },
   { key: "underground", label: "THE UNDERGROUND", description: "what stays unsaid", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
 ];
+
+const museumThemeByChannel: Record<RoomChannel, MuseumTheme> = {
+  general: { accent: "#a9e6b4", glow: "#74c88b", trim: "#3d6b4a", wall: "#14241c", floor: "#202b24" },
+  love: { accent: "#e6b0a9", glow: "#c77b72", trim: "#704946", wall: "#241817", floor: "#2d2321" },
+  blackbox: { accent: "#bec5d6", glow: "#7d8faa", trim: "#465266", wall: "#171b24", floor: "#242936" },
+  redacted: { accent: "#c6b4df", glow: "#9a7dc2", trim: "#58476f", wall: "#1d1725", floor: "#27202e" },
+  "night-shift": { accent: "#e8d29b", glow: "#c8a55b", trim: "#725e38", wall: "#241e13", floor: "#2c271c" },
+  underground: { accent: "#a5d1d0", glow: "#66a5a1", trim: "#3c6664", wall: "#132021", floor: "#202c2d" },
+};
 
 interface HomeAmbientAudioSession {
   audio: HTMLAudioElement;
@@ -886,7 +899,7 @@ function roomReactionTargetIds(path: string): string[] {
     }
   }
 
-  if (path !== "/room" && !roomChannelFromPath(path)) {
+  if (path !== "/room" && !roomChannelSurfaceFromPath(path)) {
     return [];
   }
 
@@ -3078,7 +3091,7 @@ function publicWindowTitle(path: string): string {
     return "THE_ROOM";
   }
 
-  const roomChannel = roomChannelFromPath(normalizedPath);
+  const roomChannel = roomChannelSurfaceFromPath(normalizedPath);
   if (roomChannel) {
     return `ROOM_${roomChannel.toUpperCase()}`;
   }
@@ -3151,7 +3164,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
@@ -3338,9 +3351,9 @@ function renderRoomHall(): string {
 }
 
 function renderRoomHallLaunch(): string {
-  return `<a class="room-hall-launch" href="/room/hall">
-    <span>EXPLORE THE HALL <b aria-hidden="true">→</b></span>
-    <small>MOVE THROUGH ANONYMOUS WALLS</small>
+  return `<a class="room-hall-launch" href="/room">
+    <span>VIEW THE MUSEUM <b aria-hidden="true">→</b></span>
+    <small>EXPLORE THE ROOMS / RETURN TO SOCIAL VIEW</small>
   </a>`;
 }
 
@@ -3389,7 +3402,7 @@ async function refreshRoomPosts(force = false): Promise<void> {
       roomPostsLoadedChannel = requestedChannel;
       roomPostError = "";
       const normalizedPath = normalizePath(window.location.pathname);
-      if (normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelFromPath(normalizedPath))) {
+      if (normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
         rerenderProductRoute();
       }
     })
@@ -3402,6 +3415,30 @@ async function refreshRoomPosts(force = false): Promise<void> {
     });
 
   return roomPostsRequest;
+}
+
+async function refreshMuseumGalleries(force = false): Promise<void> {
+  if (!hasRoomSession() || (!force && roomMuseumLoaded)) return;
+  if (roomMuseumRequest) return roomMuseumRequest;
+
+  const load = roomAnonymousIdentity ? fetchAnonymousPosts : fetchRoomPosts;
+  roomMuseumRequest = Promise.allSettled(
+    roomChannelOptions.map(async (room) => ({ key: room.key, response: await load(room.key) })),
+  )
+    .then((results) => {
+      const next = new Map<RoomChannel, RoomPost[]>();
+      results.forEach((result) => {
+        if (result.status === "fulfilled") next.set(result.value.key, result.value.response.posts);
+      });
+      roomMuseumPostsByChannel = next;
+      roomMuseumLoaded = true;
+      if (normalizePath(window.location.pathname) === "/room") rerenderProductRoute();
+    })
+    .finally(() => {
+      roomMuseumRequest = undefined;
+    });
+
+  return roomMuseumRequest;
 }
 
 async function refreshActiveRoom(): Promise<void> {
@@ -3594,12 +3631,12 @@ function isRoomNotificationSurface(path = normalizePath(window.location.pathname
     || path === "/room/orb"
     || path === "/room/hall"
     || path === "/room/profile"
-    || Boolean(roomChannelFromPath(path))
+    || Boolean(roomChannelSurfaceFromPath(path))
     || path.startsWith("/c/");
 }
 
 function isRoomPostSurface(path = normalizePath(window.location.pathname)): boolean {
-  return path === "/room" || Boolean(roomChannelFromPath(path));
+  return path === "/room" || Boolean(roomChannelSurfaceFromPath(path));
 }
 
 function notificationStateSignature(value: AccountNotificationsResponse | undefined): string {
@@ -4243,6 +4280,22 @@ function roomChannelFromPath(path: string): RoomChannel | undefined {
   return roomChannelOptions.some((channel) => channel.key === key) ? key : undefined;
 }
 
+function roomChannelFeedFromPath(path: string): RoomChannel | undefined {
+  const normalizedPath = normalizePath(path);
+  const prefix = "/room/channel/";
+  const suffix = "/feed";
+  if (!normalizedPath.startsWith(prefix) || !normalizedPath.endsWith(suffix)) {
+    return undefined;
+  }
+
+  const key = normalizedPath.slice(prefix.length, -suffix.length) as RoomChannel;
+  return roomChannelOptions.some((channel) => channel.key === key) ? key : undefined;
+}
+
+function roomChannelSurfaceFromPath(path: string): RoomChannel | undefined {
+  return roomChannelFromPath(path) ?? roomChannelFeedFromPath(path);
+}
+
 function roomThreadIdFromPath(path: string): string | undefined {
   const normalizedPath = normalizePath(path);
   if (!normalizedPath.startsWith("/c/")) {
@@ -4259,11 +4312,12 @@ function roomThreadIdFromPath(path: string): string | undefined {
 
 function isProtectedRoomPath(path: string): boolean {
   return path === "/room"
+    || path === "/room/main"
     || path === "/explore"
     || path === "/room/orb"
     || path === "/room/hall"
     || path === "/room/profile"
-    || Boolean(roomChannelFromPath(path))
+    || Boolean(roomChannelSurfaceFromPath(path))
     || Boolean(roomThreadIdFromPath(path));
 }
 
@@ -4275,28 +4329,117 @@ function renderRoomZcashStatus(): string {
   return `<span class="ui-status-indicator zcash-status-carousel" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
 }
 
-function roomMuseumPosts(): TransmissionView[] {
-  return roomPostsLoadedChannel === activeRoomChannel
-    ? liveRoomPostsForTab("latest").map(transmissionViewFromRoomPost).slice(0, 12)
-    : MOCK_CONFESSIONS.slice(0, 12).map(transmissionViewFromConfession);
+function sampleMuseumPosts(roomIndex: number, room: (typeof roomChannelOptions)[number]): MuseumPost[] {
+  return Array.from({ length: 10 }, (_, index) => {
+    const confession = MOCK_CONFESSIONS[(roomIndex * 3 + index) % MOCK_CONFESSIONS.length];
+    return {
+      text: confession.text,
+      category: confession.category,
+      time: confession.time,
+      roomKey: room.key,
+      roomLabel: room.label,
+    };
+  });
 }
 
-function renderMuseumExhibitionIndex(posts: MuseumPost[]): string {
-  return posts.length
-    ? posts.map((post, index) => `<article>
-              <button type="button" data-museum-exhibit="${index}" aria-label="Visit framed thought ${index + 1}">
-                <span>${String(index + 1).padStart(2, "0")} / ${escapeHtml(post.category ?? "THOUGHT")}</span>
-                <span>${escapeHtml(post.text.slice(0, 100))}${post.text.length > 100 ? "…" : ""}</span>
+function museumLivePostsForChannel(roomKey: RoomChannel): MuseumPost[] {
+  const source = roomMuseumPostsByChannel.get(roomKey)
+    ?? (roomPostsLoadedChannel === roomKey ? roomPosts.filter((post) => post.channel === roomKey) : []);
+  const room = roomChannelOption(roomKey);
+  return source.map((post) => ({
+    id: post.id,
+    text: post.text,
+    category: post.category,
+    time: post.time,
+    roomKey,
+    roomLabel: room.label,
+  }));
+}
+
+function museumGalleryHasLiveData(roomKey: RoomChannel): boolean {
+  return roomMuseumLoaded || roomPostsLoadedChannel === roomKey;
+}
+
+function roomMuseumGalleries(): MuseumGallery[] {
+  return roomChannelOptions.map((room, roomIndex) => {
+    const livePosts = museumLivePostsForChannel(room.key);
+    const liveData = museumGalleryHasLiveData(room.key);
+    const posts = liveData ? livePosts : sampleMuseumPosts(roomIndex, room);
+    return {
+      key: room.key,
+      roomIndex,
+      label: room.label,
+      description: room.description,
+      theme: museumThemeByChannel[room.key],
+      hasNewSignal: liveData && livePosts.length > 0,
+      signalCount: livePosts.length,
+      posts,
+    };
+  });
+}
+
+function roomMuseumGallery(roomKey: RoomChannel): MuseumGallery {
+  const room = roomChannelOption(roomKey);
+  const roomIndex = roomChannelOptions.findIndex((candidate) => candidate.key === roomKey);
+  const livePosts = museumLivePostsForChannel(roomKey);
+  const liveData = museumGalleryHasLiveData(roomKey);
+  return {
+    key: room.key,
+    roomIndex,
+    label: room.label,
+    description: room.description,
+    theme: museumThemeByChannel[room.key],
+    hasNewSignal: liveData && livePosts.length > 0,
+    signalCount: livePosts.length,
+    posts: liveData ? livePosts : sampleMuseumPosts(roomIndex, room),
+  };
+}
+
+function renderMuseumSignal(gallery: MuseumGallery): string {
+  const live = gallery.hasNewSignal === true;
+  const label = live
+    ? `NEW SIGNAL${gallery.signalCount && gallery.signalCount > 1 ? ` / ${gallery.signalCount}` : ""}`
+    : museumGalleryHasLiveData(gallery.key as RoomChannel) ? "QUIET ROOM" : "SAMPLE WALL";
+  return `<span class="room-museum__room-signal${live ? " room-museum__room-signal--new" : ""}"><i aria-hidden="true"></i>${label}</span>`;
+}
+
+function renderMuseumExhibitionIndex(galleries: MuseumGallery[]): string {
+  return galleries.map((gallery, index) => `<article>
+              <button type="button" data-museum-room="${escapeHtml(gallery.key)}" aria-label="Enter the ${escapeHtml(gallery.label)} gallery">
+                <span class="room-museum__room-line"><span>${String(index + 1).padStart(2, "0")} / ${escapeHtml(gallery.label)}</span>${renderMuseumSignal(gallery)}</span>
+                <span>${escapeHtml(gallery.description)}</span>
+                <small>${gallery.posts.length ? `${gallery.posts.length} THOUGHTS ON THE WALL` : "THE WALLS ARE QUIET"} · ENTER ROOM →</small>
               </button>
-              <p>${escapeHtml(post.text)}</p>
-              ${post.id ? `<a href="/c/${encodeURIComponent(post.id)}">OPEN THREAD →</a>` : ""}
-            </article>`).join("")
-    : "<p>No thoughts on the walls yet. Add yours in the live room.</p>";
+            </article>`).join("");
+}
+
+function renderMuseumFloorPlan(activeRoomKey?: RoomChannel): string {
+  const rooms = roomChannelOptions.map((room, index) => {
+    const left = index % 2 === 0;
+    const row = Math.floor(index / 2);
+    const x = left ? 7 : 70;
+    const y = 10 + row * 44;
+    const active = room.key === activeRoomKey;
+    return `<g class="museum-map-room${active ? " museum-map-room--active" : ""}">
+              <rect x="${x}" y="${y}" width="43" height="30" rx="1" data-museum-map-room="${escapeHtml(room.key)}"/>
+              <text x="${x + 21.5}" y="${y + 17}" text-anchor="middle">${escapeHtml(room.label)}</text>
+              <path d="M${left ? x + 43 : 66} ${y + 15}H${left ? 54 : x}"/>
+            </g>`;
+  }).join("");
+
+  return `<svg viewBox="0 0 120 150" role="img" aria-label="Floor plan showing all six HIDN rooms and your position">
+            <rect class="museum-map-hall" x="54" y="6" width="12" height="138" rx="1"/>
+            ${rooms}
+            <path class="museum-map-stairs" d="M56 42h8m-8 3h8m-8 3h8m-8 47h8m-8 3h8m-8 3h8"/>
+            <text class="museum-map-hall-label" x="60" y="76" text-anchor="middle">HALL</text>
+            <path d="M-4 0 0 8 4 0Z" fill="#b8dc68" data-museum-map-heading/>
+            <circle r="2.5" fill="#f3efe3" data-museum-map-position/>
+          </svg>`;
 }
 
 function renderRoomMuseum(): string {
-  const posts = roomMuseumPosts();
-  const demo = roomPostsLoadedChannel !== activeRoomChannel;
+  const galleries = roomMuseumGalleries();
+  const demo = !roomMuseumLoaded;
   return publicFrame(
     "/room",
     `<main id="main-content" class="public-main room-museum-main">
@@ -4305,16 +4448,19 @@ function renderRoomMuseum(): string {
           <p class="room-museum__loading" data-museum-loading role="status">OPENING THE ROOM…</p>
         </div>
         <header class="room-museum__location">
-          ${TerminalLabel("HIDN / THE ROOM")}
-          <h1>A room without names.</h1>
-          <p>SHOW THE THOUGHT. HIDE THE PERSON.</p>
-          ${demo ? '<span class="room-museum__demo">SAMPLE EXHIBITION</span>' : ""}
+          ${TerminalLabel("HIDN / THE MUSEUM")}
+          <h1>ROOMS WITHOUT NAMES.</h1>
+          <p>ONE HALL. MANY THEMES. THOUGHTS ON EVERY WALL.</p>
+          <span class="room-museum__demo">${demo ? "SAMPLE WALLS / LIVE ROOMS LOADING" : `${galleries.length} CONNECTED ROOMS / LIVE WALLS`}</span>
         </header>
-        <div class="room-museum__links"><a href="/room/channel/general">LIVE ROOM ↗</a></div>
+        <div class="room-museum__links">
+          <a href="/room/channel/general">GENERAL ROOM ↗</a>
+          <a href="/room/channel/general/feed">OPEN SOCIAL VIEW ↗</a>
+        </div>
         <details class="room-museum__exhibition" data-museum-exhibition>
-          <summary>EXHIBITION INDEX</summary>
+          <summary>ROOM INDEX / ${String(galleries.length).padStart(2, "0")}</summary>
           <div class="room-museum__exhibition-list">
-            ${renderMuseumExhibitionIndex(posts)}
+            ${renderMuseumExhibitionIndex(galleries)}
           </div>
         </details>
         <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="museum-reader-title">
@@ -4329,11 +4475,61 @@ function renderRoomMuseum(): string {
         </nav>
         <div class="room-museum__map" id="museum-map" data-museum-map hidden>
           <span>THE ROOM / FLOOR PLAN</span>
-          <svg viewBox="0 0 120 125" role="img" aria-label="Your position and direction in the museum">
-            <path d="M24 13H96V115H24Z M38 43H54 M38 76H54" fill="none" stroke="currentColor" stroke-width="2"/>
-            <path d="M-4 0 0-8 4 0Z" fill="#b8dc68" data-museum-map-heading/>
-            <circle r="2.5" fill="#f3efe3" data-museum-map-position/>
-          </svg>
+          ${renderMuseumFloorPlan()}
+        </div>
+        <nav class="room-museum__walk-controls" aria-label="Move through the room">
+          <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
+          <button type="button" data-museum-action="forward" aria-label="Walk forward">⌃</button>
+          <button type="button" data-museum-action="back" aria-label="Walk backward">⌄</button>
+          <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
+        </nav>
+        <p class="room-museum__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A ROOM SIGN TO ENTER</p>
+      </section>
+    </main>`,
+    "public-page--room-museum",
+  );
+}
+
+function renderRoomChannelMuseum(roomKey: RoomChannel): string {
+  const gallery = roomMuseumGallery(roomKey);
+  const roomIndex = roomChannelOptions.findIndex((room) => room.key === roomKey);
+  const previous = roomChannelOptions[(roomIndex - 1 + roomChannelOptions.length) % roomChannelOptions.length];
+  const next = roomChannelOptions[(roomIndex + 1) % roomChannelOptions.length];
+  return publicFrame(
+    `/room/channel/${encodeURIComponent(roomKey)}`,
+    `<main id="main-content" class="public-main room-museum-main room-museum-main--channel">
+      <section class="room-museum room-museum--channel" data-room-museum data-museum-room-key="${escapeHtml(roomKey)}" aria-label="HIDN ${escapeHtml(gallery.label)} room">
+        <div class="room-museum__stage" data-museum-stage>
+          <p class="room-museum__loading" data-museum-loading role="status">OPENING ${escapeHtml(gallery.label)}…</p>
+        </div>
+        <header class="room-museum__location">
+          ${TerminalLabel(`HIDN / ${gallery.label}`)}
+          <h1>${escapeHtml(gallery.label)}</h1>
+          <p>${escapeHtml(gallery.description)}. THOUGHTS ON EVERY WALL.</p>
+          <span class="room-museum__demo">${renderMuseumSignal(gallery)} <span>${gallery.posts.length} WALLS / ROOM ${String(roomIndex + 1).padStart(2, "0")}</span></span>
+        </header>
+        <nav class="room-museum__links room-museum__links--channel" aria-label="Room routes">
+          <a class="room-museum__hallway-link" href="/room">← BACK TO HALLWAY</a>
+          <a href="/room/channel/${encodeURIComponent(roomKey)}/feed">OPEN ROOM FEED ↗</a>
+        </nav>
+        <nav class="room-museum__room-nav" aria-label="Move between rooms">
+          <a href="/room/channel/${encodeURIComponent(previous.key)}">← ${escapeHtml(previous.label)}</a>
+          <span>ROOM ${String(roomIndex + 1).padStart(2, "0")} / ${String(roomChannelOptions.length).padStart(2, "0")}</span>
+          <a href="/room/channel/${encodeURIComponent(next.key)}">${escapeHtml(next.label)} →</a>
+        </nav>
+        <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="museum-reader-title">
+          <div class="room-museum__reader-top"><span id="museum-reader-title" data-museum-post-category>THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
+          <blockquote data-museum-post-text></blockquote>
+          <footer><span>${escapeHtml(gallery.label)} / WITHOUT A NAME</span><a data-museum-post-link href="/room" hidden>OPEN THREAD →</a></footer>
+        </aside>
+        <nav class="room-museum__view-controls" aria-label="Museum view controls">
+          <button type="button" class="room-museum__compass" data-museum-action="reset" aria-label="Reset room view"><span data-museum-compass aria-hidden="true">↑</span><small>N</small></button>
+          <div class="room-museum__zoom"><button type="button" data-museum-action="zoom-in" aria-label="Zoom in">+</button><button type="button" data-museum-action="zoom-out" aria-label="Zoom out">−</button></div>
+          <button type="button" data-museum-action="map" aria-expanded="false" aria-controls="museum-map" aria-label="Show room map">⌑</button>
+        </nav>
+        <div class="room-museum__map" id="museum-map" data-museum-map hidden>
+          <span>ROOM / FLOOR PLAN</span>
+          ${renderMuseumFloorPlan(roomKey)}
         </div>
         <nav class="room-museum__walk-controls" aria-label="Move through the room">
           <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
@@ -4344,7 +4540,7 @@ function renderRoomMuseum(): string {
         <p class="room-museum__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ</p>
       </section>
     </main>`,
-    "public-page--room-museum",
+    "public-page--room-museum public-page--room-channel-museum",
   );
 }
 
@@ -4556,9 +4752,10 @@ function renderMobileRoomIndex(): string {
 }
 
 function renderExplore(path = "/room"): string {
-  const isChannelRoute = Boolean(roomChannelFromPath(path));
+  const channelKey = roomChannelFromPath(path) ?? roomChannelFeedFromPath(path);
+  const isChannelRoute = Boolean(channelKey);
   const signalMode = activeHidnTheme() === "signal";
-  const channel = roomChannelOption(activeRoomChannel);
+  const channel = roomChannelOption(channelKey ?? activeRoomChannel);
   const headerLabel = signalMode
     ? (isChannelRoute ? `${channel.label} / PRIVATE CHANNEL` : "PRIVATE ROOM / OPEN THREADS")
     : (isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS");
@@ -5052,7 +5249,7 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
     roomLoginError = "";
     persistAnonymousSession();
     if (recoveryCode) {
-      navigateIntoRoom("/room");
+      navigateIntoRoom("/room/main");
     } else {
       roomAccessMode = "ready";
       revealRoomRecoveryKeyTemporarily();
@@ -5122,6 +5319,9 @@ function clearRoomSession(): void {
   roomPosts = [];
   roomPendingPostIds.clear();
   roomPostsLoadedChannel = undefined;
+  roomMuseumPostsByChannel = new Map();
+  roomMuseumLoaded = false;
+  roomMuseumRequest = undefined;
   roomThreadDetailRequests.clear();
   roomThreadDetailLoaded.clear();
   roomThreadDetailErrors.clear();
@@ -5323,7 +5523,8 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
     roomVerificationRequested = false;
     sessionStorage.removeItem("hidn:account:verification-requested");
     roomLoginError = "";
-    navigateIntoRoom("/room");
+    // Login opens the artifact foyer first; its museum door leads into the hallway.
+    navigateIntoRoom("/room/main");
   } catch (error) {
     roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
@@ -5431,10 +5632,8 @@ function renderRoomCreate(): string {
 }
 
 function renderRoomLogin(): string {
-  const signalMode = activeHidnTheme() === "signal";
   return `<div class="room-access-page">
     <header class="room-access-header room-access-header--compact">
-      ${signalMode ? TerminalLabel("HIDN / RECOVERY ACCESS") : ""}
       <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
       <p class="room-access-header__copy">Use the recovery key you saved. It is the only credential; the browser proves you hold it without sending the key to HIDN.</p>
     </header>
@@ -5968,25 +6167,26 @@ function homeMuseumPosts(): MuseumPost[] {
   });
 }
 
-function renderHome(): RenderedProductRoute {
+function renderHome(privateFoyer = false): RenderedProductRoute {
+  const foyerPath = privateFoyer ? "/room/main" : "/";
+  const entryPath = privateFoyer ? "/room" : "/room/access";
+  const entryLabel = privateFoyer ? "OPEN HALLWAY" : "ENTER ROOM";
   return {
-    metadata: HOME_METADATA,
-    html: publicFrame("/", `<main id="main-content" class="public-main home-main">
-      <section class="room-museum museum-foyer" data-room-museum data-museum-foyer aria-labelledby="home-room-title">
+    metadata: privateFoyer
+      ? { ...HOME_METADATA, title: "HIDN — The Private Foyer", canonicalPath: foyerPath }
+      : HOME_METADATA,
+    html: publicFrame(foyerPath, `<main id="main-content" class="public-main home-main">
+      <section class="room-museum museum-foyer" data-room-museum data-museum-foyer${privateFoyer ? " data-museum-private-foyer" : ""} ${privateFoyer ? "aria-label=\"Private foyer\"" : "aria-labelledby=\"home-room-title\""}>
         <div class="room-museum__stage" data-museum-stage><p class="room-museum__loading" data-museum-loading role="status">OPENING THE GALLERY…</p></div>
-        <div class="museum-foyer__intro">
+        ${privateFoyer ? "" : `<div class="museum-foyer__intro">
           ${TerminalLabel("A MUSEUM OF UNSAID THOUGHTS")}
           <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO${renderRoomEyeWatcher()}</span>M<br />WITHOUT <em>NAMES.</em></h1>
           <p>A private room for anonymous thoughts and unnamed conversations.</p>
-        </div>
-        <details class="room-museum__exhibition museum-foyer__exhibition" data-museum-exhibition>
-          <summary>EXHIBITION INDEX</summary>
-          <div class="room-museum__exhibition-list">${renderMuseumExhibitionIndex(homeMuseumPosts())}</div>
-        </details>
+        </div>`}
         <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="foyer-reader-title">
           <div class="room-museum__reader-top"><span id="foyer-reader-title" data-museum-post-category>SAMPLE THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
           <blockquote data-museum-post-text></blockquote>
-          <footer><span>PUBLIC FOYER</span><a href="/room/access" data-room-enter>ENTER ROOM →</a></footer>
+          <footer><span>${privateFoyer ? "PRIVATE FOYER" : "PUBLIC FOYER"}</span>${privateFoyer ? "" : `<a href="${entryPath}" data-room-enter>${entryLabel} →</a>`}</footer>
         </aside>
         <nav class="room-museum__walk-controls museum-foyer__walk" aria-label="Explore the museum foyer">
           <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
@@ -5995,8 +6195,8 @@ function renderHome(): RenderedProductRoute {
           <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
           <button type="button" data-museum-action="reset" aria-label="Return to the entrance view">⌂</button>
         </nav>
-        <div class="museum-foyer__entry"><a href="/room/access" data-room-enter data-glitch-text="&gt; ENTER ROOM ↗" aria-label="ENTER ROOM"><span aria-hidden="true">&gt;</span> ENTER ROOM <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>
-        <p class="room-museum__hint museum-foyer__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ</p>
+        ${privateFoyer ? "" : `<div class="museum-foyer__entry"><a href="${entryPath}" data-room-enter data-glitch-text="&gt; ${entryLabel} ↗" aria-label="${entryLabel}"><span aria-hidden="true">&gt;</span> ${entryLabel} <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>`}
+        <p class="room-museum__hint museum-foyer__hint" data-museum-status>${privateFoyer ? "PRIVATE FOYER · WALK TO THE HALLWAY SIGN · TAP THE FLOOR TO WALK" : "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ"}</p>
         <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>ZERO KNOWLEDGE</span></footer>
       </section>
     </main>`, "public-page--home public-page--home-museum"),
@@ -6027,6 +6227,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderHome();
   }
 
+  if (normalizedPath === "/room/main") {
+    return renderHome(true);
+  }
+
   if (normalizedPath === "/room") {
     return {
       metadata: {
@@ -6050,13 +6254,29 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   }
 
   if (normalizedPath === "/room/hall") {
+    // The old carousel hall is retired. Keep old bookmarks useful by sending
+    // them to the connected 3D museum instead.
+    window.history.replaceState({}, "", "/room");
     return {
       metadata: {
         ...EXPLORE_METADATA,
-        title: "HIDN — The Hall",
+        title: "HIDN — The Museum",
+        canonicalPath: "/room",
+      },
+      html: renderRoomMuseum(),
+    };
+  }
+
+  const roomChannelFeed = roomChannelFeedFromPath(normalizedPath);
+  if (roomChannelFeed) {
+    activeRoomChannel = roomChannelFeed;
+    return {
+      metadata: {
+        ...EXPLORE_METADATA,
+        title: `HIDN — ${roomChannelOption(roomChannelFeed).label} Feed`,
         canonicalPath: normalizedPath,
       },
-      html: renderRoomHall(),
+      html: renderExplore(normalizedPath),
     };
   }
 
@@ -6069,7 +6289,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
         title: `HIDN — ${roomChannelOption(roomChannel).label}`,
         canonicalPath: normalizedPath,
       },
-      html: renderExplore(normalizedPath),
+      html: renderRoomChannelMuseum(roomChannel),
     };
   }
 
@@ -6289,7 +6509,7 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
     if (roomAnonymousIdentity && roomLikedIds.has(threadId)) {
       roomChannelNotice = "REACTION ALREADY SAVED / PRIVATE";
       roomPostError = "";
-      if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelFromPath(normalizedPath))) {
+      if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
         renderExploreFeed(root, activeFeedTab);
       } else {
         rerenderProductRoute();
@@ -6331,7 +6551,7 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
     }
   }
 
-  if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelFromPath(normalizedPath))) {
+  if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
     renderExploreFeed(root, activeFeedTab);
   } else {
     rerenderProductRoute();
@@ -6855,7 +7075,16 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
   if (!museum) return;
   const version = ++roomMuseumLoadVersion;
   const foyer = museum.hasAttribute("data-museum-foyer");
-  const posts: MuseumPost[] = foyer ? homeMuseumPosts() : roomMuseumPosts();
+  const privateFoyer = museum.hasAttribute("data-museum-private-foyer");
+  const currentPath = normalizePath(window.location.pathname);
+  const museumHub = currentPath === "/room" || currentPath === "/room/orb" || currentPath === "/museum-preview";
+  const channelMuseum = roomChannelFromPath(currentPath);
+  const galleries = foyer
+    ? undefined
+    : channelMuseum
+      ? [roomMuseumGallery(channelMuseum)]
+      : roomMuseumGalleries();
+  const posts: MuseumPost[] = foyer ? homeMuseumPosts() : (galleries?.flatMap((gallery) => gallery.posts) ?? []);
   const signal = activeHidnTheme() === "signal";
   let foyerActivityTimer: number | undefined;
   const noteFoyerActivity = (): void => {
@@ -6878,7 +7107,18 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
     if (version !== roomMuseumLoadVersion || !museum.isConnected) return;
     const cleanup = mountRoomMuseum(museum, posts, signal, {
       foyer,
+      privateFoyer,
+      roomMode: foyer ? undefined : museumHub ? "hub" : "gallery",
+      galleries,
       onActivity: noteFoyerActivity,
+      onGalleryEnter: (gallery) => {
+        if (currentPath === "/room" && hasRoomSession()) {
+          navigateProductRoute(`/room/channel/${encodeURIComponent(gallery.key)}`);
+        }
+      },
+      onReturnToMain: () => {
+        if (currentPath !== "/room") navigateProductRoute("/room");
+      },
       onEnter: (beginEntry) => {
         playMuseumDoorSound();
         const returning = hasRoomSession();
@@ -7131,8 +7371,11 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (hasRoomSession() && roomReactionStateSignature(normalizedPath)) {
     void refreshRoomReactionState(normalizedPath);
   }
-  if ((normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelFromPath(normalizedPath))) && hasRoomSession()) {
+  if ((normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
+    if (normalizedPath === "/room") {
+      void refreshMuseumGalleries();
+    }
   }
   const notificationThreadId = roomThreadIdFromPath(normalizedPath);
   if (notificationThreadId && hasRoomSession()) {
@@ -7490,7 +7733,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           void refreshRoomPayment();
           break;
         case "room-enter":
-          navigateIntoRoom("/room");
+          navigateIntoRoom("/room/main");
           break;
         case "room-refresh":
           void refreshActiveRoom();
