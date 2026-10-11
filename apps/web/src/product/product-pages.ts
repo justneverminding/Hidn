@@ -5995,7 +5995,7 @@ function renderHome(): RenderedProductRoute {
           <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
           <button type="button" data-museum-action="reset" aria-label="Return to the entrance view">⌂</button>
         </nav>
-        <div class="museum-foyer__entry"><a href="/room/access" data-room-enter aria-label="ENTER ROOM"><span aria-hidden="true">&gt;</span> ENTER ROOM <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>
+        <div class="museum-foyer__entry"><a href="/room/access" data-room-enter data-glitch-text="&gt; ENTER ROOM ↗" aria-label="ENTER ROOM"><span aria-hidden="true">&gt;</span> ENTER ROOM <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>
         <p class="room-museum__hint museum-foyer__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ</p>
         <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>ZERO KNOWLEDGE</span></footer>
       </section>

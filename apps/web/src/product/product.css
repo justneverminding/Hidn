@@ -15911,6 +15911,45 @@
   border-color: #d2e9bc;
   box-shadow: 0 0 2rem rgba(158, 207, 148, 0.18), 0 0.8rem 2.4rem rgba(0, 0, 0, 0.34);
   color: #061008;
+  overflow: hidden;
+  position: relative;
+}
+
+.public-page--theme-signal .museum-foyer__entry > a::before,
+.public-page--theme-signal .museum-foyer__entry > a::after {
+  align-items: center;
+  box-sizing: border-box;
+  content: attr(data-glitch-text);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  opacity: 0;
+  padding: 14px 22px;
+  pointer-events: none;
+  position: absolute;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.public-page--theme-signal .museum-foyer__entry > a::before {
+  animation: hidn-room-glitch 5.2s steps(1, end) infinite;
+  background: rgba(244, 183, 40, 0.82);
+  color: #080b04;
+  clip-path: inset(16% 0 53% 0);
+  transform: translateX(-3px);
+}
+
+.public-page--theme-signal .museum-foyer__entry > a::after {
+  animation: hidn-room-glitch 5.2s steps(1, end) -2.6s infinite;
+  background: rgba(93, 255, 143, 0.8);
+  color: #031108;
+  clip-path: inset(61% 0 11% 0);
+  transform: translateX(3px);
+}
+
+.public-page--theme-signal .museum-foyer__entry > a > span {
+  position: relative;
+  z-index: 2;
 }
 
 .public-page--theme-signal .museum-foyer__entry > a:hover,
@@ -15933,5 +15972,13 @@
 @media (max-width: 760px) {
   .public-page--theme-signal .museum-foyer__entry > a {
     min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-page--theme-signal .museum-foyer__entry > a::before,
+  .public-page--theme-signal .museum-foyer__entry > a::after {
+    animation: none;
+    opacity: 0;
   }
 }
