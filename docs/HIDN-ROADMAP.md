@@ -151,6 +151,9 @@ Still required before calling this a live mainnet payment release:
 - replace the browser-local confession content actions with authenticated
   server routes before treating replies and reactions as production data.
 
+The step-by-step mainnet verification and direct-tip release plan is documented
+in [HIDN Mainnet Zcash Verification + Direct Tips](./HIDN-MAINNET-ZCASH-VERIFICATION-MILESTONE.md).
+
 The browser-proof account path is a credential foundation, not completion of
 the later anonymous-posting protocol. Private profile history, rotating public
 signals, anonymous nullifiers, and operator-blind retrieval still require a

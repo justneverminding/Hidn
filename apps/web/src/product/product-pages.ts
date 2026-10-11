@@ -133,7 +133,6 @@ type HidnTheme = "quiet" | "signal";
 type RoomChannel = "general" | "love" | "redacted" | "blackbox" | "night-shift" | "underground";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
-type RoomEntryTransitionKind = "first" | "return";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 type DeviceSignalPost = RoomPost & { status: RoomComment["status"] };
 
@@ -183,7 +182,6 @@ const ROOM_SESSION_TTL_MS = 60 * 60 * 1000;
 const ROOM_SESSION_EXPIRES_AT_STORAGE = "hidn:room:session-expires-at";
 const ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE = "hidn:anonymous:tip-address";
 const ROOM_DEVICE_HISTORY_STORAGE = "hidn:signals:device-history";
-const HIDN_THEME_STORAGE = "hidn:visual-theme";
 const ROOM_RECOVERY_CONFIRMATIONS = [
   "Do you understand that this is your recovery key to the private room?",
   "Do you understand that HIDN cannot recover this key if you lose it?",
@@ -210,30 +208,8 @@ function roomReplyLimitCopy(): string {
 }
 
 function activeHidnTheme(): HidnTheme {
-  if (typeof window === "undefined") {
-    return "signal";
-  }
-
-  // Signal is the public first-visit default; an explicit Quiet selection is
-  // still remembered locally for visitors who choose the calmer surface.
-  return window.localStorage.getItem(HIDN_THEME_STORAGE) === "quiet" ? "quiet" : "signal";
-}
-
-function renderThemePicker(): string {
-  const activeTheme = activeHidnTheme();
-  return `<fieldset class="hidn-theme-picker" aria-label="Choose HIDN visual theme">
-    <legend>CHOOSE YOUR ATMOSPHERE</legend>
-    <div class="hidn-theme-picker__options">
-      <button class="hidn-theme-picker__option${activeTheme === "quiet" ? " hidn-theme-picker__option--active" : ""}" type="button" data-action="theme-set" data-theme="quiet" aria-pressed="${activeTheme === "quiet"}">
-        <span class="hidn-theme-picker__name">QUIET MODE</span>
-        <span class="hidn-theme-picker__description">BLACK / OFF-WHITE</span>
-      </button>
-      <button class="hidn-theme-picker__option${activeTheme === "signal" ? " hidn-theme-picker__option--active" : ""}" type="button" data-action="theme-set" data-theme="signal" aria-pressed="${activeTheme === "signal"}">
-        <span class="hidn-theme-picker__name">SIGNAL MODE</span>
-        <span class="hidn-theme-picker__description">GREEN / TERMINAL</span>
-      </button>
-    </div>
-  </fieldset>`;
+  // Signal is the single public display theme for this build.
+  return "signal";
 }
 
 let activeFeedTab: FeedTab = "latest";
@@ -341,9 +317,6 @@ let homeHeadlineTimer: number | undefined;
 let homeHeadlineCursorTimer: number | undefined;
 let homeHeadlineHasRun = false;
 let visitorClockTimer: number | undefined;
-let roomEntryTimer: number | undefined;
-let roomEntryTransitionActive = false;
-let roomEntryTransitionKind: RoomEntryTransitionKind = "first";
 let activeTextSelection: SelectedTextItem | undefined;
 let selectedTextBatch: SelectedTextItem[] = [];
 let textSelectionInteractionsBound = false;
@@ -416,8 +389,7 @@ const HOME_AUDIO_MASTER_GAIN = 0.50587;
 const HOME_AUDIO_TEMPO = 54;
 const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
-const ROOM_ENTRY_SIGNAL_VOLUME = 0.16;
-const ROOM_ENTRY_TRANSITION_DURATION_MS = 3200;
+const ROOM_DOOR_SOUND_VOLUME = 0.16;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
 const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const SHIELDEDSCAN_CACHE_DURATION_MS = 60_000;
@@ -1949,9 +1921,9 @@ function stopHomeAudio(root?: ParentNode, rememberChoice = false): void {
   }
 }
 
-function playRoomEntrySignal(): void {
-  // Respect an explicit ambient-sound opt-out while keeping the first visit
-  // eligible for a small, user-triggered interface signal.
+function playMuseumDoorSound(): void {
+  // Respect an explicit ambient-sound opt-out while keeping the door sound
+  // eligible for a user-triggered interaction.
   if (hasHomeAudioPreference() && !readHomeAudioPreference()) {
     return;
   }
@@ -1966,50 +1938,79 @@ function playRoomEntrySignal(): void {
     const context = new AudioContextConstructor();
     const output = context.createGain();
     const filter = context.createBiquadFilter();
-    const echo = context.createDelay(0.5);
-    const echoGain = context.createGain();
-    const toneGain = context.createGain();
-    const carrier = context.createOscillator();
-    const undertone = context.createOscillator();
+    const creak = context.createOscillator();
+    const creakGain = context.createGain();
+    const hinge = context.createOscillator();
+    const hingeGain = context.createGain();
+    const thump = context.createOscillator();
+    const thumpGain = context.createGain();
+    const roomNoise = context.createBufferSource();
+    const noiseFilter = context.createBiquadFilter();
+    const noiseGain = context.createGain();
     const now = context.currentTime;
+    const noiseBuffer = context.createBuffer(1, Math.max(1, Math.floor(context.sampleRate * 1.15)), context.sampleRate);
+    const noiseData = noiseBuffer.getChannelData(0);
+    for (let index = 0; index < noiseData.length; index++) {
+      noiseData[index] = (Math.random() * 2 - 1) * (1 - index / noiseData.length);
+    }
 
-    output.gain.value = ROOM_ENTRY_SIGNAL_VOLUME;
+    output.gain.value = ROOM_DOOR_SOUND_VOLUME;
     filter.type = "lowpass";
-    filter.frequency.value = 1850;
-    filter.Q.value = 0.6;
-    echo.delayTime.value = 0.18;
-    echoGain.gain.value = 0.16;
-    toneGain.gain.setValueAtTime(0.0001, now);
-    toneGain.gain.exponentialRampToValueAtTime(0.22, now + 0.018);
-    toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+    filter.frequency.value = 1450;
+    filter.Q.value = 0.8;
+    creak.type = "sawtooth";
+    creak.frequency.setValueAtTime(110, now);
+    creak.frequency.exponentialRampToValueAtTime(250, now + 0.92);
+    creak.detune.setValueAtTime(-7, now);
+    creakGain.gain.setValueAtTime(0.0001, now);
+    creakGain.gain.linearRampToValueAtTime(0.18, now + 0.16);
+    creakGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.02);
+    hinge.type = "triangle";
+    hinge.frequency.setValueAtTime(245, now);
+    hinge.frequency.exponentialRampToValueAtTime(118, now + 0.78);
+    hinge.detune.setValueAtTime(5, now);
+    hingeGain.gain.setValueAtTime(0.0001, now);
+    hingeGain.gain.linearRampToValueAtTime(0.13, now + 0.1);
+    hingeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.82);
+    thump.type = "sine";
+    thump.frequency.setValueAtTime(78, now + 0.04);
+    thump.frequency.exponentialRampToValueAtTime(42, now + 0.26);
+    thumpGain.gain.setValueAtTime(0.0001, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.22, now + 0.055);
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+    roomNoise.buffer = noiseBuffer;
+    noiseFilter.type = "bandpass";
+    noiseFilter.frequency.value = 720;
+    noiseFilter.Q.value = 0.7;
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.linearRampToValueAtTime(0.07, now + 0.18);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.06);
 
-    carrier.type = "triangle";
-    carrier.frequency.setValueAtTime(680, now);
-    carrier.frequency.exponentialRampToValueAtTime(255, now + 0.28);
-    carrier.detune.setValueAtTime(-4, now);
-    undertone.type = "sine";
-    undertone.frequency.setValueAtTime(190, now);
-    undertone.frequency.exponentialRampToValueAtTime(112, now + 0.3);
-    undertone.detune.setValueAtTime(5, now);
-
-    carrier.connect(toneGain);
-    undertone.connect(toneGain);
-    toneGain.connect(filter);
+    creak.connect(creakGain);
+    creakGain.connect(filter);
+    hinge.connect(hingeGain);
+    hingeGain.connect(filter);
+    thump.connect(thumpGain);
+    thumpGain.connect(filter);
+    roomNoise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(filter);
     filter.connect(output);
-    filter.connect(echo);
-    echo.connect(echoGain);
-    echoGain.connect(output);
     output.connect(context.destination);
-    carrier.start(now);
-    undertone.start(now);
-    carrier.stop(now + 0.38);
-    undertone.stop(now + 0.38);
+    creak.start(now);
+    hinge.start(now);
+    thump.start(now + 0.04);
+    roomNoise.start(now);
+    creak.stop(now + 1.08);
+    hinge.stop(now + 0.86);
+    thump.stop(now + 0.32);
+    roomNoise.stop(now + 1.12);
     void context.resume().catch(() => undefined);
     window.setTimeout(() => {
       void context.close();
-    }, 850);
+    }, 1400);
   } catch {
-    // The room transition should never be blocked by an unavailable audio API.
+    // The room entry should never be blocked by an unavailable audio API.
   }
 }
 
@@ -3174,12 +3175,12 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
-    ${isHome ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
+    ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
     ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
     ${main}
     ${isRoomSurface ? renderRoomTipDialog() : ""}
     ${isRoomSurface ? renderSelectionTools() : ""}
-    ${isRoomSurface || isAdminPage ? "" : FooterShell({
+    ${isRoomSurface || isAdminPage || pageClass.includes("public-page--home-museum") ? "" : FooterShell({
       links: footerLinks,
       identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
     })}
@@ -4224,7 +4225,7 @@ function renderModerationGate(path: string): RenderedProductRoute {
     html: publicFrame(
       path,
       `<main id="main-content" class="public-main explore-main" aria-busy="true">
-        ${renderRoomEntryTransition("return")}
+        ${LoadingState("OPENING THE ROOM", "Checking the room before displaying its thoughts.")}
       </main>`,
       "public-page--explore",
     ),
@@ -4280,6 +4281,19 @@ function roomMuseumPosts(): TransmissionView[] {
     : MOCK_CONFESSIONS.slice(0, 12).map(transmissionViewFromConfession);
 }
 
+function renderMuseumExhibitionIndex(posts: MuseumPost[]): string {
+  return posts.length
+    ? posts.map((post, index) => `<article>
+              <button type="button" data-museum-exhibit="${index}" aria-label="Visit framed thought ${index + 1}">
+                <span>${String(index + 1).padStart(2, "0")} / ${escapeHtml(post.category ?? "THOUGHT")}</span>
+                <span>${escapeHtml(post.text.slice(0, 100))}${post.text.length > 100 ? "…" : ""}</span>
+              </button>
+              <p>${escapeHtml(post.text)}</p>
+              ${post.id ? `<a href="/c/${encodeURIComponent(post.id)}">OPEN THREAD →</a>` : ""}
+            </article>`).join("")
+    : "<p>No thoughts on the walls yet. Add yours in the live room.</p>";
+}
+
 function renderRoomMuseum(): string {
   const posts = roomMuseumPosts();
   const demo = roomPostsLoadedChannel !== activeRoomChannel;
@@ -4300,14 +4314,7 @@ function renderRoomMuseum(): string {
         <details class="room-museum__exhibition" data-museum-exhibition>
           <summary>EXHIBITION INDEX</summary>
           <div class="room-museum__exhibition-list">
-            ${posts.length ? posts.map((post, index) => `<article>
-              <button type="button" data-museum-exhibit="${index}" aria-label="Visit framed thought ${index + 1}">
-                <span>${String(index + 1).padStart(2, "0")} / ${escapeHtml(post.category ?? "THOUGHT")}</span>
-                <span>${escapeHtml(post.text.slice(0, 100))}${post.text.length > 100 ? "…" : ""}</span>
-              </button>
-              <p>${escapeHtml(post.text)}</p>
-              ${post.id ? `<a href="/c/${encodeURIComponent(post.id)}">OPEN THREAD →</a>` : ""}
-            </article>`).join("") : "<p>No thoughts on the walls yet. Add yours in the live room.</p>"}
+            ${renderMuseumExhibitionIndex(posts)}
           </div>
         </details>
         <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="museum-reader-title">
@@ -4580,7 +4587,6 @@ function renderExplore(path = "/room"): string {
   return publicFrame(
     path,
     `<main id="main-content" class="public-main explore-main">
-        ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
           ${isChannelRoute ? `<a class="room-channel-back" href="/room">← ALL ROOMS</a>` : ""}
@@ -5046,7 +5052,7 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
     roomLoginError = "";
     persistAnonymousSession();
     if (recoveryCode) {
-      startRoomEntryTransition("/room", "return");
+      navigateIntoRoom("/room");
     } else {
       roomAccessMode = "ready";
       revealRoomRecoveryKeyTemporarily();
@@ -5067,12 +5073,6 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
   stopRoomNotificationPolling();
-  if (roomEntryTimer !== undefined) {
-    window.clearTimeout(roomEntryTimer);
-    roomEntryTimer = undefined;
-  }
-
-  roomEntryTransitionActive = false;
   sessionStorage.removeItem("hidn:room:secret");
   sessionStorage.removeItem("hidn:room:backend-id");
   sessionStorage.removeItem("hidn:room:entered");
@@ -5203,37 +5203,9 @@ function formattedZecAmount(zatoshis: number): string {
   return `${(zatoshis / 100_000_000).toFixed(8)} ZEC`;
 }
 
-function renderRoomEntryTransition(kind = roomEntryTransitionKind): string {
-  const isReturning = kind === "return";
-  const signalMode = activeHidnTheme() === "signal";
-  const label = isReturning
-    ? signalMode ? "RECONNECTING / PRIVATE ROOM" : "REOPENING / PRIVATE ROOM"
-    : signalMode ? "SEARCHING / PRIVATE ROOM" : "LOCATING / PRIVATE ROOM";
-  const subline = isReturning
-    ? signalMode ? "ACCESS KEY ACCEPTED / RETURNING" : "PRIVATE SIGNAL RECONNECTED"
-    : signalMode ? "ESTABLISHING ANONYMOUS CHANNEL" : "ESTABLISHING ANONYMOUS SIGNAL";
-  return `<div class="room-entry-transition room-entry-transition--${isReturning ? "return" : "first"}" role="status" aria-live="polite">
-    <div class="room-entry-transition__rings" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-    ${isReturning ? "" : `<div class="room-entry-transition__loader" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>`}
-    <p class="room-entry-transition__label">${label}<span aria-hidden="true">_</span></p>
-    <span class="room-entry-transition__subline">${subline}</span>
-  </div>`;
-}
-
-function startRoomEntryTransition(path = "/room", kind: RoomEntryTransitionKind = "return"): void {
-  if (roomEntryTimer !== undefined) {
-    window.clearTimeout(roomEntryTimer);
-  }
-
-  roomEntryTransitionActive = true;
-  roomEntryTransitionKind = kind;
+function navigateIntoRoom(path = "/room"): void {
   sessionStorage.setItem("hidn:room:entered", "true");
   navigateProductRoute(path);
-  roomEntryTimer = window.setTimeout(() => {
-    roomEntryTransitionActive = false;
-    roomEntryTimer = undefined;
-    rerenderProductRoute();
-  }, ROOM_ENTRY_TRANSITION_DURATION_MS);
 }
 
 async function registerRoomAccount(username: string): Promise<void> {
@@ -5351,7 +5323,7 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
     roomVerificationRequested = false;
     sessionStorage.removeItem("hidn:account:verification-requested");
     roomLoginError = "";
-    startRoomEntryTransition("/room", "return");
+    navigateIntoRoom("/room");
   } catch (error) {
     roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
@@ -5881,7 +5853,6 @@ function renderRoomAccess(): RenderedProductRoute {
     html: publicFrame(
       "/room/access",
       `<main id="main-content" class="public-main room-main room-access-main hidn-pointer-surface" data-pointer-surface>
-        ${roomEntryTransitionActive ? renderRoomEntryTransition() : ""}
         ${renderLiveRoomActivity()}
         <div class="room-access-atmosphere" aria-hidden="true">
           ${renderPointerSpotlight()}
@@ -5990,76 +5961,45 @@ function renderNotFound(): RenderedProductRoute {
   };
 }
 
+function homeMuseumPosts(): MuseumPost[] {
+  return MOCK_CONFESSIONS.slice(0, 8).map((post) => {
+    const sample = transmissionViewFromConfession(post);
+    return { text: sample.text, category: sample.category, time: sample.time };
+  });
+}
+
 function renderHome(): RenderedProductRoute {
-  const signalMode = activeHidnTheme() === "signal";
   return {
     metadata: HOME_METADATA,
-    html: publicFrame(
-      "/",
-      `<main id="main-content" class="public-main home-main">
-        <section class="home-room-stage hidn-pointer-surface" data-pointer-surface aria-labelledby="home-room-title">
-          <div class="home-room-stars" aria-hidden="true"></div>
-          <div class="home-room-noise" aria-hidden="true"></div>
-          ${renderPointerSpotlight()}
-          ${signalMode ? `<div class="home-room-window">
-            <div class="home-room-window__bar">
-              <div class="home-room-window__controls">
-                <span class="home-room-window__control home-room-window__control--close"></span>
-                <span class="home-room-window__control home-room-window__control--minimize"></span>
-                <span class="home-room-window__control home-room-window__control--maximize"></span>
-              </div>
-              <span class="home-room-window__title">HIDN://PRIVATE_ROOM</span>
-              <div class="home-room-window__right">
-                ${renderAmbientAudioControl()}
-                ${renderVisitorTimeSignal("home-room-window__meta")}
-              </div>
-            </div>
-          </div>` : `<div class="home-room-signal">
-            <span class="home-room-signal__brand">${HidnDoorLogo({ className: "home-room-signal__logo", label: "HIDN home" })}</span>
-            <div class="home-room-signal__actions">
-              ${renderAmbientAudioControl()}
-              ${renderVisitorTimeSignal("home-room-signal__meta")}
-            </div>
-          </div>`}
-          <div class="home-room-card-field" aria-hidden="true">
-            ${renderHomeRoomCards(signalMode ? undefined : 8)}
-          </div>
-          ${signalMode ? `<div class="home-room-core">
-            <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO${renderRoomEyeWatcher()}</span>M<br />WITHOUT <em>NAMES.</em></h1>
-            <p class="home-room-core__copy">A private room for anonymous thoughts and unnamed conversations.</p>
-            <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
-              <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
-            </a>
-            <p class="home-room-core__status">WRITE FREELY / STAY UNKNOWN</p>
-            <div class="home-room-theme-picker">${renderThemePicker()}</div>
-          </div>` : `<div class="home-room-core">
-            <div class="home-room-core__watcher">${renderRoomEyeWatcher()}</div>
-            <h1 id="home-room-title">WRITE<br /><em>FREELY.</em><br />STAY PRIVATE.</h1>
-            <p class="home-room-core__copy">A private room for thoughts, confessions, and conversations without public names.</p>
-            <a class="ui-button ui-button--primary home-room-enter" href="/room/access" data-room-enter data-glitch-text="> ENTER ROOM" aria-label="ENTER ROOM">
-              <span class="home-room-enter__prompt" aria-hidden="true">&gt;</span><span>ENTER ROOM</span><span class="home-room-enter__cursor" aria-hidden="true">_</span>
-            </a>
-            <p class="home-room-core__status">PRIVATE SIGNAL / NO NAME REQUIRED</p>
-            <div class="home-room-theme-picker">${renderThemePicker()}</div>
-          </div>`}
-          <aside class="home-room-invite" data-home-invite hidden aria-label="Private room invitation">
-            <button class="home-room-invite__close" type="button" data-action="home-invite-close" aria-label="Dismiss room invitation">×</button>
-            <div class="home-room-invite__watcher" aria-hidden="true">
-              <span class="home-room-invite__glasses">
-                <span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span>
-                <span class="home-room-invite__bridge"></span>
-                <span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span>
-              </span>
-            </div>
-            <span class="home-room-invite__eyebrow">SIGNAL DETECTED / ROOM OPEN</span>
-            <p>What are you waiting for?</p>
-            <span class="home-room-invite__copy">The room is already receiving.</span>
-            <a class="home-room-invite__enter" href="/room/access" data-room-enter>ENTER ROOM <span aria-hidden="true">→</span></a>
-          </aside>
-        </section>
-      </main>`,
-      "public-page--home",
-    ),
+    html: publicFrame("/", `<main id="main-content" class="public-main home-main">
+      <section class="room-museum museum-foyer" data-room-museum data-museum-foyer aria-labelledby="home-room-title">
+        <div class="room-museum__stage" data-museum-stage><p class="room-museum__loading" data-museum-loading role="status">OPENING THE GALLERY…</p></div>
+        <div class="museum-foyer__intro">
+          ${TerminalLabel("A MUSEUM OF UNSAID THOUGHTS")}
+          <h1 id="home-room-title">A R<span class="home-room-title__double-o">OO${renderRoomEyeWatcher()}</span>M<br />WITHOUT <em>NAMES.</em></h1>
+          <p>A private room for anonymous thoughts and unnamed conversations.</p>
+        </div>
+        <details class="room-museum__exhibition museum-foyer__exhibition" data-museum-exhibition>
+          <summary>EXHIBITION INDEX</summary>
+          <div class="room-museum__exhibition-list">${renderMuseumExhibitionIndex(homeMuseumPosts())}</div>
+        </details>
+        <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="foyer-reader-title">
+          <div class="room-museum__reader-top"><span id="foyer-reader-title" data-museum-post-category>SAMPLE THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
+          <blockquote data-museum-post-text></blockquote>
+          <footer><span>PUBLIC FOYER</span><a href="/room/access" data-room-enter>ENTER ROOM →</a></footer>
+        </aside>
+        <nav class="room-museum__walk-controls museum-foyer__walk" aria-label="Explore the museum foyer">
+          <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
+          <button type="button" data-museum-action="forward" aria-label="Walk forward">⌃</button>
+          <button type="button" data-museum-action="back" aria-label="Walk backward">⌄</button>
+          <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
+          <button type="button" data-museum-action="reset" aria-label="Return to the entrance view">⌂</button>
+        </nav>
+        <div class="museum-foyer__entry"><a href="/room/access" data-room-enter aria-label="ENTER ROOM"><span aria-hidden="true">&gt;</span> ENTER ROOM <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>
+        <p class="room-museum__hint museum-foyer__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ</p>
+        <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>ZERO KNOWLEDGE</span></footer>
+      </section>
+    </main>`, "public-page--home public-page--home-museum"),
   };
 }
 
@@ -6914,17 +6854,53 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
   const museum = root.querySelector<HTMLElement>("[data-room-museum]");
   if (!museum) return;
   const version = ++roomMuseumLoadVersion;
-  const posts: MuseumPost[] = roomMuseumPosts();
+  const foyer = museum.hasAttribute("data-museum-foyer");
+  const posts: MuseumPost[] = foyer ? homeMuseumPosts() : roomMuseumPosts();
   const signal = activeHidnTheme() === "signal";
+  let foyerActivityTimer: number | undefined;
+  const noteFoyerActivity = (): void => {
+    if (!foyer) return;
+    museum.classList.add("museum-foyer--navigating");
+    if (foyerActivityTimer !== undefined) window.clearTimeout(foyerActivityTimer);
+    foyerActivityTimer = window.setTimeout(() => {
+      museum.classList.remove("museum-foyer--navigating");
+      foyerActivityTimer = undefined;
+    }, 3000);
+  };
+  const museumLoadFailureMessage = (error: unknown): string => {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (/webgl|context|renderer/i.test(detail)) {
+      return "3D view is unavailable because this browser could not start WebGL 2. Try Safari or Chrome with hardware acceleration enabled. The exhibition index below is still available.";
+    }
+    return "The 3D view could not load in this browser. Reload once, or use the exhibition index below.";
+  };
   void import("./room-museum").then(({ mountRoomMuseum }) => {
     if (version !== roomMuseumLoadVersion || !museum.isConnected) return;
-    roomMuseumCleanup = mountRoomMuseum(museum, posts, signal);
-  }).catch(() => {
+    const cleanup = mountRoomMuseum(museum, posts, signal, {
+      foyer,
+      onActivity: noteFoyerActivity,
+      onEnter: (beginEntry) => {
+        playMuseumDoorSound();
+        const returning = hasRoomSession();
+        beginEntry(() => navigateIntoRoom(returning ? "/room" : "/room/access"));
+      },
+    });
+    roomMuseumCleanup = () => {
+      if (foyerActivityTimer !== undefined) window.clearTimeout(foyerActivityTimer);
+      museum.classList.remove("museum-foyer--navigating");
+      cleanup();
+    };
+  }).catch((error: unknown) => {
     if (!museum.isConnected) return;
+    museum.classList.add("room-museum--fallback");
     const loading = museum.querySelector<HTMLElement>("[data-museum-loading]");
-    if (loading) loading.textContent = "The 3D view is unavailable on this device. Read the thoughts in the exhibition index.";
+    if (loading) {
+      loading.textContent = museumLoadFailureMessage(error);
+      loading.dataset.museumError = "true";
+    }
     const exhibition = museum.querySelector<HTMLDetailsElement>("[data-museum-exhibition]");
     if (exhibition) exhibition.open = true;
+    console.warn("[HIDN museum] 3D renderer unavailable", error);
   });
 }
 
@@ -7130,9 +7106,13 @@ export function bindProductRoute(root: ParentNode = document): void {
   root.querySelectorAll<HTMLAnchorElement>("[data-room-enter]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      playRoomEntrySignal();
       const returning = hasRoomSession();
-      startRoomEntryTransition(returning ? "/room" : "/room/access", returning ? "return" : "first");
+      const foyerMuseum = root.querySelector<HTMLElement>("[data-museum-foyer]");
+      if (foyerMuseum?.querySelector("canvas")) {
+        foyerMuseum.dispatchEvent(new Event("museum-enter"));
+        return;
+      }
+      navigateIntoRoom(returning ? "/room" : "/room/access");
     });
   });
 
@@ -7358,16 +7338,6 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
           break;
         }
-        case "theme-set": {
-          const theme = button.dataset.theme;
-          if (theme !== "quiet" && theme !== "signal") {
-            break;
-          }
-
-          window.localStorage.setItem(HIDN_THEME_STORAGE, theme);
-          rerenderProductRoute();
-          break;
-        }
         case "room-tip": {
           const threadId = button.dataset.threadId ?? "";
           const post = roomPosts.find((candidate) => candidate.id === threadId);
@@ -7520,7 +7490,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           void refreshRoomPayment();
           break;
         case "room-enter":
-          startRoomEntryTransition("/room", "return");
+          navigateIntoRoom("/room");
           break;
         case "room-refresh":
           void refreshActiveRoom();

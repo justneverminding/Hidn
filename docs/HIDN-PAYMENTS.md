@@ -15,8 +15,25 @@ This is the first server-backed account/payment milestone for HIDN.
 - Confirmed payment changes the account from `read_only` to `full`.
 - Underpaid, overpaid, unknown-reference, expired, and reorged payments do not grant full access.
 - Refund addresses are encrypted before storage when the encryption secret is configured.
+- Direct tips are separate from verification: a post may expose an author-controlled
+  shielded mainnet `u1` or `zs1` address and a `zcash:` payment request.
+- HIDN never receives, holds, watches, or confirms direct tips. The sender chooses
+  the amount in their own Zcash wallet, and the recipient controls the destination.
 
 The existing `room_credentials` demo endpoints remain for backward compatibility. They are not the live payment path.
+
+## Direct ZEC tips
+
+Direct tips do not use the verification wallet, viewing key, watcher, or VPS.
+An author saves an optional shielded mainnet receiving address in the profile, or
+chooses a different address when composing a post. HIDN validates the address
+shape, stores only the public destination, and renders a `zcash:` request with a
+QR code on posts that allow tips.
+
+The sender selects any amount in their own mainnet wallet. HIDN does not create a
+receipt, grant access, or display `TIP CONFIRMED`. Address reuse can make posts
+easier to associate, so authors can use a fresh shielded destination per post
+when their wallet supports that workflow.
 
 ## D1 migration
 
