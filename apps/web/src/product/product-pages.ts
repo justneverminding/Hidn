@@ -61,6 +61,7 @@ import { terminalWindow } from "./terminal-gate";
 import { mountWelcome, renderWelcomeWatcher } from "./welcome";
 import { playPortal } from "./portal";
 import { openLearningTv } from "./learning-tv";
+import { mountTerminalFeed } from "./terminal-feed";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -657,42 +658,52 @@ function roomTipPaymentUri(post: RoomPost): string {
   return `zcash:${post.tipAddress}`;
 }
 
+// The tip screen types itself in once; copy feedback re-renders it settled.
+let roomTipIntroPlayedFor = "";
+
 function renderRoomTipDialog(): string {
   const post = roomTipPost();
   if (!post?.tipAddress) {
+    roomTipIntroPlayedFor = "";
     return "";
   }
 
   const paymentUri = roomTipPaymentUri(post);
-  return `<div class="room-tip-dialog" role="dialog" aria-modal="true" aria-labelledby="room-tip-dialog-title">
+  const settled = roomTipIntroPlayedFor === post.id;
+  roomTipIntroPlayedFor = post.id;
+  return `<div class="room-tip-dialog room-tip-dialog--term${settled ? " room-tip-dialog--settled" : ""}" role="dialog" aria-modal="true" aria-labelledby="room-tip-dialog-title">
     <button class="room-tip-dialog__backdrop" type="button" data-action="room-tip-close" aria-label="Close mainnet tip dialog"></button>
-    <section class="room-tip-dialog__panel">
-      <header class="room-tip-dialog__header">
-        <div>
-          ${TerminalLabel("MAINNET / DIRECT TIP")}
-          <h2 id="room-tip-dialog-title">SUPPORT THIS<br /><em>THOUGHT.</em></h2>
-        </div>
+    <section class="room-tip-dialog__panel hidn-term hidn-term--tip">
+      <div class="hidn-term__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/tip</span>
         <button class="room-tip-dialog__close" type="button" data-action="room-tip-close" aria-label="Close mainnet tip dialog">×</button>
-      </header>
-      <p class="room-tip-dialog__intro">Send any amount of ZEC directly from your shielded mainnet wallet to the post author. Choose the amount in your wallet. HIDN never holds the funds.</p>
-      <div class="room-tip-dialog__request">
-        <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code for a direct Zcash mainnet tip"></canvas>
-        <div class="room-tip-dialog__details">
-          <span class="room-tip-dialog__label">SHIELDED MAINNET DESTINATION</span>
-          <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy shielded mainnet destination">
-            <code>${escapeHtml(post.tipAddress)}</code>
-            <span>${roomTipAddressCopyFeedback || "TAP TO COPY ADDRESS"}</span>
-          </button>
-          <span class="room-tip-dialog__label">PAYMENT REQUEST</span>
-          <code class="room-tip-dialog__uri">${escapeHtml(paymentUri)}</code>
+      </div>
+      <div class="hidn-term__body hidn-tip">
+        <p class="hidn-tip__log">&gt; open tip --network mainnet --shielded</p>
+        <p class="hidn-tip__log">&gt; author: <span class="hidn-tip__redact" aria-label="name withheld"></span> · funds never touch hidn</p>
+        <h2 id="room-tip-dialog-title" class="hidn-tip__title" data-text="SUPPORT THIS THOUGHT.">SUPPORT THIS THOUGHT.</h2>
+        <p class="hidn-tip__line">Send any amount of ZEC from a shielded wallet straight to the author. You choose the amount in your wallet.</p>
+        <div class="room-tip-dialog__request">
+          <div class="hidn-tip__qr-frame">
+            <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code for a direct Zcash mainnet tip"></canvas>
+            <span>SCAN WITH A ZCASH WALLET</span>
+          </div>
+          <div class="room-tip-dialog__details">
+            <span class="room-tip-dialog__label">&gt; DESTINATION / SHIELDED MAINNET</span>
+            <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy shielded mainnet destination">
+              <code>${escapeHtml(post.tipAddress)}</code>
+              <span>${roomTipAddressCopyFeedback ? `[ ${roomTipAddressCopyFeedback} ]` : "[ TAP TO COPY ADDRESS ]"}</span>
+            </button>
+            <span class="room-tip-dialog__label">&gt; PAYMENT REQUEST</span>
+            <code class="room-tip-dialog__uri">${escapeHtml(paymentUri)}</code>
+          </div>
         </div>
+        <div class="room-tip-dialog__actions">
+          <a class="ui-button ui-button--primary" href="${escapeHtml(paymentUri)}">[ OPEN IN WALLET ↗ ]</a>
+          <button class="ui-button ui-button--secondary" type="button" data-action="room-tip-copy" data-tip-uri="${escapeHtml(paymentUri)}">[ ${roomTipCopyFeedback || "COPY PAYMENT REQUEST"} ]</button>
+        </div>
+        <p class="room-tip-dialog__wallet-note">&gt; No wallet opened? Copy the request and paste it into your Zcash wallet.</p>
+        <p class="room-tip-dialog__note">MAINNET · REAL ZEC · HIDN never holds the funds, and does not confirm payments or issue receipts.<span class="hidn-tip__caret" aria-hidden="true">▌</span></p>
       </div>
-      <div class="room-tip-dialog__actions">
-        <a class="ui-button ui-button--primary" href="${escapeHtml(paymentUri)}">OPEN IN WALLET →</a>
-        <button class="ui-button ui-button--secondary" type="button" data-action="room-tip-copy" data-tip-uri="${escapeHtml(paymentUri)}">${roomTipCopyFeedback || "COPY PAYMENT REQUEST"}</button>
-      </div>
-      <p class="room-tip-dialog__wallet-note">If no wallet opens here, copy the payment request and paste it into your mainnet Zcash wallet.</p>
-      <p class="room-tip-dialog__note">MAINNET / REAL ZEC. HIDN never holds the funds. V1 creates the request; it does not issue a payment receipt or confirm a transaction.</p>
     </section>
   </div>`;
 }
@@ -709,8 +720,9 @@ function hydrateRoomTipQr(root: ParentNode): void {
     margin: 1,
     errorCorrectionLevel: "M",
     color: {
-      dark: "#dcecdf",
-      light: "#031008",
+      // Dark modules on phosphor green: on brand, and still scannable.
+      dark: "#010301",
+      light: "#7dff9a",
     },
   }).catch(() => {
     canvas.dataset.state = "unavailable";
@@ -2933,14 +2945,6 @@ function renderRoomHall(): string {
   );
 }
 
-function renderRoomHallLaunch(): string {
-  return `<a class="room-hall-launch room-hall-launch--museum" href="/room" aria-label="Open the 3D reality museum">
-    <span class="room-hall-launch__icon" aria-hidden="true"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M16 3 28 9.5v13L16 29 4 22.5v-13L16 3Z"/><path d="M4 9.5 16 16l12-6.5M16 16v13"/></svg></span>
-    <span>3D REALITY MUSEUM <b aria-hidden="true">→</b></span>
-    <small>WALK THE ROOMS AS A GALLERY</small>
-  </a>`;
-}
-
 function renderRoomRefreshControl(): string {
   return `<button class="room-refresh-button${roomRefreshSubmitting ? " room-refresh-button--loading" : ""}" type="button" data-action="room-refresh" aria-label="Refresh room posts" title="Refresh room posts" aria-busy="${roomRefreshSubmitting}"${roomRefreshSubmitting ? " disabled" : ""}>
     <span class="room-refresh-button__icon" aria-hidden="true">↻</span>
@@ -3553,10 +3557,9 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     ${TerminalLabel("CHANNELS / PRIVATE ROOMS")}
     <span class="room-directory__count">${channels.length} OPEN</span>
     </div>
-    <h2>Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
+    <h2 class="hidn-glitch-title" data-text="CHOOSE A R&nbsp;&nbsp;M.">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
-    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`}
-    ${renderRoomHallLaunch()}
+    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -3569,7 +3572,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
             </button>
             <div class="room-directory__folder-children" id="room-folder-${folder.key}" role="group"${folder.open ? "" : " hidden"}>
               ${folder.channels
-                .map((channel, index) => `<button class="room-directory__room${activeRoomChannel === channel.key ? " room-directory__room--active" : ""}" type="button" data-room-channel="${channel.key}" aria-pressed="${activeRoomChannel === channel.key}">
+                .map((channel) => `<button class="room-directory__room${activeRoomChannel === channel.key ? " room-directory__room--active" : ""}" type="button" data-room-channel="${channel.key}" aria-pressed="${activeRoomChannel === channel.key}">
                   <span class="room-directory__room-number" aria-hidden="true">ᙇ</span>
                   <span class="room-directory__room-copy"><strong>${channel.label}</strong><small>${channel.description}</small></span>
                   <span class="room-directory__room-arrow" aria-hidden="true">↗</span>
@@ -3587,6 +3590,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
           ${roomPostError ? `<p class="room-post-composer__error" role="alert">${escapeHtml(roomPostError)}</p>` : ""}
           ${roomPostComposerOpen
             ? `<form class="room-post-composer" data-room-post-composer novalidate>
+                ${renderRoomPostChannelPicker()}
                 <label class="ui-field room-post-composer__field" for="room-post-content">
                   <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
                   <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
@@ -3595,7 +3599,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
                 ${renderRoomPostTipControls()}
                 <div class="room-post-composer__actions">
                   ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
-                  ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+                  ${SecondaryButton({ label: roomPostSubmitting ? "[ TRANSMITTING… ]" : "[ TRANSMIT ]", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
                 </div>
               </form>`
             : ""}
@@ -4266,10 +4270,29 @@ function renderRoomNotifications(): string {
   </section>`;
 }
 
+// The composer names the room a post goes to. Inside a room's own feed the
+// room is fixed; elsewhere the visitor picks it, so a thought never lands in
+// whichever room happened to be open last.
+function renderRoomPostChannelPicker(): string {
+  const fixed = roomChannelSurfaceFromPath(window.location.pathname);
+  if (fixed) {
+    return `<p class="room-post-channel room-post-channel--fixed">&gt; POSTING TO /${escapeHtml(roomChannelOption(fixed).label)}</p>`;
+  }
+  return `<fieldset class="room-post-channel">
+    <legend>&gt; SEND TO ROOM</legend>
+    <div class="room-post-channel__options">
+      ${visibleRoomChannelOptions()
+        .map((channel) => `<button type="button" class="room-post-channel__option" data-room-post-channel="${channel.key}" aria-pressed="${channel.key === activeRoomChannel}">/${escapeHtml(channel.label)}</button>`)
+        .join("")}
+    </div>
+  </fieldset>`;
+}
+
 function renderMobilePostSurface(): string {
   const activeChannel = roomChannelOption(activeRoomChannel);
   const content = roomPostComposerOpen && hasRoomSession()
     ? `<form class="room-post-composer room-mobile-index__composer" data-room-post-composer novalidate>
+        ${renderRoomPostChannelPicker()}
         <label class="ui-field room-post-composer__field" for="room-post-content">
           <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
         <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
@@ -4278,10 +4301,10 @@ function renderMobilePostSurface(): string {
         ${renderRoomPostTipControls()}
         <div class="room-post-composer__actions">
           ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
-          ${SecondaryButton({ label: roomPostSubmitting ? "TRANSMITTING..." : "POST ANONYMOUSLY →", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+          ${SecondaryButton({ label: roomPostSubmitting ? "[ TRANSMITTING… ]" : "[ TRANSMIT ]", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
         </div>
       </form>`
-    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "CREATE POST →", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`;
+    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`;
 
   return `<div class="room-mobile-index__create">
     ${content}
@@ -4401,11 +4424,11 @@ function renderMobileRoomIndex(): string {
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
           ${TerminalLabel(signalMode ? "PRIVATE ROOM / INDEX" : "PRIVATE ROOM")}
-          <h1>CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
+          <h1 class="hidn-glitch-title" data-text="CHOOSE A R&nbsp;&nbsp;M.">CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
           <p>Read quietly or leave a thought without a public name.</p>
+          <p class="hidn-feed-log" aria-hidden="true">&gt; ls /rooms · ${visibleRoomChannelOptions().length} open · listening<span class="hidn-feed-log__caret">▌</span></p>
           <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
           ${renderMobilePostSurface()}
-          ${renderRoomHallLaunch()}
         </header>
         <section class="room-mobile-index__list" aria-label="Private rooms">
           ${rooms}
@@ -4462,8 +4485,9 @@ function renderExplore(path = "/room"): string {
         <header class="explore-header">
           ${isChannelRoute ? `<a class="room-channel-back" href="/room/rooms">← BACK TO ROOMS</a>` : ""}
           ${TerminalLabel(headerLabel)}
-          <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg">${escapeHtml(headerTitle)}</h1>
+          <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
+          <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
           ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
         </header>
@@ -4726,7 +4750,10 @@ async function verifyRoomRecoveryCheck(root: ParentNode): Promise<void> {
       return;
     }
 
+    // Anonymous keys live on this device, so the reveal is immediate; redraw
+    // so the key actually appears.
     revealRoomRecoveryKeyTemporarily();
+    rerenderProductRoute();
     return;
   }
 
@@ -5570,21 +5597,28 @@ function renderZecVerificationNotice(): string {
     return "";
   }
 
-  return `<div class="hidn-verification-notice" data-zec-verification-notice role="dialog" aria-modal="true" aria-labelledby="hidn-verification-notice-title">
+  // A terminal handshake that prints, then stalls: verification is not live
+  // yet, so the screen says so plainly instead of pretending to work.
+  return `<div class="hidn-verification-notice hidn-verification-notice--term" data-zec-verification-notice role="dialog" aria-modal="true" aria-labelledby="hidn-verification-notice-title">
     <button class="hidn-verification-notice__backdrop" type="button" data-action="room-verification-notice-close" aria-label="Close Zcash verification notice"></button>
-    <section class="hidn-verification-notice__panel">
-      <span class="hidn-verification-notice__signal">ZEC SIGNAL / STANDBY</span>
-      <div class="hidn-verification-notice__sky" aria-hidden="true">
-        <div class="hidn-verification-notice__flight">
-          <span class="hidn-verification-notice__banner">COMING SOON</span>
-          <span class="hidn-verification-notice__towline"></span>
-          <span class="hidn-verification-notice__plane">✈</span>
-        </div>
+    <section class="hidn-verification-notice__panel hidn-term hidn-term--verify">
+      <div class="hidn-term__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/verify</span>
+        <button class="hidn-verify__close-x" type="button" data-action="room-verification-notice-close" aria-label="Close Zcash verification notice">×</button>
       </div>
-      <h2 id="hidn-verification-notice-title">HOLD TIGHT,<br /><em>ANON.</em></h2>
-      <p>Zcash verification is on its way.</p>
-      <span class="hidn-verification-notice__subline">ZEC VERIFICATION / IN TRANSIT</span>
-      ${GhostButton({ label: "CLOSE →", dataAction: "room-verification-notice-close" })}
+      <div class="hidn-term__body hidn-verify">
+        <p class="hidn-verify__log">hidn@room:~$ ./verify --zec --shielded</p>
+        <p class="hidn-verify__log"><b>[ OK ]</b> SHIELDED CHANNEL OPEN</p>
+        <p class="hidn-verify__log"><b>[ OK ]</b> IDENTITY STAYS WITHHELD</p>
+        <p class="hidn-verify__log hidn-verify__log--wait"><b>[WAIT]</b> MAINNET VERIFICATION MODULE</p>
+        <div class="hidn-verify__progress" role="img" aria-label="Zcash verification is still being built">
+          <span class="hidn-verify__bar"><i></i></span>
+          <span class="hidn-verify__pct">BUILDING</span>
+        </div>
+        <h2 id="hidn-verification-notice-title" class="hidn-verify__title" data-text="HOLD TIGHT, ANON.">HOLD TIGHT, ANON.</h2>
+        <p class="hidn-verify__line">&gt; Zcash verification is on its way. Until it lands, your room works as it does now, still without a name.</p>
+        <p class="hidn-verify__status"><span class="hidn-verify__dot" aria-hidden="true"></span> STATUS: COMING SOON<span class="hidn-verify__caret" aria-hidden="true">▌</span></p>
+        <button class="hidn-verify__close" type="button" data-action="room-verification-notice-close">[ CLOSE ]</button>
+      </div>
     </section>
   </div>`;
 }
@@ -6264,6 +6298,19 @@ function bindRoomLikeInteractions(root: ParentNode): void {
 }
 
 function bindRoomChannelInteractions(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-room-post-channel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.roomPostChannel as RoomChannel | undefined;
+      if (!key || !roomChannelOptions.some((channel) => channel.key === key)) return;
+      // Keep the draft while the destination changes.
+      const draft = root.querySelector<HTMLTextAreaElement>("#room-post-content");
+      if (draft) roomPostText = draft.value;
+      activeRoomChannel = key;
+      roomChannelNotice = "";
+      rerenderProductRoute();
+      document.querySelector<HTMLButtonElement>(`[data-room-post-channel="${key}"]`)?.focus();
+    });
+  });
   root.querySelectorAll<HTMLButtonElement>("[data-room-channel]").forEach((button) => {
     button.addEventListener("click", () => {
       const key = button.dataset.roomChannel as RoomChannel | undefined;
@@ -7032,9 +7079,13 @@ function bindRoomHallInteractions(root: ParentNode): void {
 
 let welcomeCleanup: (() => void) | undefined;
 
+let terminalFeedCleanup: (() => void) | undefined;
+
 export function bindProductRoute(root: ParentNode = document): void {
   welcomeCleanup?.();
   welcomeCleanup = mountWelcome(root);
+  terminalFeedCleanup?.();
+  terminalFeedCleanup = mountTerminalFeed(root);
   bindComponentInteractions(root);
   bindRoomLikeInteractions(root);
   bindRoomChannelInteractions(root);
