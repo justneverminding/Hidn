@@ -23,7 +23,6 @@ import {
 import {
   EXPLORE_METADATA,
   HOME_METADATA,
-  PUBLIC_SITE_ORIGIN,
   ROOM_METADATA,
   webPageStructuredData,
   type HidnMetadata,
@@ -57,6 +56,8 @@ import {
   type AnonymousMerkleWitness,
 } from "@hidn/anonymous-zk";
 import * as QRCode from "qrcode";
+import { renderShareCard } from "./share-card";
+import { terminalWindow } from "./terminal-gate";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -137,35 +138,7 @@ type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
 type DeviceSignalPost = RoomPost & { status: RoomComment["status"] };
 
-interface ShareCardStyle {
-  background: [string, string, string];
-  signalGlow: [string, string, string];
-  scanline: string;
-  grid: string;
-  frameFill: string;
-  border: string;
-  accent: string;
-  code: string;
-  text: string;
-  muted: string;
-  apertureFill: [string, string, string];
-  apertureGlow: string;
-}
 
-const SHARE_CARD_STYLE: ShareCardStyle = {
-  background: ["#020202", "#101010", "#030303"],
-  signalGlow: ["rgba(255, 255, 255, 0.12)", "rgba(190, 190, 190, 0.04)", "rgba(255, 255, 255, 0)"],
-  scanline: "rgba(255, 255, 255, 0.055)",
-  grid: "rgba(255, 255, 255, 0.035)",
-  frameFill: "rgba(13, 13, 13, 0.5)",
-  border: "rgba(245, 245, 240, 0.28)",
-  accent: "#f2f2ec",
-  code: "#d7d7cf",
-  text: "#f4f4ee",
-  muted: "#b8b8b0",
-  apertureFill: ["rgba(18, 18, 18, 0.9)", "rgba(9, 9, 9, 0.76)", "rgba(130, 130, 130, 0.12)"],
-  apertureGlow: "rgba(245, 245, 240, 0.16)",
-};
 
 interface DeviceSignalHistory {
   version: 1;
@@ -835,7 +808,7 @@ function isModerationHidden(targetType: ModerationTargetType, targetId: string):
 }
 
 function isModerationSurfacePath(path: string): boolean {
-  return path === "/room" || path === "/explore" || path.startsWith("/c/");
+  return path === "/room" || path === "/room/rooms" || path === "/explore" || path.startsWith("/c/");
 }
 
 async function refreshModerationVisibility(): Promise<void> {
@@ -2210,245 +2183,12 @@ function formatVisitorLocalTime(): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
-function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const expandedWords: string[] = [];
 
-  // Split an unusually long word before measuring lines so a handle, URL, or
-  // unbroken sentence can never run outside the rounded card.
-  words.forEach((word) => {
-    if (ctx.measureText(word).width <= maxWidth) {
-      expandedWords.push(word);
-      return;
-    }
 
-    let chunk = "";
-    for (const character of word) {
-      const candidate = `${chunk}${character}`;
-      if (chunk && ctx.measureText(candidate).width > maxWidth) {
-        expandedWords.push(chunk);
-        chunk = character;
-      } else {
-        chunk = candidate;
-      }
-    }
-    if (chunk) {
-      expandedWords.push(chunk);
-    }
-  });
-
-  const allLines: string[] = [];
-  let current = "";
-  expandedWords.forEach((word) => {
-    const candidate = current ? `${current} ${word}` : word;
-    if (current && ctx.measureText(candidate).width > maxWidth) {
-      allLines.push(current);
-      current = word;
-    } else {
-      current = candidate;
-    }
-  });
-  if (current) {
-    allLines.push(current);
-  }
-
-  const truncated = allLines.length > maxLines;
-  const lines = allLines.slice(0, maxLines);
-  if (truncated && lines.length) {
-    const lastIndex = lines.length - 1;
-    let last = lines[lastIndex];
-    while (ctx.measureText(`${last}…`).width > maxWidth && last.length > 1) {
-      last = last.slice(0, -1).trim();
-    }
-    lines[lastIndex] = `${last}…`;
-  }
-
-  return lines;
-}
-
-function drawCanvasRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
-  const corner = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + corner, y);
-  ctx.lineTo(x + width - corner, y);
-  ctx.arcTo(x + width, y, x + width, y + corner, corner);
-  ctx.lineTo(x + width, y + height - corner);
-  ctx.arcTo(x + width, y + height, x + width - corner, y + height, corner);
-  ctx.lineTo(x + corner, y + height);
-  ctx.arcTo(x, y + height, x, y + height - corner, corner);
-  ctx.lineTo(x, y + corner);
-  ctx.arcTo(x, y, x + corner, y, corner);
-  ctx.closePath();
-}
-
-function wrapLegacyCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (current && ctx.measureText(candidate).width > maxWidth) {
-      lines.push(current);
-      current = word;
-      if (lines.length === maxLines - 1) {
-        break;
-      }
-    } else {
-      current = candidate;
-    }
-  }
-
-  if (current && lines.length < maxLines) {
-    lines.push(current);
-  }
-
-  if (lines.length === maxLines && words.length > 0) {
-    const lastIndex = lines.length - 1;
-    let last = lines[lastIndex];
-    while (ctx.measureText(`${last}…`).width > maxWidth && last.length > 1) {
-      last = last.slice(0, -1).trim();
-    }
-    lines[lastIndex] = `${last}…`;
-  }
-
-  return lines;
-}
 
 interface ThreadImageReply {
   index: number;
   reply: AnonymousReply;
-}
-
-async function createLegacySignalThreadImage(
-  confession: MockConfession,
-  focusReply?: ThreadImageReply,
-  cardType: ShareCardType = "THREAD",
-  suppliedReplies?: AnonymousReply[],
-): Promise<Blob> {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1170;
-  canvas.height = 972;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Canvas rendering is unavailable.");
-  }
-
-  const threadUrl = `${PUBLIC_SITE_ORIGIN.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(confession.id)}`;
-  const messageItems = focusReply
-    ? [confession.text, focusReply.reply.text]
-    : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
-  const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
-  const messageCount = Math.max(visibleMessageItems.length, 1);
-  const frameX = 48;
-  const frameY = 53;
-  const frameWidth = canvas.width - frameX * 2;
-  const frameHeight = canvas.height - frameY - 38;
-  const contentX = 124;
-  const contentWidth = canvas.width - contentX * 2;
-  const maxLines = messageCount === 1 ? 5 : Math.max(2, Math.floor(6 / messageCount));
-  const fontSize = messageCount === 1 ? 72 : 52;
-  const measuringContext = ctx;
-  measuringContext.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
-  const messageLayouts = visibleMessageItems.map((text) => {
-    const normalizedText = text.replace(/\s+/g, " ").trim();
-    const lines = wrapLegacyCanvasText(measuringContext, `“${normalizedText}”`, contentWidth - 24, maxLines);
-    const lineHeight = Math.round(fontSize * 1.18);
-    return { lines, lineHeight, blockHeight: lines.length * lineHeight };
-  });
-  const messageBlockHeight = messageLayouts.reduce(
-    (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 58 : 0),
-    0,
-  );
-  const identityBlockY = Math.min(650, Math.max(600, 205 + messageBlockHeight + 80));
-
-  const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  background.addColorStop(0, "#031009");
-  background.addColorStop(0.46, "#06150c");
-  background.addColorStop(1, "#020704");
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const glow = ctx.createRadialGradient(980, 150, 20, 980, 150, 720);
-  glow.addColorStop(0, "rgba(93, 255, 143, 0.12)");
-  glow.addColorStop(1, "rgba(93, 255, 143, 0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "rgba(40, 94, 61, 0.16)";
-  for (let y = 0; y < canvas.height; y += 8) {
-    ctx.fillRect(0, y, canvas.width, 1);
-  }
-
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.07)";
-  ctx.lineWidth = 1;
-  for (let x = 0; x <= canvas.width; x += 336) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-
-  drawCanvasRoundedRect(ctx, frameX, frameY, frameWidth, frameHeight, 0);
-  ctx.fillStyle = "rgba(7, 23, 13, 0.54)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(93, 255, 143, 0.36)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.strokeStyle = "#5dff8f";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(frameX, frameY + 40);
-  ctx.lineTo(frameX, frameY);
-  ctx.lineTo(frameX + 40, frameY);
-  ctx.stroke();
-
-  let cursorY = 205;
-  ctx.textAlign = "start";
-  ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
-  messageLayouts.forEach(({ lines, lineHeight, blockHeight }, index) => {
-    ctx.fillStyle = index === 0 ? "#e8f0e6" : "#a1bca7";
-    lines.forEach((line, lineIndex) => {
-      ctx.fillText(line, contentX, cursorY + lineIndex * lineHeight);
-    });
-    cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 58 : 0);
-  });
-
-  const identityY = identityBlockY + 52;
-  ctx.strokeStyle = "#5dff8f";
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.moveTo(contentX, identityBlockY + 18);
-  ctx.lineTo(contentX, identityBlockY + 96);
-  ctx.stroke();
-  ctx.fillStyle = "#a1bca7";
-  ctx.font = "19px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(threadUrl, contentX + 38, identityY);
-
-  const badgeX = contentX;
-  const badgeY = identityBlockY + 121;
-  const badgeWidth = 410;
-  const badgeHeight = 82;
-  drawCanvasRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 0);
-  ctx.fillStyle = "rgba(93, 255, 143, 0.05)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(160, 180, 82, 0.62)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = "#5dff8f";
-  ctx.font = "700 20px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("A ROOM WITHOUT NAMES", badgeX + 20, badgeY + 51);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      } else {
-        reject(new Error("The thread image could not be created."));
-      }
-    }, "image/png");
-  });
 }
 
 async function createThreadImage(
@@ -2457,171 +2197,17 @@ async function createThreadImage(
   cardType: ShareCardType = "THREAD",
   suppliedReplies?: AnonymousReply[],
 ): Promise<Blob> {
-  if (activeHidnTheme() === "signal") {
-    return createLegacySignalThreadImage(confession, focusReply, cardType, suppliedReplies);
-  }
-
-  const canvas = document.createElement("canvas");
-  // Keep the export compact enough to feel like a shareable conversation card,
-  // not a poster with a large empty tail.
-  canvas.width = 1200;
-  canvas.height = 1200;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Canvas rendering is unavailable.");
-  }
-
-  const colors = SHARE_CARD_STYLE;
-
-  const messageItems = focusReply
-    ? [confession.text, focusReply.reply.text]
-    : [confession.text, ...(cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [])];
-  const visibleMessageItems = messageItems.filter((text) => text.trim()).slice(0, 3);
-  const messageCount = Math.max(visibleMessageItems.length, 1);
-  const cardX = 88;
-  const cardY = 160;
-  const cardWidth = canvas.width - cardX * 2;
-  const contentX = cardX + 68;
-  const contentRight = cardX + cardWidth - 68;
-  const contentWidth = contentRight - contentX;
-  const quoteFontSize = messageCount === 1 ? 54 : 42;
-  const maxLines = messageCount === 1 ? 8 : Math.max(2, Math.floor(9 / messageCount));
-  const measuringContext = ctx;
-  measuringContext.font = "700 " + quoteFontSize + "px ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
-  const messageLayouts = visibleMessageItems.map((text) => {
-    const normalizedText = text.replace(/\s+/g, " ").trim();
-    const lines = wrapCanvasText(measuringContext, "“" + normalizedText + "”", contentWidth, maxLines);
-    const lineHeight = Math.round(quoteFontSize * 1.16);
-    return { lines, lineHeight, blockHeight: lines.length * lineHeight };
-  });
-  const messageBlockHeight = messageLayouts.reduce(
-    (height, layout, index) => height + layout.blockHeight + (index < messageLayouts.length - 1 ? 46 : 0),
-    0,
-  );
-  const quoteStartY = cardY + 150;
-  const metadataLineY = quoteStartY + messageBlockHeight + 46;
-  const metadataTextY = metadataLineY + 50;
-  const footerY = metadataTextY + 104;
-  const cardHeight = footerY - cardY + 68;
-  canvas.height = Math.max(960, cardY + cardHeight + 120);
-
-  const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  background.addColorStop(0, colors.background[0]);
-  background.addColorStop(0.48, colors.background[1]);
-  background.addColorStop(1, colors.background[2]);
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const signalGlow = ctx.createRadialGradient(930, 420, 20, 930, 420, 740);
-  signalGlow.addColorStop(0, colors.signalGlow[0]);
-  signalGlow.addColorStop(0.42, colors.signalGlow[1]);
-  signalGlow.addColorStop(1, colors.signalGlow[2]);
-  ctx.fillStyle = signalGlow;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = colors.scanline;
-  for (let y = 0; y < canvas.height; y += 8) {
-    ctx.fillRect(0, y, canvas.width, 1);
-  }
-
-  const handleWidth = 96;
-  const handleHeight = 10;
-  drawCanvasRoundedRect(ctx, (canvas.width - handleWidth) / 2, 22, handleWidth, handleHeight, handleHeight / 2);
-  ctx.save();
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = colors.muted;
-  ctx.fill();
-  ctx.restore();
-
-  drawCanvasRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 40);
-  const apertureFill = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY);
-  apertureFill.addColorStop(0, colors.apertureFill[0]);
-  apertureFill.addColorStop(0.72, colors.apertureFill[1]);
-  apertureFill.addColorStop(1, colors.apertureFill[2]);
-  ctx.save();
-  ctx.shadowColor = "rgba(0, 0, 0, 0.28)";
-  ctx.shadowBlur = 42;
-  ctx.shadowOffsetY = 24;
-  ctx.fillStyle = apertureFill;
-  ctx.fill();
-  ctx.restore();
-  ctx.strokeStyle = colors.border;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  const apertureGlow = ctx.createLinearGradient(cardX + cardWidth - 300, cardY, cardX + cardWidth, cardY);
-  apertureGlow.addColorStop(0, colors.signalGlow[2]);
-  apertureGlow.addColorStop(1, colors.apertureGlow);
-  ctx.save();
-  drawCanvasRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 40);
-  ctx.clip();
-  ctx.fillStyle = apertureGlow;
-  ctx.fillRect(cardX + cardWidth - 300, cardY, 300, cardHeight);
-  ctx.restore();
-
-  ctx.save();
-  ctx.fillStyle = colors.muted;
-  ctx.globalAlpha = 0.2;
-  ctx.font = "700 320px Georgia, \"Times New Roman\", serif";
-  ctx.textAlign = "start";
-  ctx.fillText("“", cardX + 46, cardY + 260);
-  ctx.textAlign = "right";
-  ctx.fillText("”", cardX + cardWidth - 40, cardY + cardHeight - 48);
-  ctx.restore();
-
-  const referenceLabel = String(confession.reference ?? ("// " + confession.id)).toUpperCase();
-  ctx.fillStyle = colors.accent;
-  ctx.font = "600 22px Satoshi, ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
-  ctx.textAlign = "start";
-  ctx.fillText("HIDN / THE ROOM", contentX, cardY + 68);
-
-  ctx.fillStyle = colors.code;
-  ctx.font = "500 19px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "right";
-  ctx.fillText(referenceLabel.slice(0, 26), contentRight, cardY + 68);
-
-  const roomLabel = (confession.category || "GENERAL").toUpperCase();
-
-  let cursorY = quoteStartY;
-  ctx.textAlign = "start";
-  ctx.font = "500 " + quoteFontSize + "px Satoshi, ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
-  messageLayouts.forEach(({ lines, lineHeight, blockHeight }, index) => {
-    ctx.fillStyle = index === 0 ? colors.text : colors.muted;
-    lines.forEach((line, lineIndex) => {
-      ctx.fillText(line, contentX, cursorY + lineIndex * lineHeight);
-    });
-    cursorY += blockHeight + (index < visibleMessageItems.length - 1 ? 46 : 0);
-  });
-
-  ctx.strokeStyle = colors.border;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(contentX, metadataLineY);
-  ctx.lineTo(contentRight, metadataLineY);
-  ctx.stroke();
-
-  ctx.fillStyle = colors.muted;
-  ctx.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "start";
-  ctx.fillText(roomLabel, contentX, metadataTextY);
-
-  ctx.fillStyle = colors.muted;
-  ctx.font = "600 20px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "start";
-  ctx.fillText("HIDN://THE_ROOM", contentX, footerY);
-  ctx.fillStyle = colors.accent;
-  ctx.font = "500 19px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.textAlign = "right";
-  ctx.fillText("PRIVATE ROOMS WITHOUT NAMES", contentRight, footerY);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      } else {
-        reject(new Error("The thread image could not be created."));
-      }
-    }, "image/png");
+  const replies = focusReply
+    ? [focusReply.reply.text]
+    : cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [];
+  const channel = roomChannelOptions.find((room) => room.key === confession.channel);
+  return renderShareCard({
+    text: confession.text,
+    replies,
+    room: channel?.label ?? (confession.category || "The room"),
+    reference: confession.id,
+    mark: String(confession.reference || `// ${confession.id.replace(/^THR-/, "").slice(0, 8)}`).toUpperCase(),
+    theme: activeHidnTheme() === "signal" ? "signal" : "quiet",
   });
 }
 
@@ -3087,7 +2673,7 @@ function publicWindowTitle(path: string): string {
     return "THREAD_ROOM";
   }
 
-  if (normalizedPath === "/room" || normalizedPath === "/explore") {
+  if (normalizedPath === "/room" || normalizedPath === "/room/rooms" || normalizedPath === "/explore") {
     return "THE_ROOM";
   }
 
@@ -3164,7 +2750,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
@@ -3351,9 +2937,10 @@ function renderRoomHall(): string {
 }
 
 function renderRoomHallLaunch(): string {
-  return `<a class="room-hall-launch" href="/room">
-    <span>VIEW THE MUSEUM <b aria-hidden="true">→</b></span>
-    <small>EXPLORE THE ROOMS / RETURN TO SOCIAL VIEW</small>
+  return `<a class="room-hall-launch room-hall-launch--museum" href="/room" aria-label="Open the 3D reality museum">
+    <span class="room-hall-launch__icon" aria-hidden="true"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M16 3 28 9.5v13L16 29 4 22.5v-13L16 3Z"/><path d="M4 9.5 16 16l12-6.5M16 16v13"/></svg></span>
+    <span>3D REALITY MUSEUM <b aria-hidden="true">→</b></span>
+    <small>WALK THE ROOMS AS A GALLERY</small>
   </a>`;
 }
 
@@ -3400,9 +2987,10 @@ async function refreshRoomPosts(force = false): Promise<void> {
         }
       }
       roomPostsLoadedChannel = requestedChannel;
+      roomMuseumPostsByChannel.set(requestedChannel, response.posts);
       roomPostError = "";
       const normalizedPath = normalizePath(window.location.pathname);
-      if (normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
+      if (normalizedPath === "/room" || normalizedPath === "/room/rooms" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
         rerenderProductRoute();
       }
     })
@@ -3432,7 +3020,8 @@ async function refreshMuseumGalleries(force = false): Promise<void> {
       });
       roomMuseumPostsByChannel = next;
       roomMuseumLoaded = true;
-      if (normalizePath(window.location.pathname) === "/room") rerenderProductRoute();
+      const path = normalizePath(window.location.pathname);
+      if (path === "/room" || path === "/room/main") rerenderProductRoute();
     })
     .finally(() => {
       roomMuseumRequest = undefined;
@@ -3631,6 +3220,8 @@ function isRoomNotificationSurface(path = normalizePath(window.location.pathname
     || path === "/room/orb"
     || path === "/room/hall"
     || path === "/room/profile"
+    || path === "/room/library"
+    || path === "/room/rooms"
     || Boolean(roomChannelSurfaceFromPath(path))
     || path.startsWith("/c/");
 }
@@ -3820,6 +3411,10 @@ async function submitRoomPost(): Promise<void> {
     rememberDeviceSignalPost(response.post);
     roomLikedIds.delete(response.post.id);
     roomPostsLoadedChannel = activeRoomChannel;
+    // The new thought hangs in its museum room immediately, and stays there
+    // when the visitor moves on through the hallway.
+    const museumSnapshot = roomMuseumPostsByChannel.get(activeRoomChannel) ?? [];
+    roomMuseumPostsByChannel.set(activeRoomChannel, [response.post, ...museumSnapshot.filter((post) => post.id !== response.post.id)]);
     roomPostComposerOpen = false;
     roomPostText = "";
     roomPostTipsEnabled = false;
@@ -4343,8 +3938,12 @@ function sampleMuseumPosts(roomIndex: number, room: (typeof roomChannelOptions)[
 }
 
 function museumLivePostsForChannel(roomKey: RoomChannel): MuseumPost[] {
-  const source = roomMuseumPostsByChannel.get(roomKey)
-    ?? (roomPostsLoadedChannel === roomKey ? roomPosts.filter((post) => post.channel === roomKey) : []);
+  // The room's social feed is the source of truth. When it has loaded for
+  // this channel (including the visitor's own just-sent posts), use it;
+  // otherwise fall back to the hallway's per-room snapshot.
+  const source = roomPostsLoadedChannel === roomKey
+    ? roomPosts.filter((post) => post.channel === roomKey)
+    : roomMuseumPostsByChannel.get(roomKey) ?? [];
   const room = roomChannelOption(roomKey);
   return source.map((post) => ({
     id: post.id,
@@ -4363,8 +3962,11 @@ function museumGalleryHasLiveData(roomKey: RoomChannel): boolean {
 function roomMuseumGalleries(): MuseumGallery[] {
   return roomChannelOptions.map((room, roomIndex) => {
     const livePosts = museumLivePostsForChannel(room.key);
-    const liveData = museumGalleryHasLiveData(room.key);
-    const posts = liveData ? livePosts : sampleMuseumPosts(roomIndex, room);
+    const preview = museumDesignPreview();
+    const liveData = !preview && museumGalleryHasLiveData(room.key);
+    // Real rooms only ever hang real posts from the social feed; sample
+    // thoughts exist for the local design preview alone.
+    const posts = preview ? sampleMuseumPosts(roomIndex, room) : livePosts;
     return {
       key: room.key,
       roomIndex,
@@ -4382,7 +3984,8 @@ function roomMuseumGallery(roomKey: RoomChannel): MuseumGallery {
   const room = roomChannelOption(roomKey);
   const roomIndex = roomChannelOptions.findIndex((candidate) => candidate.key === roomKey);
   const livePosts = museumLivePostsForChannel(roomKey);
-  const liveData = museumGalleryHasLiveData(roomKey);
+  const preview = museumDesignPreview();
+  const liveData = !preview && museumGalleryHasLiveData(roomKey);
   return {
     key: room.key,
     roomIndex,
@@ -4391,15 +3994,38 @@ function roomMuseumGallery(roomKey: RoomChannel): MuseumGallery {
     theme: museumThemeByChannel[room.key],
     hasNewSignal: liveData && livePosts.length > 0,
     signalCount: livePosts.length,
-    posts: liveData ? livePosts : sampleMuseumPosts(roomIndex, room),
+    posts: preview ? (preview.empty ? [] : sampleMuseumPosts(roomIndex, room)) : livePosts,
   };
+}
+
+// Local-only design review: preview the actual scene components without an
+// account, writing test posts, or changing production's session boundaries.
+function museumDesignPreview(): { view: string; empty: boolean } | undefined {
+  if (!import.meta.env.DEV || window.location.pathname !== "/museum-preview") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  return { view: params.get("view") ?? "main", empty: params.get("empty") === "1" };
+}
+
+function museumDesignPreviewHtml(): string {
+  const preview = museumDesignPreview()!;
+  const channel = roomChannelOptions.find((room) => room.key === preview.view);
+  let html = preview.view === "main" ? renderHome(true).html : preview.view === "library" ? renderLibraryMuseum() : channel ? renderRoomChannelMuseum(channel.key) : renderRoomMuseum();
+  html = html.replaceAll('href="/room/main"', 'href="/museum-preview?view=main"')
+    .replaceAll('href="/room"', 'href="/museum-preview?view=hall"')
+    .replaceAll('href="/room/library"', 'href="/museum-preview?view=library"');
+  for (const room of roomChannelOptions) {
+    html = html.replaceAll(`href="/room/channel/${room.key}"`, `href="/museum-preview?view=${room.key}"`);
+  }
+  const links = [{ key: "main", label: "Main room" }, { key: "hall", label: "Hallway" }, ...roomChannelOptions, { key: "library", label: "Library" }];
+  const controls = `<details class="museum-design-preview"><summary>DESIGN PREVIEW</summary><nav aria-label="Preview museum spaces">${links.map((room) => `<a href="/museum-preview?view=${room.key}"${preview.view === room.key && !preview.empty ? ' aria-current="page"' : ""}>${escapeHtml(room.label)}</a>`).join("")}<a href="/museum-preview?view=general&amp;empty=1"${preview.empty ? ' aria-current="page"' : ""}>Empty room</a></nav><small>LOCAL / SAMPLE THOUGHTS</small></details>`;
+  return html.replace("</main>", `${controls}</main>`);
 }
 
 function renderMuseumSignal(gallery: MuseumGallery): string {
   const live = gallery.hasNewSignal === true;
   const label = live
     ? `NEW SIGNAL${gallery.signalCount && gallery.signalCount > 1 ? ` / ${gallery.signalCount}` : ""}`
-    : museumGalleryHasLiveData(gallery.key as RoomChannel) ? "QUIET ROOM" : "SAMPLE WALL";
+    : museumDesignPreview() ? "SAMPLE WALL" : museumGalleryHasLiveData(gallery.key as RoomChannel) ? "QUIET ROOM" : "LOADING";
   return `<span class="room-museum__room-signal${live ? " room-museum__room-signal--new" : ""}"><i aria-hidden="true"></i>${label}</span>`;
 }
 
@@ -4443,19 +4069,19 @@ function renderRoomMuseum(): string {
   return publicFrame(
     "/room",
     `<main id="main-content" class="public-main room-museum-main">
-      <section class="room-museum" data-room-museum aria-label="HIDN museum room">
+      <section class="room-museum room-museum--hall" data-room-museum aria-label="HIDN museum room">
         <div class="room-museum__stage" data-museum-stage>
           <p class="room-museum__loading" data-museum-loading role="status">OPENING THE ROOM…</p>
         </div>
         <header class="room-museum__location">
           ${TerminalLabel("HIDN / THE MUSEUM")}
-          <h1>ROOMS WITHOUT NAMES.</h1>
+          <h1>The hallway.</h1>
           <p>ONE HALL. MANY THEMES. THOUGHTS ON EVERY WALL.</p>
-          <span class="room-museum__demo">${demo ? "SAMPLE WALLS / LIVE ROOMS LOADING" : `${galleries.length} CONNECTED ROOMS / LIVE WALLS`}</span>
+          <span class="room-museum__demo">${museumDesignPreview() ? "DESIGN PREVIEW / SAMPLE THOUGHTS" : demo ? "LOADING THE ROOMS…" : `${galleries.length} CONNECTED ROOMS / LIVE WALLS`}</span>
         </header>
         <div class="room-museum__links">
-          <a href="/room/channel/general">GENERAL ROOM ↗</a>
-          <a href="/room/channel/general/feed">OPEN SOCIAL FEED ↗</a>
+          <a href="/room/main">← MAIN ROOM</a>
+          <a href="/room/rooms">SOCIAL ROOMS ↗</a>
         </div>
         <details class="room-museum__exhibition" data-museum-exhibition>
           <summary>ROOM INDEX / ${String(galleries.length).padStart(2, "0")}</summary>
@@ -4487,6 +4113,47 @@ function renderRoomMuseum(): string {
       </section>
     </main>`,
     "public-page--room-museum",
+  );
+}
+
+// The Library is a museum-only room: no posting channel, only ZecHub
+// learning scrolls, live ShieldedScan readings and the wallet kiosk.
+const LIBRARY_GALLERY: MuseumGallery = {
+  key: "library",
+  label: "THE LIBRARY",
+  description: "learn zcash, scroll by scroll, from zechub",
+  roomIndex: roomChannelOptions.length,
+  theme: { accent: "#f0c766", glow: "#d9a640", trim: "#6e5320", wall: "#211b10", floor: "#2a2417" },
+  posts: [],
+};
+
+function renderLibraryMuseum(): string {
+  return publicFrame(
+    "/room/library",
+    `<main id="main-content" class="public-main room-museum-main room-museum-main--channel">
+      <section class="room-museum room-museum--channel" data-room-museum data-museum-library aria-label="HIDN library room">
+        <div class="room-museum__stage" data-museum-stage>
+          <p class="room-museum__loading" data-museum-loading role="status">OPENING THE LIBRARY…</p>
+        </div>
+        <header class="room-museum__location">
+          ${TerminalLabel("HIDN / THE LIBRARY")}
+          <h1>THE LIBRARY</h1>
+          <p>LEARN ZCASH. SCROLLS FROM ZECHUB, LIVE FIGURES FROM SHIELDEDSCAN.</p>
+        </header>
+        <nav class="room-museum__links room-museum__links--channel" aria-label="Library routes">
+          <a class="room-museum__hallway-link" href="/room">← BACK TO HALLWAY</a>
+          <a href="https://zechub.wiki/start-here" target="_blank" rel="noopener noreferrer">ZECHUB START HERE ↗</a>
+        </nav>
+        <nav class="room-museum__walk-controls" aria-label="Move through the library">
+          <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
+          <button type="button" data-museum-action="forward" aria-label="Walk forward">⌃</button>
+          <button type="button" data-museum-action="back" aria-label="Walk backward">⌄</button>
+          <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
+        </nav>
+        <p class="room-museum__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · READ THE SCROLLS · TAP THE KIOSK FOR WALLETS</p>
+      </section>
+    </main>`,
+    "public-page--room-museum public-page--room-channel-museum",
   );
 }
 
@@ -4786,7 +4453,7 @@ function renderExplore(path = "/room"): string {
     `<main id="main-content" class="public-main explore-main">
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
-          ${isChannelRoute ? `<a class="room-channel-back" href="/room">← BACK TO MUSEUM</a>` : ""}
+          ${isChannelRoute ? `<a class="room-channel-back" href="/room/rooms">← BACK TO ROOMS</a>` : ""}
           ${TerminalLabel(headerLabel)}
           <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
@@ -5588,65 +5255,48 @@ async function refreshRoomPayment(): Promise<void> {
 }
 
 function renderRoomAccessChooser(): string {
-  const signalMode = activeHidnTheme() === "signal";
-  return `<div class="room-access-page">
-    <header class="room-access-header">
-      <h1 class="type-display-lg room-access-header__title">CROSS THE<br /><em>THRESHOLD.</em></h1>
-    </header>
-    <div class="room-access-options">
-      <article class="room-access-option">
-        <div>
-          <h2>ENTER WITHOUT A NAME</h2>
-          <p>Create a private recovery key. No name or handle is required.</p>
-        </div>
-        ${SecondaryButton({ label: "CREATE PRIVATE ACCESS →", dataAction: "room-create" })}
-      </article>
-      <article class="room-access-option">
-        <div>
-          <h2>RETURN THROUGH THE KEY</h2>
-          <p>Use the key you kept. It is the only way back in.</p>
-        </div>
-        ${SecondaryButton({ label: "USE RECOVERY KEY →", dataAction: "room-login" })}
-      </article>
+  return `<div class="hidn-access">
+    <p class="hidn-access__code">/// ACCESS</p>
+    <h1>CROSS THE THRESHOLD.</h1>
+    <p class="hidn-access__line">&gt; ENTER WITHOUT A NAME. A PRIVATE RECOVERY KEY IS CREATED.</p>
+    <p class="hidn-access__line">&gt; OR RETURN WITH THE KEY YOU KEPT. IT IS THE ONLY WAY BACK IN.</p>
+    <div class="hidn-access__actions">
+      ${SecondaryButton({ label: "[ CREATE PRIVATE ACCESS ]", dataAction: "room-create" })}
+      ${SecondaryButton({ label: "[ USE RECOVERY KEY ]", dataAction: "room-login" })}
     </div>
-    ${SystemMessage("PRIVATE ACCESS", signalMode ? "Open private access or return through the recovery key." : "Create private access or return through the recovery key.", "LIVE")}
   </div>`;
 }
 
 function renderRoomCreate(): string {
-  return `<div class="room-access-page">
-    <header class="room-access-header room-access-header--compact">
-      <h1 class="type-display-lg room-access-header__title">KEEP YOUR<br /><em>KEY.</em></h1>
-      <p class="room-access-header__copy">HIDN creates a private recovery key on this device. No username, handle, or public identity is needed.</p>
-    </header>
-    <section class="room-access-key room-access-key--pending" aria-label="Private credential">
-      <span class="room-access-key__label">PRIVATE CREDENTIAL / GENERATED IN YOUR BROWSER</span>
-      <p>Save the recovery key when it appears; HIDN cannot recover it.</p>
-    </section>
-    ${roomLoginError ? AlertMessage("WORKER RESPONSE", roomLoginError, "danger") : ""}
-    <div class="room-access-actions">
-      ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-      ${SecondaryButton({ label: roomAnonymousSubmitting ? "CREATING PRIVATE KEY..." : "GENERATE RECOVERY KEY →", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
+  return `<div class="hidn-access">
+    <p class="hidn-access__code">/// ACCESS / NEW KEY</p>
+    <h1>KEEP YOUR KEY.</h1>
+    <p class="hidn-access__line">&gt; HIDN CREATES A PRIVATE RECOVERY KEY IN THIS BROWSER.</p>
+    <p class="hidn-access__line">&gt; NO USERNAME. NO HANDLE. NO PUBLIC IDENTITY.</p>
+    <p class="hidn-access__line hidn-access__line--warn">&gt; SAVE IT WHEN IT APPEARS. HIDN CANNOT RECOVER IT.</p>
+    ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
+    <div class="hidn-access__actions">
+      ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
+      ${SecondaryButton({ label: roomAnonymousSubmitting ? "[ CREATING KEY... ]" : "[ GENERATE RECOVERY KEY ]", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
     </div>
   </div>`;
 }
 
 function renderRoomLogin(): string {
-  return `<div class="room-access-page">
-    <header class="room-access-header room-access-header--compact">
-      <h1 class="type-display-lg room-access-header__title">RETURN TO<br /><em>THE ROOM.</em></h1>
-      <p class="room-access-header__copy">Use the recovery key you saved. It is the only credential; the browser proves you hold it without sending the key to HIDN.</p>
-    </header>
-    ${roomLoginError ? AlertMessage("ID NEEDED", roomLoginError, "danger") : ""}
-    <form class="room-login-card" novalidate>
-      <label class="room-access-field" for="room-login-recovery-code">
-        <span>PRIVATE RECOVERY KEY</span>
+  return `<div class="hidn-access">
+    <p class="hidn-access__code">/// ACCESS / RECOVER</p>
+    <h1>RETURN TO THE ROOM.</h1>
+    <p class="hidn-access__line">&gt; PASTE THE RECOVERY KEY YOU SAVED. IT NEVER LEAVES THIS BROWSER.</p>
+    ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
+    <form class="room-login-card hidn-access__form" novalidate>
+      <label class="hidn-access__prompt" for="room-login-recovery-code">
+        <span aria-hidden="true">hidn@room:~$</span>
+        <span class="hidn-term__sr">Private recovery key</span>
         <input id="room-login-recovery-code" type="text" placeholder="HIDN-ANON-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
       </label>
-      <p class="room-payment-card__note">The browser derives your anonymous membership credential locally. The recovery key is never sent to the Worker.</p>
-      <div class="room-access-actions">
-        ${GhostButton({ label: "← BACK", dataAction: "room-back" })}
-        ${SecondaryButton({ label: roomLoginSubmitting || roomAnonymousSubmitting ? "VERIFYING KEY..." : "ENTER WITH KEY →", disabled: roomLoginSubmitting || roomAnonymousSubmitting, dataAction: "room-submit-login" })}
+      <div class="hidn-access__actions">
+        ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
+        ${SecondaryButton({ label: roomLoginSubmitting || roomAnonymousSubmitting ? "[ VERIFYING KEY... ]" : "[ ENTER WITH KEY ]", disabled: roomLoginSubmitting || roomAnonymousSubmitting, dataAction: "room-submit-login" })}
       </div>
     </form>
   </div>`;
@@ -6051,13 +5701,8 @@ function renderRoomAccess(): RenderedProductRoute {
     metadata: ROOM_METADATA,
     html: publicFrame(
       "/room/access",
-      `<main id="main-content" class="public-main room-main room-access-main hidn-pointer-surface" data-pointer-surface>
-        ${renderLiveRoomActivity()}
-        <div class="room-access-atmosphere" aria-hidden="true">
-          ${renderPointerSpotlight()}
-          <div class="room-access-atmosphere__cards">${renderHomeRoomCards(6)}</div>
-        </div>
-        ${content}
+      `<main id="main-content" class="public-main room-main room-access-main hidn-term-main">
+        ${terminalWindow(`hidn@room: ~/access${roomAccessMode === "create" ? "/new-key" : roomAccessMode === "login" ? "/recover" : roomAccessMode === "ready" ? "/open" : ""}`, content, "hidn-term--access")}
       </main>`,
       "public-page--room",
     ),
@@ -6142,29 +5787,74 @@ function renderNotFound(): RenderedProductRoute {
   return {
     metadata: {
       kind: "not-found",
-      title: "HIDN — Surface unavailable",
+      title: "HIDN — 404",
       description: "The requested HIDN surface is not available.",
       canonicalPath: "/",
     },
     html: publicFrame(
       "/",
-      `<main id="main-content" class="public-main detail-main">
-        <div class="hidn-container--reading detail-page">
-          <h1 class="detail-page__title">SURFACE UNAVAILABLE</h1>
-          ${ErrorState("SURFACE UNAVAILABLE", "The requested HIDN page is not part of this public experience.")}
-          ${actionLink("RETURN TO HIDN", "/", "primary")}
-        </div>
+      `<main id="main-content" class="public-main hidn-404">
+        <section class="hidn-404__screen" aria-labelledby="hidn-404-title">
+          <p class="hidn-404__code">/// 404</p>
+          <h1 id="hidn-404-title">THE QUESTION IS: ARE YOU SURE YOU'RE IN THE RIGHT PLACE?</h1>
+          <a class="hidn-404__restart" href="/">[ START OVER ]</a>
+          <p class="hidn-dotmatrix hidn-404__home" aria-hidden="true">There's no place like<br />HIDN://ROOM</p>
+        </section>
       </main>`,
-      "public-page--detail",
+      "public-page--detail public-page--404",
     ),
   };
 }
 
-function homeMuseumPosts(): MuseumPost[] {
+// The private main room hangs the newest real posts from every room, each
+// linked to its thread. The public foyer cannot read private rooms, so it
+// keeps sample walls and offers the way in instead of a thread link.
+function homeMuseumPosts(privateFoyer = false): MuseumPost[] {
+  if (privateFoyer && hasRoomSession()) {
+    const byId = new Map<string, RoomPost>();
+    for (const posts of roomMuseumPostsByChannel.values()) posts.forEach((post) => byId.set(post.id, post));
+    roomPosts.forEach((post) => byId.set(post.id, post));
+    return [...byId.values()]
+      .sort((left, right) => Date.parse(right.time) - Date.parse(left.time))
+      .slice(0, 12)
+      .map((post) => {
+        const room = roomChannelOptions.find((channel) => channel.key === post.channel);
+        return { id: post.id, text: post.text, category: post.category, time: post.time, roomKey: room?.key, roomLabel: room?.label };
+      });
+  }
   return MOCK_CONFESSIONS.slice(0, 8).map((post) => {
     const sample = transmissionViewFromConfession(post);
     return { text: sample.text, category: sample.category, time: sample.time };
   });
+}
+
+// The homepage: a short terminal welcome over the live museum. The 3D
+// foyer plays in the background as a preface; visitors can still drag to
+// look around and tap the floor to walk.
+function renderTerminalHomePage(): RenderedProductRoute {
+  const signedIn = hasRoomSession();
+  const enterPath = signedIn ? "/room/main" : "/room/access";
+  return {
+    metadata: HOME_METADATA,
+    html: publicFrame("/", `<main id="main-content" class="public-main home-main">
+      <section class="room-museum museum-foyer museum-foyer--preface" data-room-museum data-museum-foyer aria-labelledby="hidn-welcome-title">
+        <div class="room-museum__stage" data-museum-stage><p class="room-museum__loading" data-museum-loading role="status" hidden>OPENING THE GALLERY…</p></div>
+        <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="foyer-reader-title">
+          <div class="room-museum__reader-top"><span id="foyer-reader-title" data-museum-post-category>SAMPLE THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
+          <blockquote data-museum-post-text></blockquote>
+          <footer><span>PUBLIC FOYER</span><a href="${enterPath}">ENTER ROOM →</a></footer>
+        </aside>
+        <div class="hidn-welcome"><div class="hidn-welcome__panel">
+          <p class="hidn-welcome__code">/// HIDN://ROOM</p>
+          <h1 id="hidn-welcome-title">WELCOME TO HIDN</h1>
+          <p class="hidn-welcome__sub">A ROOM WITHOUT NAMES.</p>
+          <p class="hidn-welcome__question">THE QUESTION IS: ARE YOU SURE YOU'RE IN THE RIGHT PLACE?</p>
+          <a class="hidn-welcome__enter" href="${enterPath}">[ ${signedIn ? "RETURN TO ROOM" : "ENTER ROOM"} ]</a>
+        </div></div>
+        <p class="hidn-welcome__hint" data-museum-status>DRAG TO LOOK AROUND</p>
+      </section>
+    </main>`, "public-page--home public-page--home-museum public-page--welcome"),
+  };
 }
 
 function renderHome(privateFoyer = false): RenderedProductRoute {
@@ -6173,10 +5863,10 @@ function renderHome(privateFoyer = false): RenderedProductRoute {
   const entryLabel = privateFoyer ? "OPEN HALLWAY" : "ENTER ROOM";
   return {
     metadata: privateFoyer
-      ? { ...HOME_METADATA, title: "HIDN — The Private Foyer", canonicalPath: foyerPath }
+      ? { ...HOME_METADATA, title: "HIDN — The Private Room", canonicalPath: foyerPath }
       : HOME_METADATA,
     html: publicFrame(foyerPath, `<main id="main-content" class="public-main home-main">
-      <section class="room-museum museum-foyer" data-room-museum data-museum-foyer${privateFoyer ? " data-museum-private-foyer" : ""} ${privateFoyer ? "aria-label=\"Private foyer\"" : "aria-labelledby=\"home-room-title\""}>
+      <section class="room-museum museum-foyer" data-room-museum data-museum-foyer${privateFoyer ? " data-museum-private-foyer" : ""} ${privateFoyer ? "aria-label=\"Private room\"" : "aria-labelledby=\"home-room-title\""}>
         <div class="room-museum__stage" data-museum-stage><p class="room-museum__loading" data-museum-loading role="status">OPENING THE GALLERY…</p></div>
         ${privateFoyer ? "" : `<div class="museum-foyer__intro">
           ${TerminalLabel("A MUSEUM OF UNSAID THOUGHTS")}
@@ -6186,7 +5876,7 @@ function renderHome(privateFoyer = false): RenderedProductRoute {
         <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="foyer-reader-title">
           <div class="room-museum__reader-top"><span id="foyer-reader-title" data-museum-post-category>SAMPLE THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
           <blockquote data-museum-post-text></blockquote>
-          <footer><span>${privateFoyer ? "PRIVATE FOYER" : "PUBLIC FOYER"}</span>${privateFoyer ? "" : `<a href="${entryPath}" data-room-enter>${entryLabel} →</a>`}</footer>
+          <footer><span>${privateFoyer ? "PRIVATE ROOM" : "PUBLIC FOYER"}</span>${privateFoyer ? "" : `<a href="${entryPath}" data-room-enter>${entryLabel} →</a>`}</footer>
         </aside>
         <nav class="room-museum__walk-controls museum-foyer__walk" aria-label="Explore the museum foyer">
           <button type="button" data-museum-action="left" aria-label="Look left">↶</button>
@@ -6196,7 +5886,7 @@ function renderHome(privateFoyer = false): RenderedProductRoute {
           <button type="button" data-museum-action="reset" aria-label="Return to the entrance view">⌂</button>
         </nav>
         ${privateFoyer ? "" : `<div class="museum-foyer__entry"><a href="${entryPath}" data-room-enter data-glitch-text="&gt; ${entryLabel} ↗" aria-label="${entryLabel}"><span aria-hidden="true">&gt;</span> ${entryLabel} <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>`}
-        <p class="room-museum__hint museum-foyer__hint" data-museum-status>${privateFoyer ? "PRIVATE FOYER · WALK TO THE HALLWAY SIGN · TAP THE FLOOR TO WALK" : "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ"}</p>
+        <p class="room-museum__hint museum-foyer__hint" data-museum-status>${privateFoyer ? "PRIVATE ROOM · WALK TO THE HALLWAY SIGN · TAP THE FLOOR TO WALK" : "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ"}</p>
         <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>ZERO KNOWLEDGE</span></footer>
       </section>
     </main>`, "public-page--home public-page--home-museum"),
@@ -6209,14 +5899,14 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   if (import.meta.env.DEV && normalizedPath === "/museum-preview") {
     return {
       metadata: { ...EXPLORE_METADATA, title: "HIDN — Museum Preview", canonicalPath: "/museum-preview" },
-      html: renderRoomMuseum(),
+      html: museumDesignPreviewHtml(),
     };
   }
 
   restoreRoomAccountState();
   if (isProtectedRoomPath(normalizedPath) && !hasRoomSession()) {
     window.history.replaceState({}, "", "/");
-    return renderHome();
+    return renderTerminalHomePage();
   }
 
   if (isModerationSurfacePath(normalizedPath) && !moderationVisibilityReady) {
@@ -6224,7 +5914,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
   }
 
   if (normalizedPath === "/") {
-    return renderHome();
+    return renderTerminalHomePage();
   }
 
   if (normalizedPath === "/room/main") {
@@ -6239,6 +5929,13 @@ export function renderProductRoute(path: string): RenderedProductRoute {
         canonicalPath: "/room",
       },
       html: renderRoomMuseum(),
+    };
+  }
+
+  if (normalizedPath === "/room/library") {
+    return {
+      metadata: { ...EXPLORE_METADATA, title: "HIDN — The Library", canonicalPath: normalizedPath },
+      html: renderLibraryMuseum(),
     };
   }
 
@@ -6317,11 +6014,12 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderAdminAudit();
   }
 
-  if (normalizedPath === "/explore") {
-    window.history.replaceState({}, "", "/room");
+  if (normalizedPath === "/explore" || normalizedPath === "/room/rooms") {
+    // The social rooms section: every room's feed, without the 3D museum.
+    if (normalizedPath === "/explore") window.history.replaceState({}, "", "/room/rooms");
     return {
-      metadata: EXPLORE_METADATA,
-      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room"),
+      metadata: { ...EXPLORE_METADATA, title: "HIDN — Rooms", canonicalPath: "/room/rooms" },
+      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room/rooms"),
     };
   }
 
@@ -6509,7 +6207,7 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
     if (roomAnonymousIdentity && roomLikedIds.has(threadId)) {
       roomChannelNotice = "REACTION ALREADY SAVED / PRIVATE";
       roomPostError = "";
-      if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
+      if (normalizedPath === "/room" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
         renderExploreFeed(root, activeFeedTab);
       } else {
         rerenderProductRoute();
@@ -6551,7 +6249,7 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
     }
   }
 
-  if (normalizedPath === "/room" || normalizedPath === "/explore" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
+  if (normalizedPath === "/room" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) {
     renderExploreFeed(root, activeFeedTab);
   } else {
     rerenderProductRoute();
@@ -6575,7 +6273,7 @@ function bindRoomChannelInteractions(root: ParentNode): void {
       }
 
       if (isRoomMobileViewport()) {
-        navigateProductRoute(`/room/channel/${key}`);
+        navigateProductRoute(`/room/channel/${key}/feed`);
         return;
       }
 
@@ -7075,16 +6773,20 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
   if (!museum) return;
   const version = ++roomMuseumLoadVersion;
   const foyer = museum.hasAttribute("data-museum-foyer");
+  const library = museum.hasAttribute("data-museum-library");
   const privateFoyer = museum.hasAttribute("data-museum-private-foyer");
   const currentPath = normalizePath(window.location.pathname);
-  const museumHub = currentPath === "/room" || currentPath === "/room/orb" || currentPath === "/museum-preview";
-  const channelMuseum = roomChannelFromPath(currentPath);
+  const preview = museumDesignPreview();
+  const museumHub = currentPath === "/room" || currentPath === "/room/orb" || preview?.view === "hall";
+  const channelMuseum = preview ? roomChannelOptions.find((room) => room.key === preview.view)?.key : roomChannelFromPath(currentPath);
   const galleries = foyer
     ? undefined
+    : library
+      ? [LIBRARY_GALLERY]
     : channelMuseum
       ? [roomMuseumGallery(channelMuseum)]
       : roomMuseumGalleries();
-  const posts: MuseumPost[] = foyer ? homeMuseumPosts() : (galleries?.flatMap((gallery) => gallery.posts) ?? []);
+  const posts: MuseumPost[] = foyer ? homeMuseumPosts(privateFoyer && !preview) : (galleries?.flatMap((gallery) => gallery.posts) ?? []);
   const signal = activeHidnTheme() === "signal";
   let foyerActivityTimer: number | undefined;
   const noteFoyerActivity = (): void => {
@@ -7110,17 +6812,27 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
       privateFoyer,
       roomMode: foyer ? undefined : museumHub ? "hub" : "gallery",
       galleries,
+      library,
+      ambientLook: foyer && !privateFoyer,
+      onLibraryEnter: museumHub ? () => navigateProductRoute(preview ? "/museum-preview?view=library" : "/room/library") : undefined,
       onActivity: noteFoyerActivity,
       onGalleryEnter: (gallery) => {
-        if (currentPath === "/room" && hasRoomSession()) {
+        if (preview) {
+          navigateProductRoute(`/museum-preview?view=${encodeURIComponent(gallery.key)}`);
+        } else if (currentPath === "/room" && hasRoomSession()) {
           navigateProductRoute(`/room/channel/${encodeURIComponent(gallery.key)}`);
         }
       },
       onReturnToMain: () => {
-        if (currentPath !== "/room") navigateProductRoute("/room");
+        if (preview) navigateProductRoute("/museum-preview?view=hall");
+        else if (currentPath !== "/room") navigateProductRoute("/room");
       },
       onEnter: (beginEntry) => {
         playMuseumDoorSound();
+        if (preview) {
+          beginEntry(() => navigateProductRoute("/museum-preview?view=hall"));
+          return;
+        }
         const returning = hasRoomSession();
         beginEntry(() => navigateIntoRoom(returning ? "/room" : "/room/access"));
       },
@@ -7371,11 +7083,14 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (hasRoomSession() && roomReactionStateSignature(normalizedPath)) {
     void refreshRoomReactionState(normalizedPath);
   }
-  if ((normalizedPath === "/room" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) && hasRoomSession()) {
+  if ((normalizedPath === "/room" || normalizedPath === "/room/rooms" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
     if (normalizedPath === "/room") {
       void refreshMuseumGalleries();
     }
+  }
+  if (normalizedPath === "/room/main" && hasRoomSession()) {
+    void refreshMuseumGalleries();
   }
   const notificationThreadId = roomThreadIdFromPath(normalizedPath);
   if (notificationThreadId && hasRoomSession()) {

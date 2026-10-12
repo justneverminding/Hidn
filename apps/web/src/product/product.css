@@ -16143,3 +16143,555 @@
     display: block;
   }
 }
+
+/* Exhibition interiors: restrained chrome, readable space, neutral room wash. */
+.public-page--theme-signal .room-museum::before {
+  background: linear-gradient(180deg, rgba(5, 10, 7, .16), transparent 26%, transparent 78%, rgba(3, 8, 5, .25));
+}
+.public-page--theme-signal .room-museum::after {
+  background: repeating-linear-gradient(180deg, transparent 0 5px, rgba(170, 185, 155, .016) 5px 6px);
+  opacity: .35;
+}
+.room-museum__stage::before {
+  background: radial-gradient(ellipse at 50% 0, rgba(202, 212, 183, .055), transparent 60%);
+}
+.room-museum__stage::after { opacity: .18; }
+.public-page .room-museum__location h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(24px, 2.4vw, 36px);
+  line-height: 1.05;
+  letter-spacing: -.035em;
+  margin: 8px 0 10px;
+}
+.room-museum__location p { max-width: 280px; line-height: 1.5; }
+.room-museum__exhibition { top: 198px; }
+.room-museum__exhibition summary { padding: 10px 0; font-size: 10px; }
+.room-museum__links a { padding: 10px 0; }
+.room-museum__room-nav { top: 134px; }
+.room-museum__room-nav a { padding: 10px 0; }
+.museum-design-preview {
+  position: fixed;
+  bottom: 22px;
+  left: 24px;
+  z-index: 25;
+  background: rgba(12, 20, 15, .96);
+  border: 1px solid #515e4c;
+  color: #d5d9c9;
+  max-width: min(270px, calc(100vw - 40px));
+  font: 10px/1.5 var(--hidn-font-mono);
+}
+.museum-design-preview summary { cursor: pointer; padding: 12px 16px; min-height: 44px; }
+.museum-design-preview nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 10px 8px; }
+.museum-design-preview a { padding: 10px; color: inherit; text-decoration: none; min-height: 40px; }
+.museum-design-preview a:hover,
+.museum-design-preview a[aria-current] { background: #303e2e; color: #eef0df; }
+.museum-design-preview small { display: block; padding: 0 16px 12px; color: #9aa790; }
+.museum-design-preview:not([open]) small { display: none; }
+@media (max-width: 760px) {
+  .room-museum__location { top: 68px; left: 18px; max-width: calc(100% - 36px); }
+  .room-museum__location h1 { font-size: 25px; margin: 6px 0; }
+  .room-museum__location p { display: none; }
+  .room-museum__links { top: 148px; left: 18px; right: 18px; justify-content: space-between; gap: 10px; }
+  .room-museum__links a { font-size: 9px; min-height: 40px; display: inline-flex; align-items: center; }
+  .room-museum__room-nav { top: auto; bottom: 112px; left: 18px; right: 18px; justify-content: space-between; }
+  .room-museum__room-nav a { font-size: 9px; min-height: 40px; }
+  .room-museum__room-nav span { display: none; }
+  .room-museum__exhibition { top: 194px; }
+  .room-museum__exhibition[open] { max-height: calc(100dvh - 325px); overflow: auto; }
+  .museum-design-preview { bottom: 18px; left: 12px; }
+  .museum-design-preview summary { padding: 12px 10px; font-size: 8px; }
+  .room-museum__hint { bottom: 76px; font-size: 8px; max-width: 90%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-museum__stage::after { animation: none; opacity: .16; }
+}
+
+/* Museum overlay legibility: same palette and type, calmer layout. A dark
+   fade sits behind the header and the controls so UI text never lands on
+   lit scenery; secondary navigation moves to the bottom edge. */
+.public-page .room-museum::before {
+  /* Only behind the header text and the bottom edge; the scene stays open. */
+  background:
+    radial-gradient(ellipse 420px 190px at 0 70px, rgba(4, 9, 6, .62), transparent 72%),
+    linear-gradient(0deg, rgba(4, 9, 6, .45) 0, transparent 64px);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+.public-page .room-museum__location h1 { font-size: clamp(22px, 2vw, 30px); margin: 6px 0 6px; }
+.room-museum__location p { max-width: 300px; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.room-museum__demo { margin-top: 6px; opacity: .8; }
+.room-museum__room-nav {
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: clamp(20px, 3vw, 44px);
+  right: auto;
+  top: auto;
+}
+.room-museum__room-nav a,
+.room-museum__room-nav span { font-size: 9px; }
+.room-museum__hint { animation: museum-hint-fade 9s ease forwards; }
+@keyframes museum-hint-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (min-width: 761px) {
+  /* The bottom-left corner belongs to room navigation; the hint centres
+     beneath the walk controls instead of running underneath it. */
+  .room-museum__hint { left: 50%; right: auto; transform: translateX(-50%); width: max-content; max-width: 46%; }
+}
+@media (max-width: 760px) {
+  .room-museum__room-nav { bottom: 112px; left: 18px; right: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-museum__hint { animation: none; }
+}
+.museum-design-preview { left: auto; right: 24px; }
+
+/* Rooms section: entry into the 3D reality museum, led by a cube icon. */
+.room-hall-launch--museum {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+}
+.room-hall-launch--museum .room-hall-launch__icon {
+  align-items: center;
+  border: 1px solid rgba(109, 210, 143, .38);
+  border-radius: 50%;
+  color: var(--hidn-gold, #e7b75d);
+  display: inline-flex;
+  grid-row: 1 / span 2;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+.room-hall-launch--museum > span:first-child {
+  font-size: inherit;
+  letter-spacing: 0;
+}
+.room-hall-launch--museum > span:nth-child(2) {
+  color: var(--hidn-accent, #b7edc5);
+  font-family: var(--hidn-font-mono);
+  font-size: .74rem;
+  letter-spacing: .14em;
+  line-height: 1.2;
+}
+.room-hall-launch--museum > span:nth-child(2) b {
+  color: var(--hidn-gold, #e7b75d);
+  font-size: 1rem;
+  font-weight: 400;
+  margin-left: .2rem;
+}
+.room-hall-launch--museum small { grid-column: 2; }
+
+/* Compact museum header: the title block stays small so the scene is the
+   view. Subtitle and status lines step aside on narrower screens. */
+.public-page .room-museum__location h1 { font-size: clamp(20px, 1.8vw, 26px); margin: 4px 0; }
+.room-museum__location .ui-terminal-label { font-size: 8px; }
+.room-museum__exhibition { top: 150px; }
+.room-museum__exhibition summary { font-size: 9px; padding: 6px 0; }
+@media (max-width: 1100px) {
+  .room-museum__location p { display: none; }
+}
+@media (max-width: 760px) {
+  .room-museum__location { top: 60px; }
+  .public-page .room-museum__location h1 { font-size: 19px; }
+  .room-museum__demo { display: none; }
+  .room-museum__links { justify-content: flex-start; left: 18px; right: auto; top: 102px; gap: 4px 14px; }
+  .room-museum__links a { font-size: 8px; min-height: 32px; padding: 0; }
+  .room-museum__exhibition { top: 132px; }
+  .room-museum__exhibition summary { font-size: 8px; }
+}
+@media (max-width: 760px) {
+  .museum-design-preview { bottom: auto; right: 12px; top: 96px; }
+}
+
+/* Window bar on phones: the title joins the flex row instead of floating at
+   the centre, so it can never slide under the sound toggle or clock. */
+@media (max-width: 760px) {
+  .public-page .public-page__window-title {
+    flex: 1 1 auto;
+    left: auto;
+    margin: 0 .6rem;
+    min-width: 0;
+    overflow: hidden;
+    position: static;
+    text-align: center;
+    text-overflow: ellipsis;
+    transform: none;
+    white-space: nowrap;
+  }
+  .public-page .public-page__window-actions { flex: 0 0 auto; gap: .45rem; margin-left: 0; }
+  .public-page .public-page__window-controls { flex: 0 0 auto; }
+}
+@media (max-width: 420px) {
+  .public-page .public-page__window-actions .public-page__window-meta { display: none; }
+  .public-page .public-page__window-controls { gap: .3rem; }
+}
+
+/* Medium widths: the header links get their own row under the title rather
+   than sharing the top line with it. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .room-museum__links,
+  .room-museum__links--channel {
+    justify-content: flex-start;
+    left: clamp(20px, 3vw, 44px);
+    max-width: calc(100% - 120px);
+    right: auto;
+    top: 138px;
+  }
+  .room-museum__exhibition { top: 186px; }
+  .room-museum--channel .room-museum__demo { display: none; }
+}
+@media (max-width: 760px) {
+  .room-museum__links,
+  .room-museum__links--channel { top: 118px; }
+  .room-museum__exhibition { top: 156px; }
+  .museum-design-preview { top: 172px; }
+}
+
+/* Hallway: no visible title block; the scene is the heading. The title
+   stays available to screen readers, and the links move up into its place. */
+.room-museum--hall .room-museum__location {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 1px;
+}
+.room-museum--hall .room-museum__exhibition { top: 84px; }
+@media (min-width: 761px) and (max-width: 1100px) {
+  .room-museum--hall .room-museum__links { top: 80px; }
+  .room-museum--hall .room-museum__exhibition { top: 118px; }
+}
+@media (max-width: 760px) {
+  .room-museum--hall .room-museum__links { top: 64px; }
+  .room-museum--hall .room-museum__exhibition { top: 100px; }
+}
+
+/* Dev-only design preview control: a small, faint tab at the top right
+   that never covers the scene or the walk controls. */
+.public-page .museum-design-preview {
+  background: rgba(12, 20, 15, .72);
+  bottom: auto;
+  left: auto;
+  max-width: min(320px, calc(100vw - 24px));
+  opacity: .55;
+  right: clamp(12px, 3vw, 44px);
+  top: 54px;
+  transform: none;
+}
+.public-page .museum-design-preview:hover,
+.public-page .museum-design-preview[open] { opacity: 1; }
+.public-page .museum-design-preview summary { font-size: 8px; min-height: 0; padding: 4px 10px; }
+
+/* ===== Underground terminal layer ===================================== */
+
+/* CRT glass over the whole Signal theme: fine scanlines and film grain.
+   It never takes clicks and stays faint enough to read through. */
+.public-page--theme-signal::after {
+  animation: hidn-grain 1.2s steps(4) infinite;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 2px, rgba(0, 0, 0, .16) 2px 3px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  content: "";
+  inset: -40px;
+  mix-blend-mode: overlay;
+  opacity: .22;
+  pointer-events: none;
+  position: fixed;
+  z-index: 40;
+}
+@keyframes hidn-grain {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-12px, 8px); }
+  50% { transform: translate(10px, -14px); }
+  75% { transform: translate(-6px, 12px); }
+}
+
+/* Dot-matrix lettering: terminal type broken into horizontal dashes. */
+.hidn-dotmatrix {
+  color: #4dff6e;
+  font-family: var(--hidn-font-mono);
+  letter-spacing: .06em;
+  -webkit-mask-image: repeating-linear-gradient(180deg, #000 0 .1em, transparent .1em .16em);
+  mask-image: repeating-linear-gradient(180deg, #000 0 .1em, transparent .1em .16em);
+  text-shadow: 0 0 .35em rgba(77, 255, 110, .55);
+}
+
+.hidn-gate__asm {
+  color: rgba(77, 255, 110, .38);
+  font: 10px/1.55 var(--hidn-font-mono);
+  margin: 0;
+  max-height: 100%;
+  overflow: hidden;
+  position: absolute;
+  right: 14px;
+  text-align: right;
+  top: 54px;
+}
+.hidn-gate__asm span { animation: hidn-asm 38s linear infinite; display: block; }
+@keyframes hidn-asm { to { transform: translateY(-50%); } }
+/* The terminal 404 */
+.public-page.public-page--404 .hidn-404 {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: calc(100dvh - 120px);
+  padding: 24px;
+}
+.hidn-404__screen { color: #4dff6e; font-family: var(--hidn-font-mono); max-width: 760px; text-shadow: 0 0 8px rgba(77, 255, 110, .45); }
+.hidn-404__code { font-size: clamp(16px, 2vw, 22px); letter-spacing: .1em; margin: 0 0 2.2em; }
+.hidn-404__screen h1 { font: 400 clamp(18px, 2.6vw, 28px)/1.6 var(--hidn-font-mono); letter-spacing: .08em; margin: 0 0 2.4em; }
+.hidn-404__restart { color: #4dff6e; display: inline-block; font-size: clamp(16px, 2vw, 22px); letter-spacing: .12em; padding: 10px 4px; text-decoration: none; }
+.hidn-404__restart:hover,
+.hidn-404__restart:focus-visible { background: #4dff6e; color: #010201; text-shadow: none; }
+.hidn-404__home { font-size: clamp(26px, 5vw, 56px); line-height: 1.25; margin: 2.2em 0 0; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .public-page--theme-signal::after,
+  .hidn-gate__asm span,
+  .hidn-gate__lines p:last-child::after,
+  .hidn-gate__cursor { animation: none; }
+}
+
+/* ===== Terminal window (homepage + access) ============================ */
+.public-page .hidn-term-main {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 3vh, 28px);
+  margin: 0 auto;
+  max-width: 1040px;
+  min-height: calc(100dvh - 90px);
+  padding: clamp(70px, 9vh, 96px) clamp(12px, 3vw, 32px) 40px;
+  width: 100%;
+}
+.hidn-term {
+  background: #020502;
+  border: 1px solid rgba(77, 255, 110, .28);
+  border-radius: 10px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6), 0 0 60px rgba(47, 214, 120, .08);
+  color: #4dff6e;
+  font-family: var(--hidn-font-mono);
+  overflow: hidden;
+  width: 100%;
+}
+.hidn-term__bar {
+  align-items: center;
+  background: linear-gradient(180deg, #0f1a12, #0a120c);
+  border-bottom: 1px solid rgba(77, 255, 110, .18);
+  display: flex;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  position: relative;
+}
+.hidn-term__bar i { border-radius: 50%; display: block; height: 11px; width: 11px; }
+.hidn-term__bar i:nth-child(1) { background: #f05e62; }
+.hidn-term__bar i:nth-child(2) { background: #dba74a; }
+.hidn-term__bar i:nth-child(3) { background: #5bdb81; }
+.hidn-term__bar span {
+  color: rgba(200, 240, 205, .62);
+  font-size: 11px;
+  left: 50%;
+  letter-spacing: .08em;
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.hidn-term__body { padding: clamp(14px, 2.4vw, 26px); text-shadow: 0 0 8px rgba(77, 255, 110, .4); }
+.hidn-term__sr { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; margin: 0; overflow: hidden; position: absolute; width: 1px; }
+
+.public-page .public-main .hidn-term--access .ui-button {
+  background: transparent;
+  border: 1px solid rgba(77, 255, 110, .4);
+  border-radius: 0;
+  color: #4dff6e;
+  display: inline-flex;
+  font-family: var(--hidn-font-mono);
+  font-size: 14px;
+  letter-spacing: .12em;
+  min-height: 44px;
+  padding: 10px 16px;
+  text-decoration: none;
+  text-shadow: 0 0 8px rgba(77, 255, 110, .45);
+}
+.public-page .public-main .hidn-term--access .ui-button:hover,
+.public-page .public-main .hidn-term--access .ui-button:focus-visible { background: #4dff6e; color: #010201; outline: none; text-shadow: none; }
+
+/* Access screens: same steps, rendered as a terminal session. */
+.hidn-term--access { max-width: 820px; }
+.public-page .public-main .hidn-term--access .room-access-page { margin: 0; max-width: none; padding: 0; width: 100%; }
+.public-page .public-main .hidn-term--access .room-access-header { margin: 0 0 20px; text-align: left; }
+.public-page .public-main .hidn-term--access .room-access-header__title {
+  color: #4dff6e;
+  font: 500 clamp(22px, 3.2vw, 34px)/1.25 var(--hidn-font-mono);
+  letter-spacing: .06em;
+  margin: 0;
+}
+.public-page .public-main .hidn-term--access .room-access-header__title::before { color: rgba(77, 255, 110, .6); content: "hidn@room:~$ "; display: block; text-transform: none; font-size: 13px; letter-spacing: .04em; margin-bottom: 8px; }
+.public-page .public-main .hidn-term--access .room-access-header__title em { color: #b9f7c4; font-style: normal; }
+.public-page .public-main .hidn-term--access .room-access-header__copy,
+.public-page .public-main .hidn-term--access .room-access-option p,
+.public-page .public-main .hidn-term--access .room-payment-card__note,
+.public-page .public-main .hidn-term--access .room-access-key p { color: #8fd9a0; font-family: var(--hidn-font-mono); font-size: 13px; letter-spacing: .03em; line-height: 1.7; }
+.public-page .public-main .hidn-term--access .room-access-header__copy::before,
+.public-page .public-main .hidn-term--access .room-access-option p::before { content: ">> "; }
+.public-page .public-main .hidn-term--access .room-access-options { display: grid; gap: 12px; }
+.public-page .public-main .hidn-term--access .room-access-option,
+.public-page .public-main .hidn-term--access .room-access-key,
+.public-page .public-main .hidn-term--access .room-login-card,
+.public-page .public-main .hidn-term--access .room-payment-card {
+  background: rgba(77, 255, 110, .03);
+  border: 1px dashed rgba(77, 255, 110, .35);
+  border-radius: 0;
+  box-shadow: none;
+  color: #4dff6e;
+}
+.public-page .public-main .hidn-term--access .room-access-option h2 { color: #4dff6e; font: 500 15px/1.4 var(--hidn-font-mono); letter-spacing: .1em; }
+.public-page .public-main .hidn-term--access .room-access-option:nth-child(1) h2::before { content: "[1] "; }
+.public-page .public-main .hidn-term--access .room-access-option:nth-child(2) h2::before { content: "[2] "; }
+.public-page .public-main .hidn-term--access .room-access-field span { color: rgba(77, 255, 110, .7); font: 12px var(--hidn-font-mono); letter-spacing: .1em; }
+.public-page .public-main .hidn-term--access .room-access-field input {
+  background: #010301;
+  border: 0;
+  border-bottom: 1px solid rgba(77, 255, 110, .5);
+  border-radius: 0;
+  caret-color: #4dff6e;
+  color: #b9f7c4;
+  font: 15px var(--hidn-font-mono);
+  letter-spacing: .06em;
+}
+.public-page .public-main .hidn-term--access .room-access-field input:focus { border-bottom-color: #4dff6e; box-shadow: 0 1px 0 #4dff6e; outline: none; }
+.public-page .public-main .hidn-term--access .ui-system-message,
+.public-page .public-main .hidn-term--access .ui-alert { border-radius: 0; font-family: var(--hidn-font-mono); }
+.public-page--room .room-access-main.hidn-term-main .room-live-activity { width: 100%; }
+@media (max-width: 640px) {
+  .hidn-term__bar span { font-size: 10px; }
+}
+
+/* ===== Homepage welcome over the live museum =========================== */
+.museum-foyer--preface .room-museum__stage::before {
+  /* Dim the museum into a preface; a soft dark pool keeps the text legible. */
+  background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(1, 4, 2, .5));
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+.museum-foyer--preface .room-museum__stage::after { display: none; }
+.hidn-welcome {
+  align-content: center;
+  color: #4dff6e;
+  display: grid;
+  font-family: var(--hidn-font-mono);
+  inset: 0;
+  justify-items: start;
+  pointer-events: none;
+  position: absolute;
+  text-shadow: 0 0 10px rgba(77, 255, 110, .5);
+  z-index: 3;
+}
+.hidn-welcome__panel {
+  /* A frosted terminal pane: the museum stays visible all around it. */
+  -webkit-backdrop-filter: blur(7px) saturate(.8);
+  backdrop-filter: blur(7px) saturate(.8);
+  background: rgba(1, 5, 2, .6);
+  border: 1px solid rgba(77, 255, 110, .22);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .45);
+  display: grid;
+  justify-items: start;
+  margin: 0 auto;
+  max-width: min(680px, calc(100vw - 32px));
+  padding: clamp(22px, 4vw, 44px);
+}
+.hidn-welcome__panel > * { animation: hidn-welcome-in .9s ease both; margin: 0; }
+.hidn-welcome__code { animation-delay: .1s; font-size: clamp(14px, 1.6vw, 18px); letter-spacing: .12em; opacity: .8; }
+.hidn-welcome h1 { animation-delay: .35s; font: 500 clamp(28px, 4.6vw, 56px)/1.1 var(--hidn-font-mono); letter-spacing: .06em; margin-top: 1em; }
+.hidn-welcome__sub { animation-delay: .6s; color: #b9f7c4; font-size: clamp(14px, 1.8vw, 20px); letter-spacing: .14em; margin-top: .9em; }
+.hidn-welcome__question { animation-delay: .95s; font-size: clamp(14px, 1.9vw, 21px); letter-spacing: .08em; line-height: 1.6; margin-top: 2.4em; max-width: 34ch; }
+.hidn-welcome__question::after { animation: hidn-caret 1s steps(1) infinite; content: "▌"; margin-left: .25em; }
+.hidn-welcome__enter {
+  animation-delay: 1.3s;
+  border: 1px solid rgba(77, 255, 110, .55);
+  color: #4dff6e;
+  font-size: clamp(15px, 1.9vw, 20px);
+  justify-self: center;
+  letter-spacing: .14em;
+  margin-top: 2.6em;
+  min-height: 48px;
+  padding: 12px 22px;
+  pointer-events: auto;
+  text-decoration: none;
+}
+.hidn-welcome__enter:hover,
+.hidn-welcome__enter:focus-visible { background: #4dff6e; color: #010201; outline: none; text-shadow: none; }
+.hidn-welcome__hint {
+  bottom: max(18px, env(safe-area-inset-bottom));
+  color: rgba(185, 247, 196, .6);
+  font: 10px var(--hidn-font-mono);
+  left: 0;
+  letter-spacing: .14em;
+  margin: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  text-align: center;
+  z-index: 3;
+}
+@keyframes hidn-welcome-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes hidn-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .hidn-welcome__panel > *, .hidn-welcome__question::after { animation: none; }
+}
+/* The Signal theme forces its display serif and button colours; inside the
+   terminal they give way to mono green. */
+.public-page .public-main .hidn-term--access .room-access-header__title { font-family: var(--hidn-font-mono) !important; }
+.public-page .public-main .hidn-term--access .ui-button,
+.public-page .public-main .hidn-term--access .ui-button * { color: #4dff6e !important; }
+.public-page .public-main .hidn-term--access .ui-button:hover,
+.public-page .public-main .hidn-term--access .ui-button:hover *,
+.public-page .public-main .hidn-term--access .ui-button:focus-visible,
+.public-page .public-main .hidn-term--access .ui-button:focus-visible * { color: #010201 !important; }
+
+/* Access, simplified: a few terminal lines and bracketed actions. */
+.public-page .public-main .hidn-term--access { max-width: 720px; }
+.hidn-access { color: #4dff6e; display: grid; font-family: var(--hidn-font-mono); gap: 12px; justify-items: start; }
+.hidn-access__code { color: rgba(77, 255, 110, .75); font-size: 13px; letter-spacing: .12em; margin: 0; }
+.public-page .hidn-access h1 {
+  color: #4dff6e;
+  font: 500 clamp(24px, 3.6vw, 36px)/1.2 var(--hidn-font-mono) !important;
+  letter-spacing: .06em;
+  margin: 10px 0 14px;
+  text-transform: uppercase;
+}
+.hidn-access__line { color: #8fd9a0; font-size: 14px; letter-spacing: .05em; line-height: 1.7; margin: 0; }
+.hidn-access__line--warn { color: #e7d27a; }
+.hidn-access__error { border-left: 2px solid #ff6b6b; color: #ff8d8d; font-size: 13px; margin: 6px 0 0; padding-left: 10px; }
+.hidn-access__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.public-page .public-main .hidn-term--access .hidn-access__form { background: transparent; border: 0; display: grid; gap: 8px; margin: 6px 0 0; padding: 0; width: 100%; }
+.hidn-access__prompt { align-items: center; display: flex; gap: 12px; width: 100%; }
+.hidn-access__prompt > span:first-child { color: rgba(77, 255, 110, .7); font-size: 14px; white-space: nowrap; }
+.hidn-access__prompt input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(77, 255, 110, .45);
+  caret-color: #4dff6e;
+  color: #b9f7c4;
+  flex: 1;
+  font: 15px var(--hidn-font-mono);
+  letter-spacing: .06em;
+  min-height: 40px;
+  min-width: 0;
+  padding: 4px 2px;
+}
+.hidn-access__prompt input::placeholder { color: rgba(185, 247, 196, .35); }
+.hidn-access__prompt input:focus { border-bottom-color: #4dff6e; outline: none; }
+@media (max-width: 560px) {
+  .hidn-access__prompt { align-items: stretch; flex-direction: column; gap: 4px; }
+  .hidn-access__actions { flex-direction: column; width: 100%; }
+}
+/* The previous access layout dimmed the page with a dark radial overlay;
+   the terminal window carries its own contrast. */
+.public-page .room-access-main.hidn-term-main::after { display: none; }
+.public-page .room-access-main.hidn-term-main .hidn-term { position: relative; z-index: 3; }

@@ -8,7 +8,10 @@ import {
   type GalleryLayout,
   type MuseumTheme,
 } from "./museum-layout";
-import { fetchShieldedScanStats, type ShieldedScanStats } from "./shieldedscan";
+import { fetchShieldedScanStats } from "./shieldedscan";
+import { buildExhibitionArchitecture, exhibitionGraphic, type ExhibitionBuilder } from "./museum-exhibition";
+import { buildConfessionInstallation, CONFESSION_STYLE_CAPACITY, confessionStyleFor, confessionTexture, FIRST_THOUGHT, type ConfessionLook } from "./museum-confessions";
+import { addLibraryPortal, buildHallwayInstallation, buildLibraryInstallation, buildMainRoomInstallation, buildRoomInstallation, type InstallationHooks } from "./museum-installations";
 
 export interface MuseumPost {
   id?: string;
@@ -32,11 +35,15 @@ interface MuseumOptions {
   onActivity?: () => void;
   onGalleryEnter?: (gallery: MuseumGallery) => void;
   onReturnToMain?: () => void;
+  onLibraryEnter?: () => void;
+  library?: boolean;
+  /** Ease the view toward the cursor, so a background scene feels alive. */
+  ambientLook?: boolean;
   onEnter?: (beginEntry: (complete: () => void) => void) => void;
 }
 
 interface Exhibit {
-  group: THREE.Group;
+  group: THREE.Object3D;
   surface: THREE.Mesh;
   position: THREE.Vector3;
   normal: THREE.Vector3;
@@ -60,24 +67,10 @@ interface MuseumPlacement {
   angle: number;
 }
 
-interface ProofDisplay {
-  screenMaterial: THREE.MeshBasicMaterial;
-  texture: THREE.CanvasTexture;
-  glitchBar: THREE.Mesh;
-  phase: number;
-}
-
-interface ShieldedScreen {
-  screenMaterial: THREE.MeshBasicMaterial;
-  texture: THREE.CanvasTexture;
-  glitchBar: THREE.Mesh;
-  phase: number;
-}
-
 const EYE_HEIGHT = 1.7;
 const HALF_WIDTH = 12;
 const initialView = { x: 0, z: 7.2, yaw: 0, pitch: -0.035, fov: 66 };
-let savedView = { ...initialView };
+const roomViews = new Map<string, typeof initialView>();
 const foyerInitialView = { x: 0, z: 0, yaw: 0, pitch: .035, fov: 68 };
 let foyerView = { ...foyerInitialView };
 
@@ -114,10 +107,8 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number): s
 }
 
 function museumCardLayout(post: MuseumPost, index: number): MuseumCardLayout {
-  const source = `${post.id ?? ""}${post.text}`;
-  const hash = Array.from(source).reduce((total, character) => total + character.charCodeAt(0), 0);
-  const styles: MuseumCardStyle[] = ["archive", "paper", "signal", "blueprint", "label"];
-  const style = styles[(hash + index) % styles.length];
+  const styles: MuseumCardStyle[] = ["archive", "label", "paper", "signal", "blueprint"];
+  const style = styles[index % styles.length];
   const length = post.text.trim().length;
   const estimatedCharactersPerLine = style === "label" ? 48 : style === "paper" ? 34 : 39;
   const estimatedLines = Math.max(2, Math.ceil(length / estimatedCharactersPerLine));
@@ -131,7 +122,7 @@ function museumCardLayout(post: MuseumPost, index: number): MuseumCardLayout {
           ? Math.min(2.7, 2.05 + length * .0025)
           : Math.min(2.85, 2.25 + length * .003);
   const styleOffset = style === "paper" ? .24 : style === "blueprint" ? .16 : style === "label" ? -.1 : .06;
-  const height = Math.min(2.65, Math.max(1.5, 1.3 + estimatedLines * .22 + styleOffset));
+  const height = Math.min(3.25, Math.max(1.55, 1.3 + estimatedLines * .24 + styleOffset + (style === "archive" ? .7 : 0)));
   return { width, height, style };
 }
 
@@ -149,9 +140,9 @@ function postTexture(post: MuseumPost, index: number, signal: boolean, theme?: M
     const isBlueprint = layout.style === "blueprint";
     const isSignal = layout.style === "signal";
     const isLabel = layout.style === "label";
-    const background = isPaper ? "#d7d4c5" : isBlueprint ? "#182733" : isSignal ? "#07150f" : "#0c1511";
-    const ink = isPaper ? "#18231b" : isBlueprint ? "#d3e3e4" : "#e9e7d9";
-    const mutedInk = isPaper ? "#526155" : isBlueprint ? "#8ca9aa" : "#94a89b";
+    const background = isPaper ? "#c9c6b7" : isBlueprint ? "#29302b" : isSignal ? "#202721" : "#141b17";
+    const ink = isPaper ? "#242a24" : "#e9e7d9";
+    const mutedInk = isPaper ? "#526155" : "#a4afa0";
     const pad = isLabel ? 64 : 72;
     const footerHeight = isLabel ? 72 : 104;
     const contentTop = isLabel ? 162 : 198;
@@ -184,19 +175,14 @@ function postTexture(post: MuseumPost, index: number, signal: boolean, theme?: M
     }
 
     ctx.strokeStyle = trim;
-    ctx.lineWidth = isLabel ? 3 : 5;
-    ctx.strokeRect(36, 36, canvasWidth - 72, canvasHeight - 72);
-    if (!isLabel) {
-      ctx.lineWidth = 2;
-      ctx.strokeRect(54, 54, canvasWidth - 108, canvasHeight - 108);
-    }
+    ctx.lineWidth = 1;
 
     ctx.fillStyle = accent;
     ctx.font = `${isLabel ? 20 : 22}px monospace`;
     ctx.textAlign = "left";
-    ctx.fillText(`HIDN / ${String(index + 1).padStart(2, "0")}`, pad, 105);
+    ctx.fillText(`${String(index + 1).padStart(2, "0")}  /  ${post.id ? "UNNAMED" : "SAMPLE THOUGHT"}`, pad, 105);
     ctx.textAlign = "right";
-    ctx.fillText((post.roomLabel ? `${post.roomLabel} / ` : "") + (post.category ?? "THOUGHT").toUpperCase().slice(0, 26), canvasWidth - pad, 105);
+    ctx.fillText((post.category ?? "THOUGHT").toUpperCase().slice(0, 19), canvasWidth - pad, 105);
     ctx.textAlign = isLabel ? "center" : "left";
     ctx.strokeStyle = trim;
     ctx.lineWidth = 2;
@@ -252,253 +238,10 @@ function postTexture(post: MuseumPost, index: number, signal: boolean, theme?: M
 }
 
 function exhibitionPanelTexture(title: string, body: string, index: number, _theme?: MuseumTheme): THREE.CanvasTexture {
-  const width = 768;
-  const height = 1240;
-  // Exhibition hardware stays in HIDN's neutral reading palette. Room themes
-  // can shape the architecture, but they should not turn the museum panels
-  // into colored advertisements or warning lights.
-  const accent = "#b7c9b5";
-  const glow = "#8fb69a";
-  return canvasTexture(width, height, (ctx) => {
-    const variant = index % 3;
-    ctx.fillStyle = "#101813";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "rgba(215, 229, 205, .035)";
-    ctx.fillRect(28, 28, width - 56, height - 56);
-    ctx.fillStyle = "rgba(143, 182, 154, .08)";
-    ctx.fillRect(44, 44, 10, height - 88);
-    ctx.strokeStyle = "rgba(184, 211, 187, .24)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(34, 34, width - 68, height - 68);
-    ctx.strokeStyle = "rgba(184, 211, 187, .1)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(56, 56, width - 112, height - 112);
-    if (variant === 1) {
-      ctx.fillStyle = "rgba(241, 195, 91, .08)";
-      ctx.fillRect(58, 176, width - 116, 18);
-      ctx.strokeStyle = "rgba(241, 195, 91, .14)";
-      for (let y = 220; y < height - 220; y += 76) {
-        ctx.beginPath(); ctx.moveTo(72, y); ctx.lineTo(width - 72, y); ctx.stroke();
-      }
-    } else if (variant === 2) {
-      ctx.strokeStyle = "rgba(143, 182, 154, .12)";
-      for (let x = 72; x < width - 72; x += 54) {
-        ctx.beginPath(); ctx.moveTo(x, 176); ctx.lineTo(x, height - 190); ctx.stroke();
-      }
-      for (let y = 202; y < height - 190; y += 54) {
-        ctx.beginPath(); ctx.moveTo(72, y); ctx.lineTo(width - 72, y); ctx.stroke();
-      }
-    }
-
-    ctx.fillStyle = accent;
-    ctx.font = "20px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(`HIDN / EXHIBITION ${String(index + 1).padStart(2, "0")}`, 78, 104);
-    ctx.textAlign = "right";
-    ctx.fillText("UNNAMED / OPEN ARCHIVE", width - 78, 104);
-    ctx.strokeStyle = glow;
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(78, 142); ctx.lineTo(width - 78, 142); ctx.stroke();
-
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#edf0e5";
-    ctx.font = "600 54px Georgia, serif";
-    const titleLines = wrapText(ctx, title.toUpperCase(), width - 156).slice(0, 4);
-    titleLines.forEach((line, lineIndex) => ctx.fillText(line, 78, 238 + lineIndex * 62));
-
-    ctx.fillStyle = "#b9c9bb";
-    ctx.font = "27px monospace";
-    const bodyLines = wrapText(ctx, body, width - 156).slice(0, 13);
-    const bodyTop = 238 + titleLines.length * 62 + 72;
-    bodyLines.forEach((line, lineIndex) => ctx.fillText(line, 78, bodyTop + lineIndex * 38));
-
-    ctx.strokeStyle = "rgba(184, 211, 187, .18)";
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(78, height - 166); ctx.lineTo(width - 78, height - 166); ctx.stroke();
-    ctx.fillStyle = accent;
-    ctx.font = "18px monospace";
-    ctx.fillText("THE PERSON STAYS HIDDEN", 78, height - 112);
-    ctx.textAlign = "right";
-    ctx.fillText("READ / MOVE / RETURN", width - 78, height - 112);
-  });
+  return exhibitionGraphic(title, body, index);
 }
 
-/**
- * A local exhibition texture inspired by shielded-proof explorers. It is
- * intentionally sample data: HIDN should not imply that it has fetched or
- * verified a live NFT until a real source is wired in.
- */
-function proofArtifactTexture(index: number): THREE.CanvasTexture {
-  const width = 768;
-  const height = 432;
-  const accents = ["#b8dc68", "#86c6ba", "#d0c78d"];
-  const accent = accents[index % accents.length];
-  const kind = index % 3;
-  return canvasTexture(width, height, (ctx) => {
-    ctx.fillStyle = "#06100b";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "rgba(196, 218, 188, .035)";
-    ctx.fillRect(22, 22, width - 44, height - 44);
 
-    // Subtle CRT scanlines keep the screen feeling like an installation,
-    // while the low contrast preserves the underground museum atmosphere.
-    ctx.strokeStyle = "rgba(196, 218, 188, .075)";
-    ctx.lineWidth = 1;
-    for (let y = 18; y < height; y += 12) {
-      ctx.beginPath(); ctx.moveTo(22, y); ctx.lineTo(width - 22, y); ctx.stroke();
-    }
-    ctx.strokeStyle = "rgba(196, 218, 188, .34)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(28, 28, width - 56, height - 56);
-    ctx.strokeStyle = "rgba(196, 218, 188, .14)";
-    ctx.strokeRect(42, 42, width - 84, height - 84);
-
-    ctx.save();
-    ctx.translate(width * .5, height * .51);
-    ctx.strokeStyle = accent;
-    ctx.fillStyle = "rgba(184, 220, 104, .08)";
-    ctx.lineWidth = 3;
-    if (kind === 0) {
-      // Shield / proof glyph.
-      ctx.beginPath();
-      ctx.moveTo(0, -116); ctx.lineTo(92, -76); ctx.lineTo(72, 72);
-      ctx.lineTo(0, 124); ctx.lineTo(-72, 72); ctx.lineTo(-92, -76); ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(-42, -4); ctx.lineTo(-12, 27); ctx.lineTo(53, -42); ctx.stroke();
-      for (const [x, y] of [[-92, -76], [92, -76], [-72, 72], [72, 72], [0, 124]]) {
-        ctx.fillRect(x - 5, y - 5, 10, 10);
-      }
-    } else if (kind === 1) {
-      // A procedural “identity” portrait made from proof cells.
-      ctx.strokeRect(-112, -112, 224, 224);
-      ctx.strokeRect(-78, -78, 156, 156);
-      for (let row = -3; row <= 3; row++) {
-        for (let col = -3; col <= 3; col++) {
-          const active = (row * 7 + col * 11 + index * 5) % 4 !== 0;
-          if (active) ctx.fillRect(col * 28 - 8, row * 28 - 8, 16, 16);
-        }
-      }
-      ctx.beginPath(); ctx.arc(0, 0, 47, 0, Math.PI * 2); ctx.stroke();
-    } else {
-      // A small network of commitments, reminiscent of a live market wall.
-      const nodes = Array.from({ length: 10 }, (_, node) => ({
-        x: Math.sin(node * 2.2 + index) * 116,
-        y: Math.cos(node * 1.7 + index * .6) * 96,
-      }));
-      nodes.forEach((node, nodeIndex) => {
-        const next = nodes[(nodeIndex + 3) % nodes.length];
-        ctx.beginPath(); ctx.moveTo(node.x, node.y); ctx.lineTo(next.x, next.y); ctx.stroke();
-      });
-      nodes.forEach((node) => { ctx.fillStyle = accent; ctx.fillRect(node.x - 5, node.y - 5, 10, 10); });
-      ctx.strokeRect(-142, -122, 284, 244);
-    }
-    ctx.restore();
-
-    ctx.fillStyle = accent;
-    ctx.font = "24px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("zkSNARKS_", 60, 82);
-    ctx.fillStyle = "#a3b6a6";
-    ctx.font = "16px monospace";
-    ctx.fillText("LOCAL PROOF ARTIFACT / DEMO DISPLAY", 60, height - 58);
-    ctx.textAlign = "right";
-    ctx.fillText(`ZCASH / SHIELDED / ${String(index + 1).padStart(3, "0")}`, width - 60, 82);
-    ctx.fillText("FLOOR_ 00  ·  NETWORK ZCASH", width - 60, height - 58);
-
-    // Deterministic signal breaks make every monitor feel slightly alive.
-    ctx.fillStyle = accent;
-    ctx.globalAlpha = .32;
-    for (let block = 0; block < 5; block++) {
-      const x = 86 + ((index * 113 + block * 71) % 560);
-      const y = 112 + ((index * 47 + block * 29) % 220);
-      ctx.fillRect(x, y, 18 + (block % 3) * 16, 3 + (block % 2) * 5);
-    }
-    ctx.globalAlpha = 1;
-  });
-}
-
-function shieldedScanTexture(stats: ShieldedScanStats | null, state: "loading" | "live" | "unavailable"): THREE.CanvasTexture {
-  const width = 1600;
-  const height = 420;
-  const formatNumber = (value: number | null, maximumFractionDigits = 0): string => value === null
-    ? "—"
-    : new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value);
-  const formatUsd = (value: number | null): string => value === null
-    ? "—"
-    : new Intl.NumberFormat("en-US", { currency: "USD", maximumFractionDigits: value < 1 ? 4 : 2, style: "currency" }).format(value);
-  const formatCompactUsd = (value: number | null): string => value === null
-    ? "—"
-    : new Intl.NumberFormat("en-US", { currency: "USD", maximumFractionDigits: 2, notation: "compact", style: "currency" }).format(value);
-  return canvasTexture(width, height, (ctx) => {
-    const accent = "#f1c35b";
-    const ink = "#e5eadc";
-    const muted = "#9fb49f";
-    const live = state === "live";
-    ctx.fillStyle = "#06100b";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "rgba(169, 203, 165, .035)";
-    ctx.fillRect(26, 26, width - 52, height - 52);
-    ctx.strokeStyle = "rgba(181, 211, 183, .16)";
-    ctx.lineWidth = 2;
-    for (let y = 18; y < height; y += 12) {
-      ctx.beginPath(); ctx.moveTo(28, y); ctx.lineTo(width - 28, y); ctx.stroke();
-    }
-    ctx.strokeStyle = "rgba(181, 211, 183, .35)";
-    ctx.strokeRect(30, 30, width - 60, height - 60);
-    ctx.strokeStyle = "rgba(241, 195, 91, .42)";
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(68, 72); ctx.lineTo(252, 72); ctx.stroke();
-    ctx.fillStyle = accent;
-    ctx.font = "600 34px monospace";
-    ctx.fillText("ZCASH", 70, 126);
-    ctx.fillStyle = ink;
-    ctx.font = "600 25px monospace";
-    ctx.fillText("SHIELDED SCAN", 70, 166);
-    ctx.fillStyle = muted;
-    ctx.font = "18px monospace";
-    ctx.fillText(live ? "MAINNET / PUBLIC NETWORK METRICS" : state === "loading" ? "CONNECTING / SHIELDEDSCAN" : "DATA UNAVAILABLE / RETRY LATER", 70, 204);
-
-    // A restrained Z glyph turns the data wall into an advertisement-like
-    // object without reproducing external campaign artwork.
-    ctx.save();
-    ctx.translate(170, 306);
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 10;
-    ctx.beginPath(); ctx.moveTo(-58, -52); ctx.lineTo(58, -52); ctx.lineTo(-58, 52); ctx.lineTo(58, 52); ctx.stroke();
-    ctx.restore();
-
-    const metrics = [
-      ["BLOCK HEIGHT", stats ? formatNumber(stats.blockHeight) : "—"],
-      ["TRANSACTIONS / 24H", stats ? formatNumber(stats.transactions24h) : "—"],
-      ["SHIELDED SUPPLY", stats?.shieldedSupplyZec === null || !stats ? "—" : `${formatNumber(stats.shieldedSupplyZec)} ZEC`],
-      ["ZEC PRICE", formatUsd(stats?.priceUsd ?? null)],
-      ["MARKET CAP", formatCompactUsd(stats?.marketCapUsd ?? null)],
-    ];
-    metrics.forEach(([labelText, value], index) => {
-      const x = 330 + index * 246;
-      ctx.fillStyle = "rgba(17, 30, 22, .9)";
-      ctx.fillRect(x, 82, 218, 178);
-      ctx.strokeStyle = index === 0 ? "rgba(241, 195, 91, .56)" : "rgba(181, 211, 183, .2)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, 82, 218, 178);
-      ctx.fillStyle = muted;
-      ctx.font = "16px monospace";
-      ctx.fillText(labelText, x + 18, 120);
-      ctx.fillStyle = ink;
-      ctx.font = "600 28px monospace";
-      ctx.fillText(value, x + 18, 178);
-      ctx.fillStyle = index === 0 ? accent : "#b7c9b5";
-      ctx.fillRect(x + 18, 220, 64 + (index * 18), 5);
-    });
-    ctx.fillStyle = muted;
-    ctx.font = "17px monospace";
-    ctx.fillText("SHIELDEDSCAN / READ-ONLY DISPLAY / HIDN ROOM 00", 70, height - 70);
-    ctx.textAlign = "right";
-    ctx.fillStyle = live ? "#b7c9b5" : accent;
-    ctx.fillText(live ? "LIVE DATA" : state.toUpperCase(), width - 70, height - 70);
-    ctx.textAlign = "left";
-  });
-}
 
 /** Physical geometry, first-person camera and raycast navigation. No panorama backdrop. */
 export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: boolean, options: MuseumOptions = {}): () => void {
@@ -514,7 +257,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   const worldBackZ = options.foyer ? -17 : singleRoom ? -11 : -((galleryPairs - 1) * 20 + 10);
   const worldDepth = worldFrontZ - worldBackZ;
   const worldCenterZ = (worldFrontZ + worldBackZ) / 2;
-  const emptyRoom = singleRoom && (galleries[0]?.posts.length ?? 0) === 0;
+  const emptyRoom = singleRoom && !options.library && (galleries[0]?.posts.length ?? 0) === 0;
   const abort = new AbortController();
   const events = { signal: abort.signal };
   const textures = new Set<THREE.Texture>();
@@ -522,12 +265,12 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   const materials = new Set<THREE.Material>();
   const occluders: THREE.Object3D[] = [];
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#06100a");
-  scene.fog = new THREE.Fog("#0b1a12", 24, 64);
+  scene.background = new THREE.Color("#101611");
+  scene.fog = new THREE.Fog("#111b15", 28, 78);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.7;
+  renderer.toneMappingExposure = 1.45;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   const canvas = renderer.domElement;
@@ -535,17 +278,23 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", "3D museum. Drag to look around, tap the floor to walk, tap a framed thought to read, and select a room sign to enter. Use W and S to walk, A and D to move sideways, arrow keys to look.");
   host.prepend(canvas);
-  const startingView = options.foyer ? foyerView : savedView;
+  const viewKey = singleRoom ? galleries[0]?.key ?? "general" : "hall";
+  const defaultView = singleRoom ? { ...initialView, yaw: .18, fov: 70 } : initialView;
+  const startingView = options.foyer ? foyerView : roomViews.get(viewKey) ?? defaultView;
   const camera = new THREE.PerspectiveCamera(startingView.fov, 1, 0.08, 110);
   camera.position.set(startingView.x, EYE_HEIGHT, startingView.z);
+  // Portrait screens have a narrow horizontal view; a first visit starts a
+  // few steps back so the zebra and the Zcash pillar are both in frame.
+  if (options.foyer && startingView === foyerView && foyerView.x === foyerInitialView.x && foyerView.z === foyerInitialView.z
+    && host.clientWidth < host.clientHeight * .8) camera.position.z = 6.2;
   camera.rotation.order = "YXZ";
   let yaw = startingView.yaw;
-  if (!options.foyer && window.matchMedia("(max-width: 760px)").matches && savedView.x === initialView.x && savedView.z === initialView.z && savedView.yaw === initialView.yaw) yaw = -.8;
   let pitch = startingView.pitch;
   let disposed = false;
   let animationId = 0;
   let lastTime = 0;
   let dirty = true;
+  const hoverLook = { yaw: 0, pitch: 0, targetYaw: 0, targetPitch: 0 };
   let movement: { path: THREE.Vector3[]; lengths: number[]; distance: number; yaw: number; fromYaw: number; pitch: number; fromPitch: number; started: number; duration: number; complete?: () => void } | undefined;
   let entryStarted: number | undefined;
   let entryComplete = true;
@@ -565,12 +314,12 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   };
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const roomTheme = singleRoom ? galleries[0]?.theme : undefined;
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: emptyRoom ? roomTheme?.floor ?? "#263a2b" : roomTheme?.wall ?? "#1b3023", roughness: .94 });
-  const trimMaterial = new THREE.MeshStandardMaterial({ color: "#53665a", roughness: .58, metalness: .38 });
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: "#07120b", roughness: .8 });
-  const glowMaterial = new THREE.MeshBasicMaterial({ color: "#a8c6a3" });
-  const frameMaterial = new THREE.MeshStandardMaterial({ color: "#303832", roughness: .48, metalness: .5 });
-  const innerMaterial = new THREE.MeshStandardMaterial({ color: "#0e1d13", roughness: .68, metalness: .2 });
+  const wallMaterial = new THREE.MeshStandardMaterial({ color: "#30382f", roughness: .94 });
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: "#596151", roughness: .58, metalness: .38 });
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: "#101711", roughness: .8 });
+  const glowMaterial = new THREE.MeshBasicMaterial({ color: "#bfc9af" });
+  const frameMaterial = new THREE.MeshStandardMaterial({ color: "#343c33", roughness: .48, metalness: .5 });
+  const innerMaterial = new THREE.MeshStandardMaterial({ color: "#171f18", roughness: .68, metalness: .2 });
   [wallMaterial, trimMaterial, darkMaterial, glowMaterial, frameMaterial, innerMaterial].forEach((m) => materials.add(m));
   // Room themes change the architecture and panel content; exhibit hardware
   // stays in HIDN's neutral green so the gallery never turns into a colored
@@ -598,91 +347,6 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   function sculptMaterial<T extends THREE.Material>(material: T): T {
     materials.add(material);
     return material;
-  }
-  function sculptMesh(
-    geometry: THREE.BufferGeometry,
-    material: THREE.Material,
-    parent: THREE.Object3D,
-    position: [number, number, number],
-    rotation: [number, number, number] = [0, 0, 0],
-  ): THREE.Mesh {
-    geometries.add(geometry);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(...position);
-    mesh.rotation.set(...rotation);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    parent.add(mesh);
-    return mesh;
-  }
-  function makeZebraSculpture(): THREE.Group {
-    const zebra = new THREE.Group();
-    const ivory = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#e3dec9", roughness: .48, metalness: .12 }));
-    const stripe = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#111914", roughness: .34, metalness: .2 }));
-    const muzzle = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#252c24", roughness: .6 }));
-    const eye = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#e7b84a", emissive: "#7b4b0e", emissiveIntensity: .45, roughness: .25 }));
-
-    sculptMesh(new THREE.CapsuleGeometry(.52, 1.35, 8, 14), ivory, zebra, [0, 2.12, 0], [0, 0, Math.PI / 2]);
-    for (const x of [-.62, -.38, -.14, .1, .34, .58]) {
-      // The body runs along X, so each stripe ring needs its normal on X.
-      // Rotating the torus this way keeps the pattern readable from the foyer
-      // camera instead of collapsing into a nearly white animal silhouette.
-      sculptMesh(new THREE.TorusGeometry(.505, .06, 8, 18), stripe, zebra, [x, 2.12, 0], [0, Math.PI / 2, 0]);
-    }
-
-    sculptMesh(new THREE.CapsuleGeometry(.31, .82, 8, 12), ivory, zebra, [-.77, 2.68, 0], [0, 0, -.18]);
-    for (const y of [2.34, 2.56, 2.78]) {
-      // The neck runs vertically, so its rings need their normal on Y.
-      sculptMesh(new THREE.TorusGeometry(.315, .05, 8, 16), stripe, zebra, [-.82, y, 0], [Math.PI / 2, 0, 0]);
-    }
-    sculptMesh(new THREE.BoxGeometry(.62, .38, .38), ivory, zebra, [-1.2, 3.04, 0], [0, 0, -.08]);
-    sculptMesh(new THREE.BoxGeometry(.3, .23, .32), muzzle, zebra, [-1.54, 2.98, 0]);
-    sculptMesh(new THREE.SphereGeometry(.065, 8, 8), eye, zebra, [-1.31, 3.12, .2]);
-    sculptMesh(new THREE.SphereGeometry(.065, 8, 8), eye, zebra, [-1.31, 3.12, -.2]);
-    for (const z of [-.14, .14]) {
-      sculptMesh(new THREE.ConeGeometry(.1, .28, 4), stripe, zebra, [-1.18, 3.35, z], [0, 0, -.18]);
-    }
-
-    for (const x of [-.45, .43]) {
-      for (const z of [-.25, .25]) {
-        sculptMesh(new THREE.CylinderGeometry(.095, .11, .35, 8), ivory, zebra, [x, 1.43, z]);
-        sculptMesh(new THREE.CylinderGeometry(.085, .1, .32, 8), stripe, zebra, [x, 1.1, z]);
-        sculptMesh(new THREE.BoxGeometry(.18, .08, .24), stripe, zebra, [x, .99, z]);
-      }
-    }
-    sculptMesh(new THREE.CylinderGeometry(.045, .065, .48, 8), stripe, zebra, [.9, 2.14, 0], [0, 0, -.65]);
-    sculptMesh(new THREE.ConeGeometry(.1, .2, 5), stripe, zebra, [1.12, 1.96, 0], [0, 0, -.65]);
-    for (const x of [-.82, -.67, -.52]) {
-      sculptMesh(new THREE.BoxGeometry(.06, .28, .08), stripe, zebra, [x, 3.05, -.16], [0, 0, .22]);
-    }
-    zebra.scale.setScalar(.78);
-    zebra.position.y = .25;
-    return zebra;
-  }
-  function makeZcashSculpture(): THREE.Group {
-    const zcash = new THREE.Group();
-    const gold = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#f4b728", emissive: "#6b3b08", emissiveIntensity: .35, roughness: .26, metalness: .78 }));
-    const goldEdge = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#ffd76a", emissive: "#7b4c0e", emissiveIntensity: .28, roughness: .22, metalness: .82 }));
-    const shadow = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#1a211b", roughness: .5, metalness: .28 }));
-    sculptMesh(new THREE.CylinderGeometry(.86, .86, .18, 48), gold, zcash, [0, 2.1, 0], [Math.PI / 2, 0, 0]);
-    sculptMesh(new THREE.TorusGeometry(.78, .055, 10, 48), goldEdge, zcash, [0, 2.1, .12], [Math.PI / 2, 0, 0]);
-    sculptMesh(new THREE.CylinderGeometry(.68, .68, .035, 48), shadow, zcash, [0, 2.1, .12], [Math.PI / 2, 0, 0]);
-    const zShape = new THREE.Shape();
-    zShape.moveTo(-.47, .42);
-    zShape.lineTo(.47, .42);
-    zShape.lineTo(.47, .24);
-    zShape.lineTo(-.16, -.24);
-    zShape.lineTo(.47, -.24);
-    zShape.lineTo(.47, -.42);
-    zShape.lineTo(-.47, -.42);
-    zShape.lineTo(-.47, -.24);
-    zShape.lineTo(.16, .24);
-    zShape.lineTo(-.47, .24);
-    zShape.closePath();
-    sculptMesh(new THREE.ExtrudeGeometry(zShape, { depth: .07, bevelEnabled: true, bevelThickness: .018, bevelSize: .018, bevelSegments: 2 }), goldEdge, zcash, [0, 2.1, .16]);
-    zcash.scale.setScalar(.86);
-    zcash.position.y = .25;
-    return zcash;
   }
   function label(text: string, w: number, h: number, x: number, y: number, z: number, angle = 0, fontSize = 32, alwaysVisible = false): void {
     const map = texture(canvasTexture(1024, 256, (ctx) => {
@@ -737,21 +401,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       box(.08, .12, worldDepth, side * 11.96, 5.75, worldCenterZ, trimMaterial);
     }
     box(5.35, .035, .04, 0, 4.1, worldFrontZ - .16, accentMaterial(roomTheme));
-    label(`${galleries[0]?.label ?? "ROOM"} / WITHOUT NAMES`, 5.2, 1, 0, 2.6, worldBackZ + .2, Math.PI);
-    if (emptyRoom) {
-      const quietPanelMaterial = new THREE.MeshStandardMaterial({
-        color: roomTheme?.floor ?? "#2a3d2e",
-        emissive: roomTheme?.glow ?? "#3e7650",
-        emissiveIntensity: .2,
-        roughness: .72,
-      });
-      materials.add(quietPanelMaterial);
-      box(7.2, 2.2, .12, 0, 2.6, worldBackZ + .11, quietPanelMaterial);
-      box(7.35, .05, .15, 0, 3.82, worldBackZ + .19, accentMaterial(roomTheme));
-      box(7.35, .05, .15, 0, 1.38, worldBackZ + .19, accentMaterial(roomTheme));
-      label("NO SIGNALS YET", 4.4, .62, 0, 2.6, worldBackZ + .2, Math.PI);
-    }
-    label("MAIN ROOM", 3.1, .6, 0, 4.88, worldFrontZ - .18);
+    label("HALLWAY", 4.8, .8, 0, 4.78, worldFrontZ - .2, Math.PI, 64);
     const returnMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
     materials.add(returnMaterial);
     const returnHit = plane(5.45, 4.25, returnMaterial);
@@ -782,7 +432,6 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       box(.08, .12, worldDepth, side * 11.96, 5.75, worldCenterZ, trimMaterial);
     }
     label("THE THOUGHT IS VISIBLE. THE PERSON STAYS HIDDEN.", 7.2, 1.3, 0, 4.8, worldFrontZ - .2);
-    label("HIDN / THE ROOMS", 4.5, 1, 0, 2.6, worldBackZ + .2, Math.PI);
     // Open stair landings connect each pair of rooms without adding another
     // threshold. They are shallow visual transitions, so walking stays easy.
     for (let pair = 0; pair < galleryPairs - 1; pair++) {
@@ -799,43 +448,37 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       const roomAccent = accentMaterial(room.theme);
       // The opening remains open. This is a signboard, not a door: it names
       // the room while leaving the visitor a clear line into the gallery.
-      const signboard = box(.18, .78, 2.02, x - room.side * .09, 4.08, z, darkMaterial);
+      // The sign sits on the arch face, above the portal opening.
+      const signX = room.side * 3.26;
+      const signboard = box(.12, .78, 2.6, signX, 5.02, z, darkMaterial);
       signboard.userData.roomIndex = room.index;
-      box(.04, .04, 1.82, x - room.side * .21, 4.45, z, roomAccent);
-      box(.04, .04, 1.82, x - room.side * .21, 3.71, z, roomAccent);
-      box(.04, .66, .04, x - room.side * .21, 4.08, z - .91, roomAccent);
-      box(.04, .66, .04, x - room.side * .21, 4.08, z + .91, roomAccent);
+      box(.03, .03, 2.4, signX - room.side * .07, 5.39, z, roomAccent);
+      box(.03, .03, 2.4, signX - room.side * .07, 4.65, z, roomAccent);
       const hitMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
       materials.add(hitMaterial);
       const hit = box(.46, 4.25, 3.45, x, 2.1, z, hitMaterial);
       hit.userData.roomIndex = room.index;
       entranceObjects.push(hit);
       box(.05, .035, 3.15, room.side * 11.92, .27, z, roomAccent);
-      box(.12, .12, .2, x - room.side * .24, 4.83, z, room.hasNewSignal ? roomAccent : trimMaterial);
-      label(room.label, 1.7, .3, x - room.side * .25, 4.22, z, room.side > 0 ? -Math.PI / 2 : Math.PI / 2, 24, true);
-      label(room.description, 1.62, .2, x - room.side * .25, 3.93, z, room.side > 0 ? -Math.PI / 2 : Math.PI / 2, 18, true);
+      box(.1, .1, .16, signX - room.side * .08, 5.6, z, room.hasNewSignal ? roomAccent : trimMaterial);
+      label(room.label, 2.3, .56, signX - room.side * .09, 5.04, z, room.side > 0 ? -Math.PI / 2 : Math.PI / 2, 72);
     }
   }
 
   const floorMap = texture(canvasTexture(1024, 1024, (ctx) => {
-    ctx.fillStyle = roomTheme?.floor ?? "#282e28"; ctx.fillRect(0, 0, 1024, 1024);
-    for (let row = 0; row < 16; row++) {
-      for (let col = 0; col < 6; col++) {
-        const x = col * 205 - (row % 2) * 102;
-        const shade = 21 + ((row * 17 + col * 23) % 10);
-        ctx.fillStyle = `rgb(${shade + 4},${shade + 7},${shade})`;
-        ctx.fillRect(x + 1, row * 64 + 1, 203, 62);
-        ctx.strokeStyle = "rgba(163,190,160,.07)";
-        for (let line = 0; line < 6; line++) {
-          ctx.beginPath(); ctx.moveTo(x + 3, row * 64 + 9 + line * 8); ctx.lineTo(x + 200, row * 64 + 9 + line * 8); ctx.stroke();
-        }
+    ctx.fillStyle = "#222820"; ctx.fillRect(0, 0, 1024, 1024);
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        const shade = 43 + ((row * 17 + col * 23) % 6);
+        ctx.fillStyle = `rgb(${shade + 2},${shade + 5},${shade})`;
+        ctx.fillRect(col * 256 + 1, row * 256 + 1, 254, 254);
       }
     }
   }));
   floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
   floorMap.repeat.set(4, Math.max(5.7, worldDepth / 6));
   floorMap.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  const floorMaterial = new THREE.MeshStandardMaterial({ map: floorMap, roughness: .78, metalness: .03 });
+  const floorMaterial = new THREE.MeshStandardMaterial({ map: floorMap, roughness: .34, metalness: .12 });
   materials.add(floorMaterial);
   const floor = plane(24, worldDepth, floorMaterial);
   floor.position.z = worldCenterZ;
@@ -864,24 +507,24 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   const starsGeometry = new THREE.BufferGeometry();
   starsGeometry.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
   geometries.add(starsGeometry);
-  const starsMaterial = new THREE.PointsMaterial({ color: "#88ab91", size: .065, transparent: true, opacity: .45 });
+  const starsMaterial = new THREE.PointsMaterial({ color: "#88ab91", size: .065, transparent: true, opacity: .12 });
   materials.add(starsMaterial);
   scene.add(new THREE.Points(starsGeometry, starsMaterial));
 
   const obstacles: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = [];
+  const installationHooks: InstallationHooks = { live: [], tick: [], frame: [], camera };
+  const exhibitionBuilder: ExhibitionBuilder = {
+    scene, box, plane, obstacles, material: sculptMaterial, texture,
+    geometry: (geometry) => { geometries.add(geometry); return geometry; },
+  };
+  buildExhibitionArchitecture(exhibitionBuilder, {
+    kind: options.foyer ? "main" : singleRoom ? "room" : "hall",
+    index: galleries[0]?.roomIndex ?? 0,
+    title: galleries[0]?.label ?? "The private room.",
+    description: galleries[0]?.description ?? "A room for anonymous thoughts.",
+    back: worldBackZ, front: worldFrontZ,
+  });
   if (options.foyer) {
-    for (const x of [-5.2, 5.2]) {
-      for (const z of [-7, 5]) {
-        const geometry = new THREE.CylinderGeometry(.22, .26, 5.8, 20);
-        geometries.add(geometry);
-        const pillar = new THREE.Mesh(geometry, trimMaterial);
-        pillar.position.set(x, 2.9, z); scene.add(pillar);
-        pillar.castShadow = true;
-        pillar.receiveShadow = true;
-        occluders.push(pillar);
-        obstacles.push({ minX: x - .6, maxX: x + .6, minZ: z - .6, maxZ: z + .6 });
-      }
-    }
     box(5.2, 3.4, .24, -4.6, 1.7, 8, wallMaterial);
     box(5.2, .04, .3, -4.6, 3.43, 8, trimMaterial);
     box(5.2, .025, .025, -4.6, .19, 8.15, glowMaterial);
@@ -936,29 +579,18 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       box(5.42, .72, .035, 0, 5.05, -16.71, innerMaterial);
       box(5.84, .045, .2, 0, 5.59, -16.83, trimMaterial);
       box(5.84, .045, .2, 0, 4.51, -16.83, trimMaterial);
-      label("HALLWAY", 5.22, .38, 0, 5.23, -16.61, 0, 58, true);
-      label("THE ROOMS", 5.22, .24, 0, 4.84, -16.61, 0, 32, true);
+      label("HALLWAY", 5.22, .75, 0, 5.19, -16.61, 0, 156);
+      label("THE ROOMS", 5.22, .34, 0, 4.82, -16.61, 0, 78);
     } else {
       box(5.94, .26, .31, 0, 4.45, -16.83, frameMaterial);
       label("ENTER THE ROOM", 3.1, .6, 0, 4.88, -16.81);
     }
-    // Quiet, stationary artifacts on plinths make the public foyer a gallery.
-    const artifactSpots = [
-      { x: -2.1, z: -9.8, sculpture: makeZebraSculpture() },
-      { x: 2.1, z: -9.8, sculpture: makeZcashSculpture() },
-    ];
-    artifactSpots.forEach(({ x, z, sculpture }) => {
-      box(1.35, .95, 1.35, x, .475, z, darkMaterial);
-      box(1.43, .055, 1.43, x, .97, z, trimMaterial);
-      sculpture.position.set(x, 0, z);
-      scene.add(sculpture);
-      occluders.push(sculpture);
-      obstacles.push({ minX: x - .94, maxX: x + .94, minZ: z - .94, maxZ: z + .94 });
-    });
+    // The zebra and the Zcash pillar share one lit rotunda before the door.
+    buildMainRoomInstallation(exhibitionBuilder, installationHooks, -5.6);
   }
 
-  scene.add(new THREE.HemisphereLight("#c2dcca", "#26392a", emptyRoom ? 1.85 : 1.5));
-  const ceilingLight = new THREE.DirectionalLight("#e0ead8", emptyRoom ? 2.05 : 1.7);
+  scene.add(new THREE.HemisphereLight("#e0e1ce", "#283326", 1.75));
+  const ceilingLight = new THREE.DirectionalLight("#eee7d5", 2.2);
   ceilingLight.position.set(4, 8, 10);
   ceilingLight.castShadow = true;
   ceilingLight.shadow.mapSize.set(1024, 1024);
@@ -970,7 +602,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   scene.add(ceilingLight);
   const backLight = new THREE.DirectionalLight("#b7cbb4", emptyRoom ? 1.18 : .94);
   backLight.position.set(-8, 6, -14); scene.add(backLight);
-  const undergroundGlow = new THREE.PointLight("#5c9569", emptyRoom ? 1.02 : .74, 30, 1.7);
+  const undergroundGlow = new THREE.PointLight("#b0c1a2", .8, 30, 1.7);
   undergroundGlow.position.set(0, 2.4, -10);
   scene.add(undergroundGlow);
   // Keep the hallway readable without flattening the underground mood. This
@@ -1014,7 +646,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       const offsets = [-12, -7.2, -2.4, 2.4, 7.2, 12];
       const slots = [-1, 1].flatMap((side) => offsets.map((z, index) => ({
         x: side * 11.82,
-        y: index % 2 === 0 ? 2.08 : 4.42,
+        y: index % 2 === 0 ? 2.95 : 2.6,
         z,
         angle: side < 0 ? Math.PI / 2 : -Math.PI / 2,
       })));
@@ -1022,21 +654,31 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     })()
     : singleRoom
       ? (() => {
-        const roomPosts = galleries[0]?.posts ?? posts;
-        const sideOffsets = [-8.2, -4.1, 0, 4.1, 8.2];
-        const wallSlots = [-1, 1].flatMap((side) => sideOffsets.map((z, index) => ({
-          x: side * 11.82,
-          y: index % 2 === 0 ? 2.08 : 4.42,
-          z,
-          angle: side < 0 ? Math.PI / 2 : -Math.PI / 2,
+        // Confessions hang in the room's own installation first; only the
+        // overflow reaches the side walls, so no frame is ever empty.
+        const styleCapacity = options.library ? 0 : CONFESSION_STYLE_CAPACITY[confessionStyleFor(galleries[0]?.roomIndex ?? 0)];
+        const roomPosts = (galleries[0]?.posts ?? posts).slice(styleCapacity);
+        // Side walls fill from the entrance inward; larger rooms add two
+        // freestanding partitions with a thought on each face.
+        const wallSlots = [8.2, 4.1, 0, -4.1, -8.2].flatMap((z) => [-1, 1].map((side) => ({
+          x: side * 11.82, y: Math.abs(z) === 4.1 ? 2.7 : 2.95, z, angle: side < 0 ? Math.PI / 2 : -Math.PI / 2,
         })));
-        const endSlots = [-7, -2.33, 2.33, 7].map((x) => ({
-          x,
-          y: 2.1,
-          z: worldBackZ + .16,
-          angle: 0,
-        }));
-        return [...wallSlots, ...endSlots].map((slot, index) => ({ ...slot, post: roomPosts[index] }));
+        const partitionSlots = [-1, 1].flatMap((side) => [
+          { x: side * 6.82, y: 2.2, z: 4.5, angle: side < 0 ? -Math.PI / 2 : Math.PI / 2 },
+          { x: side * 7.18, y: 2.2, z: 4.5, angle: side < 0 ? Math.PI / 2 : -Math.PI / 2 },
+        ]);
+        // Partitions go up only when every face will hold a thought, so a
+        // freestanding wall is never left blank.
+        const usesPartitions = roomPosts.length >= 6 + partitionSlots.length;
+        if (usesPartitions) {
+          for (const side of [-1, 1]) {
+            box(.3, 3.7, 3.6, side * 7, 1.85, 4.5, wallMaterial);
+            box(.34, .06, 3.64, side * 7, 3.72, 4.5, trimMaterial);
+            obstacles.push({ minX: side * 7 - .5, maxX: side * 7 + .5, minZ: 2.4, maxZ: 6.6 });
+          }
+        }
+        const slots = usesPartitions ? [...wallSlots.slice(0, 6), ...partitionSlots, ...wallSlots.slice(6)] : wallSlots;
+        return slots.map((slot, index) => ({ ...slot, post: roomPosts[index] }));
       })()
       : galleryLayout.flatMap((room) => {
         const offsets = [-7.2, -3.6, 0, 3.6, 7.2];
@@ -1061,18 +703,24 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     scene.add(group);
     const w = card.width;
     const h = card.height;
-    box(w + .28, h + .28, .1, 0, 0, -.035, darkMaterial, group);
-    box(w + .2, .08, .14, 0, (h + .12) / 2, .06, frameMaterial, group);
-    box(w + .2, .08, .14, 0, -(h + .12) / 2, .06, frameMaterial, group);
-    box(.08, h + .18, .14, -(w + .12) / 2, 0, .06, frameMaterial, group);
-    box(.08, h + .18, .14, (w + .12) / 2, 0, .06, frameMaterial, group);
+    // Interpretive panels float off full-height architectural backings.
+    // Alternate the mounts instead of repeating a grid of picture frames.
+    if (options.foyer || singleRoom) {
+      box(w + .36, 4.9, .08, 0, 2.65 - (placement.y ?? 2.25), -.11, index % 3 === 0 ? trimMaterial : darkMaterial, group);
+    }
+    box(w + .08, h + .08, .075, 0, 0, -.015, darkMaterial, group);
+    box(w + .08, .027, .085, 0, (h + .04) / 2, .06, frameMaterial, group);
+    box(w + .08, .027, .085, 0, -(h + .04) / 2, .06, frameMaterial, group);
+    box(.027, h + .06, .085, -(w + .04) / 2, 0, .06, frameMaterial, group);
+    box(.027, h + .06, .085, (w + .04) / 2, 0, .06, frameMaterial, group);
     box(w + .04, h + .04, .035, 0, 0, .08, innerMaterial, group);
     const map = texture(postTexture(post, index, signal, placementTheme));
     map.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
     const mat = new THREE.MeshBasicMaterial({ map, toneMapped: false, fog: false });
     materials.add(mat);
     const surface = plane(w, h, mat, group);
-    surface.position.z = .105; surface.userData.exhibitIndex = index;
+    const exhibitIndex = exhibits.length;
+    surface.position.z = .105; surface.userData.exhibitIndex = exhibitIndex;
     exhibits.push({ group, surface, position: group.position.clone(), normal: new THREE.Vector3(Math.sin(placement.angle), 0, Math.cos(placement.angle)), post, frameWidth: w + .28 });
     // The frame is deliberately neutral. Room color comes from the ceiling
     // fixtures and point lights, never from colored picture-frame hardware.
@@ -1089,217 +737,51 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     } else if (card.style === "signal") {
       box(.035, h * .72, .05, -(w / 2 + .16), 0, .16, frameMaterial, group);
     }
-    group.children.forEach((object) => { object.userData.exhibitIndex = index; });
+    group.children.forEach((object) => { object.userData.exhibitIndex = exhibitIndex; });
   });
 
-  // A themed room has a second, slower exhibition layer: an island that can
-  // be walked around, a shallow archival case in the rear wall, and a few
-  // suspended frames above the visitor path. They are deliberately made from
-  // local geometry and generated textures so the references guide the space
-  // without importing someone else's photography or artwork.
-  const roomInteriorLights: Array<{ light: THREE.PointLight; base: number; phase: number }> = [];
-  const shieldedScreens: ShieldedScreen[] = [];
+  // Each themed room hangs its confessions in its own installation style
+  // (museum-confessions), around a light shared layer of live data, scrolls
+  // and a wallet kiosk. All geometry and textures are generated locally.
   function addRoomInterior(): void {
     if (!singleRoom) return;
-    const roomPosts = galleries[0]?.posts ?? posts;
     const roomIndex = galleries[0]?.roomIndex ?? 0;
-    const exhibitionMode = roomIndex % 3;
-    const scanRoom = emptyRoom;
-    const islandMaterial = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#c9cec1", roughness: .58, metalness: .06 }));
-    const islandEdgeMaterial = sculptMaterial(new THREE.MeshStandardMaterial({ color: "#6f7e71", roughness: .44, metalness: .34 }));
-    const glassMaterial = sculptMaterial(new THREE.MeshStandardMaterial({
-      color: "#b7c9b5",
-      transparent: true,
-      opacity: .14,
-      roughness: .12,
-      metalness: .04,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }));
-    const relicMaterial = sculptMaterial(new THREE.MeshStandardMaterial({
-      color: "#dde4d2",
-      emissive: "#5b7f64",
-      emissiveIntensity: .28,
-      roughness: .3,
-      metalness: .28,
-    }));
-    const island = new THREE.Group();
-    const islandX = exhibitionMode === 1 ? -2.15 : exhibitionMode === 2 ? 2.15 : 0;
-    const islandZ = exhibitionMode === 2 ? -1.65 : -2.8;
-    const islandDepthScale = exhibitionMode === 2 ? .35 : .46;
-    island.position.set(islandX, 0, islandZ);
-    scene.add(island);
-
-    const islandBase = sculptMesh(new THREE.CylinderGeometry(2.8, 2.98, .34, 48), islandMaterial, island, [0, .17, 0]);
-    islandBase.scale.z = islandDepthScale;
-    const islandTop = sculptMesh(new THREE.CylinderGeometry(2.62, 2.72, .08, 48), islandMaterial, island, [0, .38, 0]);
-    islandTop.scale.z = islandDepthScale;
-    const islandRing = sculptMesh(new THREE.TorusGeometry(2.47, .035, 8, 48), glowMaterial, island, [0, .44, 0], [Math.PI / 2, 0, 0]);
-    islandRing.scale.z = islandDepthScale;
-    // A low transparent case keeps the center readable while giving the room
-    // a single object visitors can orbit, like a real museum island.
-    const displayCase = new THREE.Group();
-    displayCase.position.set(0, 1.12, 0);
-    island.add(displayCase);
-    box(3.86, 1.38, .035, 0, 0, -.72, glassMaterial, displayCase);
-    box(3.86, 1.38, .035, 0, 0, .72, glassMaterial, displayCase);
-    box(.035, 1.38, 1.44, -1.93, 0, 0, glassMaterial, displayCase);
-    box(.035, 1.38, 1.44, 1.93, 0, 0, glassMaterial, displayCase);
-    box(3.92, .045, .05, 0, -.7, .74, islandEdgeMaterial, displayCase);
-    box(3.92, .045, .05, 0, .7, .74, islandEdgeMaterial, displayCase);
-    box(.05, 1.44, .05, -1.96, 0, .74, islandEdgeMaterial, displayCase);
-    box(.05, 1.44, .05, 1.96, 0, .74, islandEdgeMaterial, displayCase);
-    sculptMesh(new THREE.OctahedronGeometry(.46, 1), relicMaterial, displayCase, [0, .03, .04], [0, .22, 0]);
-    sculptMesh(new THREE.TorusGeometry(.59, .028, 8, 32), glowMaterial, displayCase, [0, .03, .04], [Math.PI / 2, 0, 0]);
-    const islandLight = new THREE.PointLight("#dfe5d3", .82, 10, 1.8);
-    islandLight.position.set(islandX, 2.65, islandZ);
-    scene.add(islandLight);
-    roomInteriorLights.push({ light: islandLight, base: .82, phase: .8 });
-    obstacles.push({ minX: islandX - 3.18, maxX: islandX + 3.18, minZ: islandZ - 1.75, maxZ: islandZ + 1.75 });
-
-    const addShieldedScanScreen = (): void => {
-      const screenGroup = new THREE.Group();
-      screenGroup.position.set(0, 3.62, worldBackZ + .12);
-      scene.add(screenGroup);
-      const width = 8.8;
-      const height = 1.62;
-      box(width + .34, height + .34, .18, 0, 0, 0, darkMaterial, screenGroup);
-      box(width + .16, .065, .2, 0, (height + .12) / 2, .11, frameMaterial, screenGroup);
-      box(width + .16, .065, .2, 0, -(height + .12) / 2, .11, frameMaterial, screenGroup);
-      box(.07, height + .12, .2, -(width + .08) / 2, 0, .11, frameMaterial, screenGroup);
-      box(.07, height + .12, .2, (width + .08) / 2, 0, .11, frameMaterial, screenGroup);
-      const map = shieldedScanTexture(null, "loading");
-      textures.add(map);
-      map.wrapS = map.wrapT = THREE.RepeatWrapping;
-      const screenMaterial = new THREE.MeshBasicMaterial({ map, transparent: true, toneMapped: false, fog: false });
-      materials.add(screenMaterial);
-      const surface = plane(width, height, screenMaterial, screenGroup);
-      surface.position.z = .21;
-      const glitchMaterial = new THREE.MeshBasicMaterial({ color: "#f1c35b", transparent: true, opacity: 0, depthWrite: false });
-      materials.add(glitchMaterial);
-      const glitchBar = box(width * .84, .026, .025, 0, 0, .23, glitchMaterial, screenGroup);
-      shieldedScreens.push({ screenMaterial, texture: map, glitchBar, phase: 2.6 });
-      const screenLight = new THREE.PointLight("#dce2cb", .58, 13, 1.7);
-      screenLight.position.set(0, 3.2, worldBackZ + .9);
-      scene.add(screenLight);
-      roomInteriorLights.push({ light: screenLight, base: .58, phase: 3.1 });
-      void fetchShieldedScanStats().then((stats) => {
-        if (disposed) return;
-        const nextMap = shieldedScanTexture(stats, "live");
-        textures.add(nextMap);
-        nextMap.wrapS = nextMap.wrapT = THREE.RepeatWrapping;
-        screenMaterial.map = nextMap;
-        screenMaterial.needsUpdate = true;
-        const screen = shieldedScreens.at(-1);
-        if (screen) screen.texture = nextMap;
-      }).catch(() => {
-        if (disposed) return;
-        const nextMap = shieldedScanTexture(null, "unavailable");
-        textures.add(nextMap);
-        nextMap.wrapS = nextMap.wrapT = THREE.RepeatWrapping;
-        screenMaterial.map = nextMap;
-        screenMaterial.needsUpdate = true;
-        const screen = shieldedScreens.at(-1);
-        if (screen) screen.texture = nextMap;
+    buildRoomInstallation(exhibitionBuilder, installationHooks, { back: worldBackZ, index: roomIndex, theme: roomTheme });
+    if (options.library) {
+      buildLibraryInstallation(exhibitionBuilder, installationHooks, -2.5);
+    } else {
+      const neutral = { accent: "#c9d3bd", glow: "#a9b69c", trim: "#4b5646", wall: "#171c18", floor: "#222820" };
+      const theme = roomTheme ?? neutral;
+      const roomPosts = galleries[0]?.posts ?? [];
+      const pending: Array<{ surface: THREE.Mesh; post: MuseumPost; width: number }> = [];
+      buildConfessionInstallation({
+        b: exhibitionBuilder, hooks: installationHooks, theme, index: roomIndex, cz: -2.5, front: worldFrontZ, back: worldBackZ,
+        posts: roomPosts.length ? roomPosts : [FIRST_THOUGHT],
+        card: (post, parent, width, height, look: ConfessionLook, i) => {
+          const map = texture(confessionTexture(post, look, theme, width / height, i));
+          const material = new THREE.MeshBasicMaterial({ map, toneMapped: false, fog: false, side: look === "cloth" ? THREE.DoubleSide : THREE.FrontSide });
+          materials.add(material);
+          const surface = plane(width, height, material, parent);
+          if (post !== FIRST_THOUGHT) pending.push({ surface, post: post as MuseumPost, width: width + .3 });
+          return surface;
+        },
       });
-    };
-
-    if (scanRoom) addShieldedScanScreen();
-
-    // One wall case introduces the recessed, archival-display rhythm from the
-    // references without competing with the larger confession frames.
-    const wallCase = new THREE.Group();
-    wallCase.position.set(exhibitionMode === 1 ? 6.25 : -6.25, 3.22, worldBackZ + .1);
-    scene.add(wallCase);
-    const caseWidth = 3.28;
-    const caseHeight = 1.72;
-    box(caseWidth + .26, caseHeight + .26, .16, 0, 0, 0, darkMaterial, wallCase);
-    box(caseWidth + .08, caseHeight + .08, .045, 0, 0, .11, frameMaterial, wallCase);
-    box(caseWidth, caseHeight, .025, 0, 0, .15, innerMaterial, wallCase);
-    const wallMap = texture(roomPosts[1] ? postTexture(roomPosts[1], 31, signal, roomTheme) : proofArtifactTexture(31));
-    const wallMaterial = new THREE.MeshBasicMaterial({ map: wallMap, toneMapped: false, fog: false });
-    materials.add(wallMaterial);
-    const wallSurface = plane(caseWidth - .18, caseHeight - .18, wallMaterial, wallCase);
-    wallSurface.position.z = .17;
-    if (roomPosts[1]) {
-      const exhibitIndex = exhibits.length;
-      wallSurface.userData.exhibitIndex = exhibitIndex;
-      exhibits.push({
-        group: wallCase,
-        surface: wallSurface,
-        position: wallCase.position.clone(),
-        normal: new THREE.Vector3(0, 0, 1),
-        post: roomPosts[1],
-        frameWidth: caseWidth + .26,
-      });
+      // Register every hung confession as a readable exhibit.
+      scene.updateMatrixWorld(true);
+      for (const { surface, post, width } of pending) {
+        const position = surface.getWorldPosition(new THREE.Vector3());
+        const normal = new THREE.Vector3(0, 0, 1).transformDirection(surface.matrixWorld);
+        normal.y = 0;
+        if (normal.lengthSq() < .01) normal.set(0, 0, 1);
+        normal.normalize();
+        const exhibitIndex = exhibits.length;
+        surface.userData.exhibitIndex = exhibitIndex;
+        exhibits.push({ group: surface, surface, position, normal, post, frameWidth: width });
+      }
     }
-    const wallCaseLight = new THREE.PointLight("#dce2cb", .3, 5.5, 1.8);
-    wallCaseLight.position.set(0, .98, .35);
-    wallCase.add(wallCaseLight);
 
-    // Suspended panels echo the ceiling installations in the references. A
-    // slight tilt and varied height keeps them feeling installed, not tiled.
-    const hangingSlots = exhibitionMode === 1
-      ? [
-        { x: -4.5, z: -5.1, y: 4.76, tilt: -.16 },
-        { x: -2.55, z: -4.35, y: 5.15, tilt: .1 },
-        { x: -.65, z: -5.65, y: 4.7, tilt: -.08 },
-        { x: 1.65, z: -4.6, y: 5.03, tilt: .15 },
-        { x: 3.85, z: -5.35, y: 4.82, tilt: -.12 },
-      ]
-      : exhibitionMode === 2
-        ? [
-          { x: -3.35, z: -4.55, y: 5.1, tilt: -.08 },
-          { x: -1.25, z: -5.85, y: 4.78, tilt: .13 },
-          { x: .85, z: -4.65, y: 5.18, tilt: -.1 },
-          { x: 2.9, z: -5.55, y: 4.72, tilt: .08 },
-        ]
-        : [
-          { x: -3.8, z: -5.9, y: 4.85, tilt: -.12 },
-          { x: -2.1, z: -4.7, y: 5.12, tilt: .08 },
-          { x: -.35, z: -5.45, y: 4.72, tilt: -.06 },
-          { x: 1.45, z: -4.55, y: 5.02, tilt: .11 },
-          { x: 3.2, z: -5.8, y: 4.78, tilt: -.1 },
-        ];
-    hangingSlots.forEach((slot, index) => {
-      const post = roomPosts[index];
-      if (!post) return;
-      const width = 1.02 + (index % 2) * .16;
-      const height = 1.18 + ((index + 1) % 3) * .1;
-      const hanging = new THREE.Group();
-      hanging.position.set(slot.x, slot.y, slot.z);
-      hanging.rotation.set(slot.tilt, (index % 3 - 1) * .06, index % 2 ? .045 : -.035);
-      scene.add(hanging);
-      box(width + .18, height + .16, .14, 0, 0, 0, darkMaterial, hanging);
-      box(width + .08, .055, .16, 0, (height + .07) / 2, .1, frameMaterial, hanging);
-      box(width + .08, .055, .16, 0, -(height + .07) / 2, .1, frameMaterial, hanging);
-      box(.06, height + .08, .16, -(width + .04) / 2, 0, .1, frameMaterial, hanging);
-      box(.06, height + .08, .16, (width + .04) / 2, 0, .1, frameMaterial, hanging);
-      const map = texture(postTexture(post, index + 55, signal, roomTheme));
-      map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      const material = new THREE.MeshBasicMaterial({ map, toneMapped: false, fog: false });
-      materials.add(material);
-      const surface = plane(width, height, material, hanging);
-      surface.position.z = .11;
-      const exhibitIndex = exhibits.length;
-      surface.userData.exhibitIndex = exhibitIndex;
-      exhibits.push({
-        group: hanging,
-        surface,
-        position: hanging.position.clone(),
-        normal: new THREE.Vector3(0, 0, 1),
-        post,
-        frameWidth: width + .18,
-      });
-      // Thin suspension rods make the ceiling layer legible against the dark
-      // roof without adding another visual wall.
-      box(.018, .45, .018, 0, height / 2 + .33, 0, trimMaterial, hanging);
-      box(.018, .025, .12, 0, height / 2 + .55, 0, glowMaterial, hanging);
-    });
-    const suspendedLight = new THREE.PointLight("#dce3d2", .38, 8, 1.65);
-    suspendedLight.position.set(0, 4.45, -5.1);
-    scene.add(suspendedLight);
-    roomInteriorLights.push({ light: suspendedLight, base: .38, phase: 2.15 });
+
+
   }
 
   addRoomInterior();
@@ -1314,8 +796,8 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     dimensions?: { width?: number; height?: number },
   ): void {
     const hallwayPanel = !options.foyer && !singleRoom;
-    const width = dimensions?.width ?? (hallwayPanel ? 1.1 : post ? 1.58 : 1.44);
-    const height = dimensions?.height ?? (hallwayPanel ? 2.3 : post ? 2.92 : 2.78);
+    const width = dimensions?.width ?? (hallwayPanel ? 1.35 : post ? 1.58 : 1.44);
+    const height = dimensions?.height ?? (hallwayPanel ? 1.85 : post ? 2.4 : 2.35);
     const panel = new THREE.Group();
     panel.position.set(position.x, position.y, position.z);
     panel.rotation.y = position.angle;
@@ -1327,9 +809,9 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     box(.07, height + .1, .2, -(width + .05) / 2, 0, .1, frameMaterial, panel);
     box(.07, height + .1, .2, (width + .05) / 2, 0, .1, frameMaterial, panel);
 
-    const map = post
+    const map = texture(post
       ? postTexture(post, index + 40, signal, theme)
-      : exhibitionPanelTexture(title, body, index, theme);
+      : exhibitionPanelTexture(title, body, index, theme));
     map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     const material = new THREE.MeshBasicMaterial({ map, toneMapped: false, fog: false });
     materials.add(material);
@@ -1354,164 +836,25 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     box(width + .34, .035, .74, 0, -(height / 2 + .5), 0, frameMaterial, panel);
     box(.09, .46, .14, 0, -(height / 2 + .28), 0, frameMaterial, panel);
     box(width * .42, .025, .035, 0, height / 2 + .14, .24, glowMaterial, panel);
-    const panelLight = new THREE.PointLight("#dce1c9", .34, 6.4, 1.8);
-    panelLight.position.set(0, height / 2 + .32, .3);
-    panel.add(panelLight);
+    if (!hallwayPanel) obstacles.push({ minX: position.x - .9, maxX: position.x + .9, minZ: position.z - .9, maxZ: position.z + .9 });
     occluders.push(panel);
   }
 
   if (options.foyer) {
     addStandingPanel(
-      { x: -6.2, y: 1.95, z: -5.8, angle: Math.PI / 2 },
-      "THE PRIVATE FOYER",
+      { x: -8.25, y: 1.85, z: -5.8, angle: .2 },
+      "THE PRIVATE ROOM",
       "A quiet entrance for unnamed thoughts. Move toward the hallway sign when you are ready.",
       0,
     );
-    addStandingPanel(
-      { x: 6.2, y: 1.95, z: 1.2, angle: -Math.PI / 2 },
-      "ZCASH / SHIELDED",
-      "The room is open. The person remains out of frame.",
-      1,
-    );
-  } else if (singleRoom) {
-    const gallery = galleries[0];
-    const side = (gallery?.roomIndex ?? 0) % 2 === 0 ? -1 : 1;
-    addStandingPanel(
-      { x: side * 6.85, y: 1.95, z: worldFrontZ - 4.4, angle: side > 0 ? -Math.PI / 2 : Math.PI / 2 },
-      gallery?.label ?? "ROOM",
-      gallery?.description ?? "A room for unnamed thoughts.",
-      gallery?.roomIndex ?? 0,
-      gallery?.theme,
-      gallery?.posts[0],
-    );
-    if (emptyRoom) {
-      // Quiet rooms still need the layered reading rhythm from the museum
-      // references. These are local archival labels, not live ZecHub content;
-      // they keep an empty confession wall inhabited until real articles are
-      // connected to the exhibition.
-      const archivalStands = [
-        {
-          x: -5.85,
-          z: 2.6,
-          angle: Math.PI / 2,
-          width: 1.28,
-          height: 2.92,
-          title: "ZEC HUB / ARCHIVE",
-          body: "READING NOTE / SHIELDED VALUE. A quiet index for Zcash writing, proof systems, and the people building around them. LOCAL EXHIBITION / SOURCE PENDING.",
-        },
-        {
-          x: 5.85,
-          z: -.85,
-          angle: -Math.PI / 2,
-          width: 1.52,
-          height: 3.18,
-          title: "SCROLL 01 / ZK-SNARKS",
-          body: "PROVE A STATEMENT WITHOUT REVEALING THE WITNESS. A short reading label for zero-knowledge systems. READ / MOVE / RETURN.",
-        },
-        {
-          x: -3.45,
-          z: -6.25,
-          angle: 0,
-          width: 1.38,
-          height: 2.56,
-          title: "ZEC HUB / FIELD NOTE",
-          body: "PRIVATE BY DEFAULT / PUBLIC BY CHOICE. This room is waiting for live confessions; the archive keeps it inhabited while the wall stays quiet.",
-        },
-      ];
-      archivalStands.forEach((stand, index) => {
-        addStandingPanel(
-          { x: stand.x, y: stand.height / 2 + .58, z: stand.z, angle: stand.angle },
-          stand.title,
-          stand.body,
-          20 + index,
-          gallery?.theme,
-          undefined,
-          { width: stand.width, height: stand.height },
-        );
-      });
-    }
-  } else {
-    // The hallway receives freestanding curator panels in staggered pairs.
-    // Their open spacing preserves a straight sightline to every room sign.
-    galleryLayout.forEach((room) => {
-      addStandingPanel(
-        { x: room.side * 2.46, y: 1.72, z: room.center.z + (room.side < 0 ? 2.65 : -2.65), angle: room.side < 0 ? .1 : -.1 },
-        room.label,
-        room.description,
-        room.index,
-        room.theme,
-      );
-    });
+  } else if (!singleRoom) {
+    if (options.onLibraryEnter) entranceObjects.push(addLibraryPortal(exhibitionBuilder, worldBackZ));
+    buildHallwayInstallation(exhibitionBuilder, installationHooks, galleryLayout.map((room) => ({
+      side: room.side, z: room.center.z, index: room.index, label: room.label, description: room.description, theme: room.theme,
+    })), worldFrontZ, worldBackZ);
   }
 
-  // Proof-artifact displays are a second exhibition layer: small enough to
-  // leave the confession walls readable, but visible enough to make the
-  // connected rooms feel like one collection. Their content is local demo
-  // art until HIDN has a real Zcash/NFT source to read from.
-  const proofDisplays: ProofDisplay[] = [];
-  function addProofDisplay(
-    position: { x: number; y: number; z: number; angle: number },
-    index: number,
-    stand = false,
-  ): void {
-    const display = new THREE.Group();
-    display.position.set(position.x, position.y, position.z);
-    display.rotation.y = position.angle;
-    scene.add(display);
 
-    const width = stand ? 1.78 : 1.48;
-    const height = stand ? 1.08 : .88;
-    box(width + .26, height + .26, .17, 0, 0, 0, darkMaterial, display);
-    box(width + .14, .07, .19, 0, (height + .12) / 2, .1, frameMaterial, display);
-    box(width + .14, .07, .19, 0, -(height + .12) / 2, .1, frameMaterial, display);
-    box(.07, height + .12, .19, -(width + .07) / 2, 0, .1, frameMaterial, display);
-    box(.07, height + .12, .19, (width + .07) / 2, 0, .1, frameMaterial, display);
-
-    const map = proofArtifactTexture(index);
-    textures.add(map);
-    map.wrapS = map.wrapT = THREE.RepeatWrapping;
-    map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    const screenMaterial = new THREE.MeshBasicMaterial({ map, transparent: true, toneMapped: false, fog: false });
-    materials.add(screenMaterial);
-    const screen = plane(width, height, screenMaterial, display);
-    screen.position.z = .205;
-
-    const glitchMaterial = new THREE.MeshBasicMaterial({ color: "#b8dc68", transparent: true, opacity: 0, depthWrite: false });
-    materials.add(glitchMaterial);
-    const glitchBar = box(width * .82, .026, .025, 0, 0, .225, glitchMaterial, display);
-
-    if (stand) {
-      box(.1, .66, .13, 0, -(height / 2 + .4), 0, frameMaterial, display);
-      box(1.72, .1, .56, 0, -(height / 2 + .77), 0, darkMaterial, display);
-      box(1.82, .035, .58, 0, -(height / 2 + .71), 0, frameMaterial, display);
-      box(.12, .16, .5, -.68, -(height / 2 + .84), 0, frameMaterial, display);
-      box(.12, .16, .5, .68, -(height / 2 + .84), 0, frameMaterial, display);
-    }
-
-    proofDisplays.push({ screenMaterial, texture: map, glitchBar, phase: index * 1.73 });
-  }
-
-  if (options.foyer) {
-    addProofDisplay({ x: -11.96, y: 3.45, z: -4.8, angle: Math.PI / 2 }, 0);
-    addProofDisplay({ x: 11.96, y: 3.45, z: 4.8, angle: -Math.PI / 2 }, 1);
-  } else if (singleRoom) {
-    // The side installation reads like a small gallery television without
-    // narrowing the open path through the room.
-    addProofDisplay({ x: 9.92, y: 2.45, z: worldBackZ + 4.6, angle: -Math.PI / 2 }, galleries[0]?.roomIndex ?? 0, true);
-    addProofDisplay({ x: 0, y: 4.82, z: worldBackZ + .08, angle: 0 }, (galleries[0]?.roomIndex ?? 0) + 1);
-  } else {
-    // One quiet “market wall” panel sits above the hallway's open signboards;
-    // the smaller panels repeat the installation along every room approach.
-    galleryLayout.forEach((room) => {
-      addProofDisplay({
-        x: room.side * 3.03,
-        y: 3.55,
-        z: room.center.z - 4.15,
-        angle: room.side > 0 ? -Math.PI / 2 : Math.PI / 2,
-      }, room.index);
-    });
-    addProofDisplay({ x: 0, y: 4.78, z: worldBackZ + .08, angle: 0 }, galleryLayout.length + 1);
-  }
 
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -1619,24 +962,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       EYE_HEIGHT,
       THREE.MathUtils.clamp(requested.z, worldBackZ + .75, worldFrontZ - .75),
     );
-    if (singleRoom) {
-      if (clearPath(from, to)) return [from, to];
-      const routes: THREE.Vector3[][] = [];
-      for (const obstacle of obstacles) {
-        const left = obstacle.minX - .72;
-        const right = obstacle.maxX + .72;
-        routes.push(
-          [from, new THREE.Vector3(left, EYE_HEIGHT, from.z), new THREE.Vector3(left, EYE_HEIGHT, to.z), to],
-          [from, new THREE.Vector3(right, EYE_HEIGHT, from.z), new THREE.Vector3(right, EYE_HEIGHT, to.z), to],
-        );
-      }
-      const pathDistance = (path: THREE.Vector3[]): number => path.slice(1).reduce((distance, point, index) => distance + path[index].distanceTo(point), 0);
-      const validRoutes = routes.filter((path) => path.slice(1).every((point, index) => clearPath(path[index], point)));
-      validRoutes.sort((a, b) => pathDistance(a) - pathDistance(b));
-      if (validRoutes[0]) return validRoutes[0];
-      return [from, safeDestination(to)];
-    }
-    if (!options.foyer) {
+    if (!options.foyer && !singleRoom) {
       return museumWalkingPath(galleryLayout, { x: from.x, z: from.z }, { x: to.x, z: to.z })
         .map((point) => new THREE.Vector3(point.x, EYE_HEIGHT, point.z));
     }
@@ -1787,6 +1113,8 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       else if (typeof hit?.object.userData.roomIndex === "number") enterGallery(hit.object.userData.roomIndex);
       else if (hit?.object.userData.returnToMain) options.onReturnToMain?.();
       else if (hit?.object.userData.entrance) requestEntry();
+      else if (hit?.object.userData.library) options.onLibraryEnter?.();
+      else if (typeof hit?.object.userData.href === "string") window.open(hit.object.userData.href, "_blank", "noopener,noreferrer");
       else if (hit && typeof hit.object.userData.exhibitIndex === "number") approachExhibit(hit.object.userData.exhibitIndex);
     }
     if (!pointers.size) root.dataset.museumDragging = "false";
@@ -1813,9 +1141,9 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
         camera.fov = THREE.MathUtils.clamp(camera.fov + (action === "zoom-in" ? -6 : 6), 42, 82); camera.updateProjectionMatrix(); dirty = true;
       }
       if (action === "reset") {
-        const view = options.foyer ? foyerInitialView : initialView;
+        const view = options.foyer ? foyerInitialView : defaultView;
         movement = undefined; camera.position.set(view.x, EYE_HEIGHT, view.z);
-        yaw = !options.foyer && window.matchMedia("(max-width: 760px)").matches ? -.8 : view.yaw;
+        yaw = view.yaw;
         pitch = view.pitch; camera.fov = view.fov; camera.updateProjectionMatrix(); closeReader(); dirty = true;
       }
       if (action === "map") {
@@ -1876,8 +1204,10 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     if (key === "enter" && event.target === canvas) {
       const hit = pick(canvas.getBoundingClientRect().left + canvas.clientWidth / 2, canvas.getBoundingClientRect().top + canvas.clientHeight / 2);
       if (hit?.object.userData.entrance) requestEntry();
+      else if (hit?.object.userData.library) options.onLibraryEnter?.();
       else if (hit?.object.userData.returnToMain) options.onReturnToMain?.();
       else if (typeof hit?.object.userData.roomIndex === "number") enterGallery(hit.object.userData.roomIndex);
+      else if (typeof hit?.object.userData.href === "string") window.open(hit.object.userData.href, "_blank", "noopener,noreferrer");
       else if (hit && typeof hit.object.userData.exhibitIndex === "number") approachExhibit(hit.object.userData.exhibitIndex);
     }
     dirty = true;
@@ -1895,7 +1225,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   host.dataset.museumRenderer = "webgl";
   root.querySelector<HTMLElement>("[data-museum-loading]")?.setAttribute("hidden", "");
   function updateView(): void {
-    camera.rotation.set(pitch, yaw, 0, "YXZ");
+    camera.rotation.set(pitch + hoverLook.pitch, yaw + hoverLook.yaw, 0, "YXZ");
     camera.updateMatrixWorld();
     root.dataset.museumPosition = `${camera.position.x.toFixed(2)},${camera.position.z.toFixed(2)}`;
     root.dataset.museumHeading = String(Math.round(THREE.MathUtils.radToDeg(yaw)));
@@ -1907,15 +1237,16 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     mapPosition?.setAttribute("cy", String(map.y));
     mapHeading?.setAttribute("transform", `translate(${map.x} ${map.y}) rotate(${mapHeadingAngle(yaw)})`);
     const gallery = !options.foyer && !singleRoom ? galleryAt(galleryLayout, { x: camera.position.x, z: camera.position.z }) : undefined;
-    root.dataset.museumGallery = gallery?.key ?? "hallway";
+    root.dataset.museumGallery = options.foyer ? "main" : singleRoom ? galleries[0]?.key : gallery?.key ?? "hallway";
     if (status) status.textContent = movement
       ? "MOVING THROUGH THE MUSEUM"
         : singleRoom
-        ? `${galleries[0]?.label ?? "ROOM"} · TAP A FRAME TO READ · MAIN ROOM AT THE OPENING`
-        : gallery ? `${gallery.label} · TAP A FRAME TO READ · ROOM SIGNS STAY OPEN` : "HALLWAY · TAP A ROOM SIGN TO ENTER · TAP A FRAME TO READ";
+        ? `${galleries[0]?.label ?? "ROOM"} · TAP A PANEL TO READ · RETURN THROUGH THE HALLWAY`
+        : options.foyer ? "MAIN ROOM · DRAG TO LOOK · WALK TO THE HALLWAY DOOR"
+        : gallery ? `${gallery.label} · TAP A PANEL TO READ` : "HALLWAY · TAP A ROOM SIGN TO ENTER · TAP A PANEL TO READ";
     if (!entryActive) {
       const view = { x: camera.position.x, z: camera.position.z, yaw, pitch, fov: camera.fov };
-      if (options.foyer) foyerView = view; else savedView = view;
+      if (options.foyer) foyerView = view; else roomViews.set(viewKey, view);
     }
   }
   function dispose(): void {
@@ -1930,6 +1261,12 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   const entryYaw = yaw;
   const entryPitch = pitch;
   const ease = (value: number): number => { const p = THREE.MathUtils.clamp(value, 0, 1); return p * p * (3 - 2 * p); };
+  if (options.ambientLook && !reducedMotion.matches) {
+    window.addEventListener("pointermove", (event) => {
+      hoverLook.targetYaw = -(event.clientX / window.innerWidth - .5) * .38;
+      hoverLook.targetPitch = -(event.clientY / window.innerHeight - .5) * .12;
+    }, events);
+  }
   function animate(time: number): void {
     if (disposed) return;
     if (!host?.isConnected) { dispose(); return; }
@@ -1970,46 +1307,43 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
         dirty = true;
         if (progress >= 1) { const complete = movement.complete; movement = undefined; complete?.(); }
       }
+      if (!reducedMotion.matches) {
       galleryLights.forEach(({ light, base, phase }) => {
         const wave = Math.sin(time * .004 + phase) * .055 + Math.sin(time * .017 + phase * 2.1) * .025;
         const step = Math.floor(time / 190 + phase * 10) % 17;
         light.intensity = base * (0.91 + wave + (step === 4 || step === 5 ? -.14 : 0));
-      });
-      roomInteriorLights.forEach(({ light, base, phase }) => {
-        const wave = Math.sin(time * .0046 + phase) * .08 + Math.sin(time * .021 + phase * 1.7) * .035;
-        const step = Math.floor(time / 164 + phase * 8) % 23;
-        light.intensity = base * (0.92 + wave + (step === 6 || step === 7 ? -.2 : 0));
       });
       const glitchStep = Math.floor(time / 135) % 29;
       const glitchScale = glitchStep === 4 ? .16 : glitchStep === 5 ? 1.3 : glitchStep === 12 ? .42 : 1;
       const glitchBreath = .94 + Math.sin(time * .0048) * .045;
       glitchLight.intensity = glitchLightBase * glitchScale * glitchBreath;
       glitchBulb.scale.setScalar(.78 + glitchScale * .22);
-      proofDisplays.forEach((display) => {
-        const screenStep = Math.floor(time / 118 + display.phase * 8) % 41;
-        const barActive = screenStep === 5 || screenStep === 6 || screenStep === 23;
-        display.screenMaterial.opacity = screenStep === 6 ? .48 : screenStep === 5 ? .8 : 1;
-        display.texture.offset.x = screenStep === 5 ? .006 : screenStep === 6 ? -.004 : 0;
-        display.texture.offset.y = screenStep === 23 ? .004 : 0;
-        display.glitchBar.visible = barActive;
-        display.glitchBar.position.y = screenStep === 23 ? -.16 : screenStep === 6 ? .18 : .04;
-        display.glitchBar.scale.x = screenStep === 6 ? .72 : screenStep === 23 ? 1.14 : .9;
-        (display.glitchBar.material as THREE.MeshBasicMaterial).opacity = screenStep === 6 ? .72 : .4;
-      });
-      shieldedScreens.forEach((display) => {
-        const screenStep = Math.floor(time / 102 + display.phase * 7) % 37;
-        const barActive = screenStep === 4 || screenStep === 5 || screenStep === 19 || screenStep === 28;
-        display.screenMaterial.opacity = screenStep === 5 ? .5 : screenStep === 4 ? .84 : 1;
-        display.texture.offset.x = screenStep === 4 ? .004 : screenStep === 5 ? -.003 : 0;
-        display.glitchBar.visible = barActive;
-        display.glitchBar.position.y = screenStep === 19 ? -.24 : screenStep === 28 ? .18 : .03;
-        display.glitchBar.scale.x = screenStep === 5 ? .58 : screenStep === 19 ? 1.18 : .88;
-        (display.glitchBar.material as THREE.MeshBasicMaterial).opacity = screenStep === 5 ? .76 : .46;
-      });
+      installationHooks.tick.forEach((tick) => tick(time));
       dirty = true;
+      }
+      installationHooks.frame.forEach((frame) => frame());
+      if (Math.abs(hoverLook.targetYaw - hoverLook.yaw) + Math.abs(hoverLook.targetPitch - hoverLook.pitch) > 1e-4) {
+        hoverLook.yaw += (hoverLook.targetYaw - hoverLook.yaw) * .06;
+        hoverLook.pitch += (hoverLook.targetPitch - hoverLook.pitch) * .06;
+        dirty = true;
+      }
       if (dirty) { updateView(); renderer.render(scene, camera); dirty = false; }
     }
     animationId = requestAnimationFrame(animate);
+  }
+  // One ShieldedScan feed serves every live installation, refreshed each
+  // minute while the museum is mounted.
+  if (installationHooks.live.length) {
+    const refreshLive = (): void => {
+      void fetchShieldedScanStats().then((stats) => {
+        if (disposed) return;
+        installationHooks.live.forEach((paint) => paint(stats));
+        dirty = true;
+      }).catch(() => undefined);
+    };
+    refreshLive();
+    const liveTimer = window.setInterval(refreshLive, 60_000);
+    abort.signal.addEventListener("abort", () => window.clearInterval(liveTimer));
   }
   updateView();
   animationId = requestAnimationFrame(animate);

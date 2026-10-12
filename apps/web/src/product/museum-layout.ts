@@ -37,7 +37,7 @@ export function createMuseumLayout(rooms: GalleryDefinition[]): GalleryLayout[] 
     return {
       ...room, index, side, center: { x, z },
       bounds: { minX, maxX, minZ: z - 9, maxZ: z + 9 },
-      entrance: { x: side * 4.15, z: z + 3 },
+      entrance: { x: side * 4.15, z },
       // Room furniture can be added independently once the core route is
       // stable; leaving the path open keeps every gallery reliably walkable.
       partitions: [],
