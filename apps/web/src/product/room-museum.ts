@@ -1267,6 +1267,17 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       hoverLook.targetPitch = -(event.clientY / window.innerHeight - .5) * .12;
     }, events);
   }
+  if (options.ambientLook) {
+    // The page keeps the scene dark; a pool of light follows the pointer.
+    const bounds = (): DOMRect => root.getBoundingClientRect();
+    window.addEventListener("pointermove", (event) => {
+      const rect = bounds();
+      root.style.setProperty("--museum-light-x", `${event.clientX - rect.left}px`);
+      root.style.setProperty("--museum-light-y", `${event.clientY - rect.top}px`);
+      root.dataset.museumLit = "true";
+    }, events);
+    document.documentElement.addEventListener("pointerleave", () => { delete root.dataset.museumLit; }, events);
+  }
   function animate(time: number): void {
     if (disposed) return;
     if (!host?.isConnected) { dispose(); return; }

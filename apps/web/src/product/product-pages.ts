@@ -58,6 +58,8 @@ import {
 import * as QRCode from "qrcode";
 import { renderShareCard } from "./share-card";
 import { terminalWindow } from "./terminal-gate";
+import { mountWelcome, renderWelcomeWatcher } from "./welcome";
+import { playPortal } from "./portal";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -2637,32 +2639,26 @@ function publicNavigation(path: string): string {
 function renderRoomMenu(): string {
   const profileName = roomAnonymousIdentity ? "ANONYMOUS" : roomAccountUsername || "HIDN-LOCAL";
   const profileVerified = roomAccountAccessLevel === "full";
-  const signalMode = activeHidnTheme() === "signal";
-
   return `<div class="room-menu" data-room-menu>
     <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
       <span class="room-menu__icon" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="room-menu__label">CHANNELS</span>
     </button>
-    <div class="room-menu__panel" id="room-channel-menu" hidden>
-      <div class="room-menu__panel-head">
-        ${signalMode
-          ? `<span>PRIVATE ROOM / INDEX</span><span class="room-menu__signal"><i aria-hidden="true"></i> LOCAL</span>`
-          : `<span class="room-menu__signal"><i aria-hidden="true"></i> PRIVATE ROOM</span>`}
-      </div>
+    <div class="room-menu__panel room-menu__panel--term" id="room-channel-menu" hidden>
+      <div class="room-menu__bar" aria-hidden="true"><i></i><i></i><i></i><span>hidn@room: ~/menu</span></div>
+      <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ whoami</p>
       <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
-        <span class="room-menu__profile-mark" aria-hidden="true">◎</span>
-        <span class="room-menu__profile-copy">
-          <strong>PROFILE</strong>
-          <small>${escapeHtml(profileName)}</small>
-        </span>
-        <span class="room-menu__profile-state">${escapeHtml(profileVerified ? "VERIFIED" : "NOT VERIFIED")}</span>
+        <span class="room-menu__profile-copy"><strong>&gt; PROFILE</strong><small>${escapeHtml(profileName)} · ${escapeHtml(profileVerified ? "VERIFIED" : "NOT VERIFIED")}</small></span>
+        <b aria-hidden="true">↗</b>
       </a>
+      <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ ls</p>
       <nav aria-label="Private room channels">
-        <a href="/how-it-works"><span>01</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
-        <a href="/"><span>02</span> HOME <b aria-hidden="true">↗</b></a>
+        <a href="/room/rooms"><span>[1]</span> ROOMS <b aria-hidden="true">↗</b></a>
+        <a href="/room"><span>[2]</span> 3D MUSEUM <b aria-hidden="true">↗</b></a>
+        <a href="/how-it-works"><span>[3]</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
+        <a href="/"><span>[4]</span> HOME <b aria-hidden="true">↗</b></a>
       </nav>
-      <a class="room-menu__leave" href="/" data-room-logout>LEAVE ROOM <span aria-hidden="true">↗</span></a>
+      <a class="room-menu__leave" href="/" data-room-logout><span aria-hidden="true">$ exit</span> LEAVE ROOM</a>
     </div>
   </div>`;
 }
@@ -4418,6 +4414,22 @@ function renderMobileRoomIndex(): string {
   );
 }
 
+// Signed-out visitors who reach a private surface get a failed terminal
+// connection, not a login wall: one way out, back to the homepage.
+function renderConnectionLost(): string {
+  return `<main id="main-content" class="public-main hidn-term-main hidn-lost-main">
+    ${terminalWindow("hidn@room: ~/connect", `<div class="hidn-lost">
+      <p class="hidn-lost__log">hidn@room:~$ ./connect --room</p>
+      <p class="hidn-lost__log">[ .. ] RESOLVING PRIVATE CHANNEL</p>
+      <p class="hidn-lost__log">[ .. ] REQUESTING ACCESS PROOF</p>
+      <p class="hidn-lost__log hidn-lost__log--fail">[FAIL] NO KEY PRESENTED. CONNECTION REFUSED.</p>
+      <h1 class="hidn-lost__title" data-text="CAN'T CONNECT">CAN'T CONNECT</h1>
+      <p class="hidn-lost__line">&gt; THIS ROOM ONLY OPENS FOR THOSE WHO HOLD A KEY.</p>
+      <a class="hidn-term__button hidn-lost__connect" href="/">[ CONNECT ]</a>
+    </div>`, "hidn-term--lost")}
+  </main>`;
+}
+
 function renderExplore(path = "/room"): string {
   const channelKey = roomChannelFromPath(path) ?? roomChannelFeedFromPath(path);
   const isChannelRoute = Boolean(channelKey);
@@ -4436,14 +4448,7 @@ function renderExplore(path = "/room"): string {
   if (!hasRoomSession()) {
     return publicFrame(
       path,
-      `<main id="main-content" class="public-main explore-main room-locked-main">
-        <div class="room-locked-page">
-          ${TerminalLabel("HIDN / ACCESS REQUIRED")}
-          <h1 class="type-display-lg">THE ROOM STAYS<br /><em>BEHIND THE KEY.</em></h1>
-          <p>Log in with your HIDN handle and recovery key to enter the private room. Free users can post and reply; optional ZEC verification unlocks advanced privileges.</p>
-          ${actionLink("ENTER THE ROOM", "/room/access", "primary")}
-        </div>
-      </main>`,
+      renderConnectionLost(),
       "public-page--explore",
     );
   }
@@ -4916,7 +4921,7 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
     roomLoginError = "";
     persistAnonymousSession();
     if (recoveryCode) {
-      navigateIntoRoom("/room/main");
+      navigateIntoRoom("/room/main", { portal: true });
     } else {
       roomAccessMode = "ready";
       revealRoomRecoveryKeyTemporarily();
@@ -5070,8 +5075,13 @@ function formattedZecAmount(zatoshis: number): string {
   return `${(zatoshis / 100_000_000).toFixed(8)} ZEC`;
 }
 
-function navigateIntoRoom(path = "/room"): void {
+function navigateIntoRoom(path = "/room", options: { portal?: boolean } = {}): void {
   sessionStorage.setItem("hidn:room:entered", "true");
+  // After creating or recovering access, the visitor falls through a portal.
+  if (options.portal) {
+    void playPortal().then(() => navigateProductRoute(path));
+    return;
+  }
   navigateProductRoute(path);
 }
 
@@ -5191,7 +5201,7 @@ async function syncAccountLogin(username: string, recoveryCode: string): Promise
     sessionStorage.removeItem("hidn:account:verification-requested");
     roomLoginError = "";
     // Login opens the artifact foyer first; its museum door leads into the hallway.
-    navigateIntoRoom("/room/main");
+    navigateIntoRoom("/room/main", { portal: true });
   } catch (error) {
     roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
@@ -5255,12 +5265,12 @@ async function refreshRoomPayment(): Promise<void> {
 }
 
 function renderRoomAccessChooser(): string {
-  return `<div class="hidn-access">
-    <p class="hidn-access__code">/// ACCESS</p>
-    <h1>CROSS THE THRESHOLD.</h1>
-    <p class="hidn-access__line">&gt; ENTER WITHOUT A NAME. A PRIVATE RECOVERY KEY IS CREATED.</p>
-    <p class="hidn-access__line">&gt; OR RETURN WITH THE KEY YOU KEPT. IT IS THE ONLY WAY BACK IN.</p>
-    <div class="hidn-access__actions">
+  return `<div class="hidn-access" data-hidn-type-panel>
+    <p class="hidn-access__code" data-hidn-type>/// ACCESS</p>
+    <h1 data-hidn-type data-text="CROSS THE THRESHOLD.">CROSS THE THRESHOLD.</h1>
+    <p class="hidn-access__line" data-hidn-type>&gt; ENTER WITHOUT A NAME. A PRIVATE RECOVERY KEY IS CREATED.</p>
+    <p class="hidn-access__line" data-hidn-type>&gt; OR RETURN WITH THE KEY YOU KEPT. IT IS THE ONLY WAY BACK IN.</p>
+    <div class="hidn-access__actions" data-hidn-type-reveal>
       ${SecondaryButton({ label: "[ CREATE PRIVATE ACCESS ]", dataAction: "room-create" })}
       ${SecondaryButton({ label: "[ USE RECOVERY KEY ]", dataAction: "room-login" })}
     </div>
@@ -5268,14 +5278,14 @@ function renderRoomAccessChooser(): string {
 }
 
 function renderRoomCreate(): string {
-  return `<div class="hidn-access">
-    <p class="hidn-access__code">/// ACCESS / NEW KEY</p>
-    <h1>KEEP YOUR KEY.</h1>
-    <p class="hidn-access__line">&gt; HIDN CREATES A PRIVATE RECOVERY KEY IN THIS BROWSER.</p>
-    <p class="hidn-access__line">&gt; NO USERNAME. NO HANDLE. NO PUBLIC IDENTITY.</p>
-    <p class="hidn-access__line hidn-access__line--warn">&gt; SAVE IT WHEN IT APPEARS. HIDN CANNOT RECOVER IT.</p>
+  return `<div class="hidn-access" data-hidn-type-panel>
+    <p class="hidn-access__code" data-hidn-type>/// ACCESS / NEW KEY</p>
+    <h1 data-hidn-type data-text="KEEP YOUR KEY.">KEEP YOUR KEY.</h1>
+    <p class="hidn-access__line" data-hidn-type>&gt; HIDN CREATES A PRIVATE RECOVERY KEY IN THIS BROWSER.</p>
+    <p class="hidn-access__line" data-hidn-type>&gt; NO USERNAME. NO HANDLE. NO PUBLIC IDENTITY.</p>
+    <p class="hidn-access__line hidn-access__line--warn" data-hidn-type>&gt; SAVE IT WHEN IT APPEARS. HIDN CANNOT RECOVER IT.</p>
     ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
-    <div class="hidn-access__actions">
+    <div class="hidn-access__actions" data-hidn-type-reveal>
       ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
       ${SecondaryButton({ label: roomAnonymousSubmitting ? "[ CREATING KEY... ]" : "[ GENERATE RECOVERY KEY ]", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
     </div>
@@ -5283,10 +5293,10 @@ function renderRoomCreate(): string {
 }
 
 function renderRoomLogin(): string {
-  return `<div class="hidn-access">
-    <p class="hidn-access__code">/// ACCESS / RECOVER</p>
-    <h1>RETURN TO THE ROOM.</h1>
-    <p class="hidn-access__line">&gt; PASTE THE RECOVERY KEY YOU SAVED. IT NEVER LEAVES THIS BROWSER.</p>
+  return `<div class="hidn-access" data-hidn-type-panel>
+    <p class="hidn-access__code" data-hidn-type>/// ACCESS / RECOVER</p>
+    <h1 data-hidn-type data-text="RETURN TO THE ROOM.">RETURN TO THE ROOM.</h1>
+    <p class="hidn-access__line" data-hidn-type>&gt; PASTE THE RECOVERY KEY YOU SAVED. IT NEVER LEAVES THIS BROWSER.</p>
     ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
     <form class="room-login-card hidn-access__form" novalidate>
       <label class="hidn-access__prompt" for="room-login-recovery-code">
@@ -5294,7 +5304,7 @@ function renderRoomLogin(): string {
         <span class="hidn-term__sr">Private recovery key</span>
         <input id="room-login-recovery-code" type="text" placeholder="HIDN-ANON-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
       </label>
-      <div class="hidn-access__actions">
+      <div class="hidn-access__actions" data-hidn-type-reveal>
         ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
         ${SecondaryButton({ label: roomLoginSubmitting || roomAnonymousSubmitting ? "[ VERIFYING KEY... ]" : "[ ENTER WITH KEY ]", disabled: roomLoginSubmitting || roomAnonymousSubmitting, dataAction: "room-submit-login" })}
       </div>
@@ -5584,14 +5594,7 @@ function renderRoomProfile(): RenderedProductRoute {
       metadata: ROOM_METADATA,
       html: publicFrame(
         "/room/profile",
-        `<main id="main-content" class="public-main room-main room-profile-main">
-          <div class="room-locked-page">
-            ${TerminalLabel("HIDN / PROFILE ACCESS REQUIRED")}
-            <h1 class="type-display-lg">THE PROFILE STAYS<br /><em>BEHIND THE KEY.</em></h1>
-            <p>Enter the private room first. Your profile, recovery key session, and personal history are never public.</p>
-            ${actionLink("ENTER THE ROOM", "/room/access", "primary")}
-          </div>
-        </main>`,
+        renderConnectionLost(),
         "public-page--room public-page--room-profile",
       ),
     };
@@ -5614,19 +5617,12 @@ function renderRoomProfile(): RenderedProductRoute {
     },
     html: publicFrame(
       "/room/profile",
-      `<main id="main-content" class="public-main room-main room-profile-main">
-        <div class="room-profile-page">
-          <header class="room-access-header room-access-header--compact room-profile-page__header">
-            <div class="room-profile-signal-lockup">
-              <span class="room-profile-signal-icon" aria-hidden="true">
-                <span class="room-profile-signal-icon__wave room-profile-signal-icon__wave--outer"></span>
-                <span class="room-profile-signal-icon__wave room-profile-signal-icon__wave--inner"></span>
-                <span class="room-profile-signal-icon__mast"></span>
-              </span>
-              ${TerminalLabel("PRIVATE SIGNAL / PROFILE")}
-            </div>
-            <h1 class="type-display-lg room-access-header__title">YOUR SIGNALS<br /><em>STAY WITH YOU.</em></h1>
-            <p class="room-access-header__copy">${isAnonymous ? "This is a private anonymous access surface. Your recovery key stays on this device and is never used as a public name." : `${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key stays behind this session.`} Your signals are stored only in this browser and cannot move to another device.</p>
+      `<main id="main-content" class="public-main room-main room-profile-main hidn-term-main">
+        ${terminalWindow("hidn@room: ~/profile", `<div class="room-profile-page hidn-profile">
+          <header class="hidn-access">
+            <p class="hidn-access__code">/// PROFILE</p>
+            <h1>YOUR SIGNALS STAY WITH YOU.</h1>
+            <p class="hidn-access__line" data-hidn-type>&gt; ${isAnonymous ? "This is a private anonymous access surface. Your recovery key stays on this device and is never used as a public name." : `${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key stays behind this session.`} Your signals are stored only in this browser and cannot move to another device.</p>
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
@@ -5643,8 +5639,8 @@ function renderRoomProfile(): RenderedProductRoute {
               <div><span>LIKES RECEIVED</span><strong>${formatPrivateTotal(profileStats.likes)}</strong></div>
             </div>
             ${isFull ? "" : `<div class="room-profile-card__actions">
-              ${SecondaryButton({ label: "VERIFY WITH ZEC →", dataAction: "room-open-verification" })}
-              ${GhostButton({ label: "CONTINUE FREE →", dataAction: "room-profile-back" })}
+              ${SecondaryButton({ label: "[ VERIFY WITH ZEC ]", dataAction: "room-open-verification" })}
+              ${GhostButton({ label: "[ CONTINUE FREE ]", dataAction: "room-profile-back" })}
             </div>`}
           </section>
           ${renderProfileTipAddress()}
@@ -5676,9 +5672,9 @@ function renderRoomProfile(): RenderedProductRoute {
             </section>
           </div>
           <div class="room-access-actions room-profile-page__actions">
-            ${GhostButton({ label: "← BACK TO THE ROOM", dataAction: "room-profile-back" })}
+            ${GhostButton({ label: "[ ← BACK TO THE ROOM ]", dataAction: "room-profile-back" })}
           </div>
-        </div>
+        </div>`, "hidn-term--access hidn-term--profile")}
         ${renderZecVerificationNotice()}
       </main>`,
       "public-page--room public-page--room-profile",
@@ -5845,13 +5841,13 @@ function renderTerminalHomePage(): RenderedProductRoute {
           <footer><span>PUBLIC FOYER</span><a href="${enterPath}">ENTER ROOM →</a></footer>
         </aside>
         <div class="hidn-welcome"><div class="hidn-welcome__panel">
-          <p class="hidn-welcome__code">/// HIDN://ROOM</p>
-          <h1 id="hidn-welcome-title">WELCOME TO HIDN</h1>
-          <p class="hidn-welcome__sub">A ROOM WITHOUT NAMES.</p>
-          <p class="hidn-welcome__question">THE QUESTION IS: ARE YOU SURE YOU'RE IN THE RIGHT PLACE?</p>
+          <h1 id="hidn-welcome-title" data-text="WELCOME TO HIDN" data-hidn-type>WELCOME TO HIDN</h1>
+          <p class="hidn-welcome__sub" data-hidn-type>A ROOM WITHOUT NAMES.</p>
+          <p class="hidn-welcome__question" data-hidn-type>THE QUESTION IS: ARE YOU SURE YOU'RE IN THE RIGHT PLACE?</p>
           <a class="hidn-welcome__enter" href="${enterPath}">[ ${signedIn ? "RETURN TO ROOM" : "ENTER ROOM"} ]</a>
         </div></div>
         <p class="hidn-welcome__hint" data-museum-status>DRAG TO LOOK AROUND</p>
+        ${renderWelcomeWatcher(enterPath)}
       </section>
     </main>`, "public-page--home public-page--home-museum public-page--welcome"),
   };
@@ -7022,7 +7018,11 @@ function bindRoomHallInteractions(root: ParentNode): void {
   }, { passive: false });
 }
 
+let welcomeCleanup: (() => void) | undefined;
+
 export function bindProductRoute(root: ParentNode = document): void {
+  welcomeCleanup?.();
+  welcomeCleanup = mountWelcome(root);
   bindComponentInteractions(root);
   bindRoomLikeInteractions(root);
   bindRoomChannelInteractions(root);
@@ -7448,7 +7448,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           void refreshRoomPayment();
           break;
         case "room-enter":
-          navigateIntoRoom("/room/main");
+          navigateIntoRoom("/room/main", { portal: true });
           break;
         case "room-refresh":
           void refreshActiveRoom();
