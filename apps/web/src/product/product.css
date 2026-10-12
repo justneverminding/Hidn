@@ -16135,3 +16135,11 @@
     opacity: 0;
   }
 }
+
+/* The social feed keeps a visible route back into the museum on phones. */
+@media (max-width: 760px) {
+  .public-page--room-channel .room-directory,
+  .public-page.public-page--theme-signal.public-page--room-channel .room-directory {
+    display: block;
+  }
+}

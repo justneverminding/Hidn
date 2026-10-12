@@ -30,14 +30,14 @@ export function createMuseumLayout(rooms: GalleryDefinition[]): GalleryLayout[] 
     const side = index % 2 === 0 ? -1 : 1;
     const x = side * 10.5;
     const z = -Math.floor(index / 2) * 20;
-    // Keep the gallery footprint inside the museum shell. The hallway sits
-    // between x -2.65 and x 2.65; the remaining width is the usable gallery.
-    const minX = side < 0 ? -11.35 : 3.3;
-    const maxX = side < 0 ? -3.3 : 11.35;
+    // Keep the gallery footprint inside the museum shell. The widened
+    // hallway now reads as a visitor route rather than a narrow doorway.
+    const minX = side < 0 ? -11.35 : 3.65;
+    const maxX = side < 0 ? -3.65 : 11.35;
     return {
       ...room, index, side, center: { x, z },
       bounds: { minX, maxX, minZ: z - 9, maxZ: z + 9 },
-      entrance: { x: side * 3.65, z: z + 3 },
+      entrance: { x: side * 4.15, z: z + 3 },
       // Room furniture can be added independently once the core route is
       // stable; leaving the path open keeps every gallery reliably walkable.
       partitions: [],
@@ -56,7 +56,7 @@ export function galleryAt(layout: GalleryLayout[], point: MuseumPoint): GalleryL
 
 export function canWalk(layout: GalleryLayout[], point: MuseumPoint): boolean {
   const lastZ = -Math.floor((layout.length - 1) / 2) * 20;
-  if (Math.abs(point.x) < 2.65 && point.z > lastZ - 8.6 && point.z < 10.6) return true;
+  if (Math.abs(point.x) < 3.35 && point.z > lastZ - 8.6 && point.z < 10.6) return true;
   for (const room of layout) {
     if (room.partitions.some((partition) => inside(point, partition, -.35))) continue;
     if (inside(point, room.bounds, .38)) return true;

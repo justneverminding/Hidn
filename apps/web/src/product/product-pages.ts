@@ -4455,7 +4455,7 @@ function renderRoomMuseum(): string {
         </header>
         <div class="room-museum__links">
           <a href="/room/channel/general">GENERAL ROOM ↗</a>
-          <a href="/room/channel/general/feed">OPEN SOCIAL VIEW ↗</a>
+          <a href="/room/channel/general/feed">OPEN SOCIAL FEED ↗</a>
         </div>
         <details class="room-museum__exhibition" data-museum-exhibition>
           <summary>ROOM INDEX / ${String(galleries.length).padStart(2, "0")}</summary>
@@ -4786,7 +4786,7 @@ function renderExplore(path = "/room"): string {
     `<main id="main-content" class="public-main explore-main">
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
-          ${isChannelRoute ? `<a class="room-channel-back" href="/room">← ALL ROOMS</a>` : ""}
+          ${isChannelRoute ? `<a class="room-channel-back" href="/room">← BACK TO MUSEUM</a>` : ""}
           ${TerminalLabel(headerLabel)}
           <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
