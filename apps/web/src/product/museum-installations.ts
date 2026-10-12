@@ -4,6 +4,7 @@ import * as QRCode from "qrcode";
 import type { MuseumTheme } from "./museum-layout";
 import type { ShieldedScanStats } from "./shieldedscan";
 import { addSquirrels, addVoidVisitors } from "./museum-visitors";
+import { idleTvTexture, liveTvTexture } from "./learning-tv";
 
 /** Signature installations for the main room, hallway and themed rooms.
  * Everything is local geometry and generated textures: the exhibition
@@ -820,7 +821,62 @@ export function addWalletKiosk(b: ExhibitionBuilder, x: number, z: number, angle
 }
 
 /** The Library: the rotunda plus walls of ZecHub learning scrolls. */
+/** Where the television stacks stand, for the approach prompt. Each faces
+ * the point the visitor arrives from. */
+export interface TvSpot { x: number; z: number; faceX: number; faceZ: number; scale: number }
+export const LIBRARY_TV: TvSpot = { x: -5.4, z: -6.2, faceX: 0, faceZ: 7.2, scale: 1.35 };
+/** In the private main room, against the back of the partition behind the
+ * starting point, so every visitor who signs in finds it. */
+export const FOYER_TV: TvSpot = { x: -4.6, z: 7.1, faceX: 0, faceZ: -2, scale: 1.2 };
+
+/** A stack of retro CRT televisions. The big set plays the learning
+ * channels; the rest show terminal text, snow or a lit, empty screen. */
+export function addTelevisionStack(b: ExhibitionBuilder, hooks: InstallationHooks, spot: TvSpot): void {
+  const group = new THREE.Group();
+  group.position.set(spot.x, 0, spot.z);
+  group.rotation.y = Math.atan2(spot.faceX - spot.x, spot.faceZ - spot.z);
+  group.scale.setScalar(spot.scale);
+  b.scene.add(group);
+  const shell = b.material(new THREE.MeshStandardMaterial({ color: "#1c2a21", roughness: .55, metalness: .35 }));
+  const bezel = b.material(new THREE.MeshStandardMaterial({ color: "#0d140f", roughness: .7 }));
+  const knob = b.material(new THREE.MeshStandardMaterial({ color: "#3b4a3f", roughness: .4, metalness: .6 }));
+  const tv = (w: number, h: number, d: number, x: number, y: number, z: number, screen: THREE.Material, turn = 0): void => {
+    const set = new THREE.Group();
+    set.position.set(x, y, z);
+    set.rotation.y = turn;
+    group.add(set);
+    b.box(w, h, d, 0, 0, 0, shell, set);
+    b.box(w * .78, h * .8, .04, -w * .08, 0, d / 2 + .01, bezel, set);
+    const glass = b.plane(w * .68, h * .66, screen, set);
+    glass.position.set(-w * .08, 0, d / 2 + .035);
+    for (let k = 0; k < 3; k++) mesh(b, new THREE.CylinderGeometry(.035, .035, .05, 12), knob, set, [w * .4, h * .25 - k * h * .22, d / 2 + .02], [Math.PI / 2, 0, 0]);
+  };
+  const idle = (seed: number) => b.material(new THREE.MeshBasicMaterial({ map: b.texture(idleTvTexture(seed)), toneMapped: false }));
+  // Bottom row, middle pair, and the big set on top.
+  [-1.08, 0, 1.08].forEach((x, i) => tv(1.0, .8, .8, x, .4, 0, idle(i + 1), (i - 1) * .12));
+  [-.56, .56].forEach((x, i) => tv(1.0, .8, .8, x, 1.2, .04, idle(i + 4), (i ? -1 : 1) * .08));
+  const live = liveTvTexture();
+  b.texture(live.texture);
+  tv(1.55, 1.18, 1.0, 0, 2.2, .08, b.material(new THREE.MeshBasicMaterial({ map: live.texture, toneMapped: false })));
+  mesh(b, new THREE.CylinderGeometry(.012, .012, 1.1, 6), knob, group, [-.2, 3.3, .08], [0, 0, .35]);
+  mesh(b, new THREE.CylinderGeometry(.012, .012, 1.1, 6), knob, group, [.25, 3.3, .08], [0, 0, -.35]);
+  const glowLight = new THREE.PointLight("#4dff6e", 1.1, 7, 1.7);
+  glowLight.position.set(0, 1.6, 1.4);
+  group.add(glowLight);
+  // The big screen changes slide every few seconds.
+  let last = 0;
+  hooks.tick.push((time) => { if (time - last > 4500) { last = time; live.advance(); } });
+  // One invisible target makes the whole stack tappable.
+  const k = spot.scale / 1.35;
+  const hit = b.box(3.5 * k, 4 * k, 1.6 * k, spot.x, 2 * k, spot.z, b.material(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })));
+  hit.rotation.y = group.rotation.y;
+  hit.castShadow = false;
+  hit.userData.tv = true;
+  b.obstacles.push({ minX: spot.x - 2.1 * k, maxX: spot.x + 2.1 * k, minZ: spot.z - 1.5 * k, maxZ: spot.z + 1.5 * k });
+}
+
 export function buildLibraryInstallation(b: ExhibitionBuilder, hooks: InstallationHooks, cz: number): void {
+  addTelevisionStack(b, hooks, LIBRARY_TV);
   const lessons = [6, 7, 8, 9, 10, 0, 1, 2];
   let next = 0;
   for (const side of [-1, 1]) {
@@ -853,7 +909,7 @@ export function buildLibraryInstallation(b: ExhibitionBuilder, hooks: Installati
   // Squirrels keep the reading room lively, darting between quiet corners.
   addSquirrels(b, hooks, [
     [-6, 6.5], [-3, 8.5], [3, 8], [6.5, 5.5], [8.5, .5], [6.5, -6], [2.8, -7.4], [-2.6, -7.6],
-    [-6.8, -6], [-8.6, .4], [-4.8, 2.4], [4.8, 2.4], [0, 3.8], [-1.8, -6], [-8.8, 8],
+    [-8.6, .4], [-4.8, 2.4], [4.8, 2.4], [0, 3.8], [-8.8, 8],
   ], [
     { x: 0, z: cz, r: 1.5 },
     { x: Math.sin(.95) * 3.85, z: cz + Math.cos(.95) * 3.85, r: 1.35 },
@@ -861,6 +917,7 @@ export function buildLibraryInstallation(b: ExhibitionBuilder, hooks: Installati
     { x: -7.15, z: -9, r: 2.1 },
     { x: 7.15, z: -9, r: 2.1 },
     { x: 9.6, z: 8.6, r: 1.3 },
+    { x: LIBRARY_TV.x, z: LIBRARY_TV.z, r: 2.6 },
   ], 3);
 }
 

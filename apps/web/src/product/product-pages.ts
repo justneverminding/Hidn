@@ -60,6 +60,7 @@ import { renderShareCard } from "./share-card";
 import { terminalWindow } from "./terminal-gate";
 import { mountWelcome, renderWelcomeWatcher } from "./welcome";
 import { playPortal } from "./portal";
+import { openLearningTv } from "./learning-tv";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -4146,6 +4147,7 @@ function renderLibraryMuseum(): string {
           <button type="button" data-museum-action="back" aria-label="Walk backward">⌄</button>
           <button type="button" data-museum-action="right" aria-label="Look right">↷</button>
         </nav>
+        <button type="button" class="hidn-tv-prompt" data-tv-prompt>[ ▶ WATCH · ZCASH CHANNELS ]</button>
         <p class="room-museum__hint" data-museum-status>DRAG TO LOOK · TAP THE FLOOR TO WALK · READ THE SCROLLS · TAP THE KIOSK FOR WALLETS</p>
       </section>
     </main>`,
@@ -5882,6 +5884,7 @@ function renderHome(privateFoyer = false): RenderedProductRoute {
           <button type="button" data-museum-action="reset" aria-label="Return to the entrance view">⌂</button>
         </nav>
         ${privateFoyer ? "" : `<div class="museum-foyer__entry"><a href="${entryPath}" data-room-enter data-glitch-text="&gt; ${entryLabel} ↗" aria-label="${entryLabel}"><span aria-hidden="true">&gt;</span> ${entryLabel} <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>`}
+        ${privateFoyer ? `<button type="button" class="hidn-tv-prompt" data-tv-prompt>[ ▶ WATCH · ZCASH CHANNELS ]</button>` : ""}
         <p class="room-museum__hint museum-foyer__hint" data-museum-status>${privateFoyer ? "PRIVATE ROOM · WALK TO THE HALLWAY SIGN · TAP THE FLOOR TO WALK" : "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ"}</p>
         <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>ZERO KNOWLEDGE</span></footer>
       </section>
@@ -6801,6 +6804,15 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
     }
     return "The 3D view could not load in this browser. Reload once, or use the exhibition index below.";
   };
+  if (library || privateFoyer) {
+    // The television plays in the room: tapping it or the prompt opens the
+    // in-room viewer instead of sending the visitor elsewhere.
+    const openTv = (): void => {
+      if (!museum.querySelector(".hidn-tv")) openLearningTv(museum);
+    };
+    museum.addEventListener("hidn-tv-open", openTv);
+    museum.querySelector("[data-tv-prompt]")?.addEventListener("click", openTv);
+  }
   void import("./room-museum").then(({ mountRoomMuseum }) => {
     if (version !== roomMuseumLoadVersion || !museum.isConnected) return;
     const cleanup = mountRoomMuseum(museum, posts, signal, {

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { ExhibitionBuilder } from "./museum-exhibition";
 import type { InstallationHooks } from "./museum-installations";
+import { LITE } from "../perf";
 
 /** Void visitors: faceless, glossy-black figures with a faint glowing edge.
  * They walk loops, stop to read, or sit, so the museum feels inhabited by
@@ -79,6 +80,8 @@ function angleLerp(from: number, to: number, amount: number): number {
 }
 
 export function addVoidVisitors(b: ExhibitionBuilder, hooks: InstallationHooks, plans: VisitorPlan[], edgeColor = "#9fb89a"): void {
+  // Phones get a quieter crowd: at most two visitors per space.
+  if (LITE) plans = plans.slice(0, 2);
   const body = b.material(new THREE.MeshStandardMaterial({ color: "#040505", roughness: .22, metalness: .65 }));
   const edge = b.material(new THREE.MeshBasicMaterial({ color: edgeColor, side: THREE.BackSide, transparent: true, opacity: .42, depthWrite: false }));
 
@@ -178,6 +181,7 @@ export function addVoidVisitors(b: ExhibitionBuilder, hooks: InstallationHooks, 
 /** Squirrels that scurry between floor spots, stop, sit up, look around and
  * flick their tails. `avoid` circles keep their runs clear of furniture. */
 export function addSquirrels(b: ExhibitionBuilder, hooks: InstallationHooks, spots: Array<[number, number]>, avoid: Array<{ x: number; z: number; r: number }>, count = 3): void {
+  if (LITE) count = Math.min(count, 1);
   const fur = b.material(new THREE.MeshStandardMaterial({ color: "#8a5a34", roughness: .85 }));
   const belly = b.material(new THREE.MeshStandardMaterial({ color: "#d8c3a0", roughness: .9 }));
   const dark = b.material(new THREE.MeshStandardMaterial({ color: "#16110d", roughness: .3 }));

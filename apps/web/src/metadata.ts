@@ -58,7 +58,7 @@ export const HOME_METADATA: HidnMetadata = {
   description:
     "HIDN is a privacy-first space for anonymous thoughts and unnamed conversations, built to reveal less by default.",
   canonicalPath: "/",
-  imagePath: "/brand/references/hidn-brand-reference-02.png",
+  imagePath: "/brand/hidn-og-terminal.png?v=20261012",
   structuredData: HOME_STRUCTURED_DATA,
 };
 
@@ -67,7 +67,7 @@ export const EXPLORE_METADATA: HidnMetadata = {
   title: "HIDN — The Room",
   description: "HIDN's private room for anonymous thoughts and unnamed conversations.",
   canonicalPath: "/room",
-  imagePath: "/brand/references/hidn-brand-reference-02.png",
+  imagePath: "/brand/hidn-og-terminal.png?v=20261012",
 };
 
 export const ROOM_METADATA: HidnMetadata = {
@@ -180,9 +180,9 @@ export function applyMetadata(metadata: HidnMetadata): void {
 
   if (metadata.imagePath) {
     setMeta("property", "og:image", new URL(metadata.imagePath, window.location.origin).href);
-    setMeta("property", "og:image:alt", "HIDN — a room without names");
+    setMeta("property", "og:image:alt", "HIDN — Welcome to HIDN. Are you sure you're in the right place?");
     setMeta("name", "twitter:image", new URL(metadata.imagePath, window.location.origin).href);
-    setMeta("name", "twitter:image:alt", "HIDN — a room without names");
+    setMeta("name", "twitter:image:alt", "HIDN — Welcome to HIDN. Are you sure you're in the right place?");
   } else {
     document.head.querySelector('meta[property="og:image"]')?.remove();
     document.head.querySelector('meta[property="og:image:alt"]')?.remove();

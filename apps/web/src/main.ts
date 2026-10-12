@@ -5,6 +5,9 @@ import "./system/system-page.css";
 import { applyMetadata, SYSTEM_METADATA } from "./metadata";
 import { bindProductRoute, disposeProductRoute, renderProductRoute } from "./product/product-pages";
 import { bindSystemPage, renderSystemPage } from "./system/system-page";
+import { applyPerformanceMode } from "./perf";
+
+applyPerformanceMode();
 
 const app = document.querySelector<HTMLDivElement>("#app");
 

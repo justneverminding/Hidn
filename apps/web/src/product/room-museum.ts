@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { LITE } from "../perf";
 import {
   createMuseumLayout,
   canWalk,
@@ -11,7 +12,7 @@ import {
 import { fetchShieldedScanStats } from "./shieldedscan";
 import { buildExhibitionArchitecture, exhibitionGraphic, type ExhibitionBuilder } from "./museum-exhibition";
 import { buildConfessionInstallation, CONFESSION_STYLE_CAPACITY, confessionStyleFor, confessionTexture, FIRST_THOUGHT, type ConfessionLook } from "./museum-confessions";
-import { addLibraryPortal, buildHallwayInstallation, buildLibraryInstallation, buildMainRoomInstallation, buildRoomInstallation, type InstallationHooks } from "./museum-installations";
+import { FOYER_TV, LIBRARY_TV, addLibraryPortal, addTelevisionStack, buildHallwayInstallation, buildLibraryInstallation, buildMainRoomInstallation, buildRoomInstallation, type InstallationHooks } from "./museum-installations";
 
 export interface MuseumPost {
   id?: string;
@@ -267,11 +268,12 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#101611");
   scene.fog = new THREE.Fog("#111b15", 28, 78);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+  // Lite devices skip antialiasing and shadows; the scene reads the same.
+  const renderer = new THREE.WebGLRenderer({ antialias: !LITE, alpha: false, powerPreference: "low-power" });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.45;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !LITE;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   const canvas = renderer.domElement;
   canvas.className = "room-museum__canvas";
@@ -587,6 +589,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     }
     // The zebra and the Zcash pillar share one lit rotunda before the door.
     buildMainRoomInstallation(exhibitionBuilder, installationHooks, -5.6);
+    if (options.privateFoyer) addTelevisionStack(exhibitionBuilder, installationHooks, FOYER_TV);
   }
 
   scene.add(new THREE.HemisphereLight("#e0e1ce", "#283326", 1.75));
@@ -1114,6 +1117,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       else if (hit?.object.userData.returnToMain) options.onReturnToMain?.();
       else if (hit?.object.userData.entrance) requestEntry();
       else if (hit?.object.userData.library) options.onLibraryEnter?.();
+      else if (hit?.object.userData.tv) root.dispatchEvent(new CustomEvent("hidn-tv-open"));
       else if (typeof hit?.object.userData.href === "string") window.open(hit.object.userData.href, "_blank", "noopener,noreferrer");
       else if (hit && typeof hit.object.userData.exhibitIndex === "number") approachExhibit(hit.object.userData.exhibitIndex);
     }
@@ -1205,6 +1209,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
       const hit = pick(canvas.getBoundingClientRect().left + canvas.clientWidth / 2, canvas.getBoundingClientRect().top + canvas.clientHeight / 2);
       if (hit?.object.userData.entrance) requestEntry();
       else if (hit?.object.userData.library) options.onLibraryEnter?.();
+      else if (hit?.object.userData.tv) root.dispatchEvent(new CustomEvent("hidn-tv-open"));
       else if (hit?.object.userData.returnToMain) options.onReturnToMain?.();
       else if (typeof hit?.object.userData.roomIndex === "number") enterGallery(hit.object.userData.roomIndex);
       else if (typeof hit?.object.userData.href === "string") window.open(hit.object.userData.href, "_blank", "noopener,noreferrer");
@@ -1217,7 +1222,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     if (!width || !height || disposed) return;
     // Give dense phone screens sharper lettering while bounding the GPU cost
     // on large displays. Recalculate when the phone rotates or the view resizes.
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5, Math.sqrt(2_400_000 / (width * height))));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, LITE ? 1.25 : 2.5, Math.sqrt((LITE ? 1_100_000 : 2_400_000) / (width * height))));
     renderer.setSize(width, height, false);
     camera.aspect = width / height; camera.updateProjectionMatrix(); dirty = true;
   });
@@ -1238,12 +1243,19 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     mapHeading?.setAttribute("transform", `translate(${map.x} ${map.y}) rotate(${mapHeadingAngle(yaw)})`);
     const gallery = !options.foyer && !singleRoom ? galleryAt(galleryLayout, { x: camera.position.x, z: camera.position.z }) : undefined;
     root.dataset.museumGallery = options.foyer ? "main" : singleRoom ? galleries[0]?.key : gallery?.key ?? "hallway";
+    const tvSpot = options.library ? LIBRARY_TV : options.privateFoyer ? FOYER_TV : undefined;
+    if (tvSpot) {
+      // Close to the television stack, the room offers to switch it on.
+      const near = Math.hypot(camera.position.x - tvSpot.x, camera.position.z - tvSpot.z) < 4.2;
+      if (near) root.dataset.tvNear = "true"; else delete root.dataset.tvNear;
+    }
+    // Short, one-line terminal hints that fit a phone's footer.
     if (status) status.textContent = movement
-      ? "MOVING THROUGH THE MUSEUM"
-        : singleRoom
-        ? `${galleries[0]?.label ?? "ROOM"} · TAP A PANEL TO READ · RETURN THROUGH THE HALLWAY`
-        : options.foyer ? "MAIN ROOM · DRAG TO LOOK · WALK TO THE HALLWAY DOOR"
-        : gallery ? `${gallery.label} · TAP A PANEL TO READ` : "HALLWAY · TAP A ROOM SIGN TO ENTER · TAP A PANEL TO READ";
+      ? "MOVING…"
+      : options.ambientLook ? "DRAG TO LOOK AROUND"
+        : singleRoom ? `${galleries[0]?.label ?? "ROOM"} · TAP A THOUGHT TO READ`
+        : options.foyer ? "MAIN ROOM · WALK TO THE DOOR"
+        : gallery ? `${gallery.label} · TAP A THOUGHT TO READ` : "HALLWAY · TAP A SIGN TO ENTER";
     if (!entryActive) {
       const view = { x: camera.position.x, z: camera.position.z, yaw, pitch, fov: camera.fov };
       if (options.foyer) foyerView = view; else roomViews.set(viewKey, view);
@@ -1278,10 +1290,13 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     }, events);
     document.documentElement.addEventListener("pointerleave", () => { delete root.dataset.museumLit; }, events);
   }
+  // Frame budget: 45fps on capable hardware, less on phones, and less
+  // again when the museum is only the homepage's background.
+  const frameInterval = 1000 / (LITE ? (options.ambientLook ? 24 : 30) : 45);
   function animate(time: number): void {
     if (disposed) return;
     if (!host?.isConnected) { dispose(); return; }
-    if (!document.hidden && time - lastTime > 1000 / 45) {
+    if (!document.hidden && time - lastTime > frameInterval) {
       lastTime = time;
       if (entryActive && !entryComplete) {
         entryStarted ??= time;
@@ -1319,12 +1334,12 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
         if (progress >= 1) { const complete = movement.complete; movement = undefined; complete?.(); }
       }
       if (!reducedMotion.matches) {
-      galleryLights.forEach(({ light, base, phase }) => {
+      if (!LITE) galleryLights.forEach(({ light, base, phase }) => {
         const wave = Math.sin(time * .004 + phase) * .055 + Math.sin(time * .017 + phase * 2.1) * .025;
         const step = Math.floor(time / 190 + phase * 10) % 17;
         light.intensity = base * (0.91 + wave + (step === 4 || step === 5 ? -.14 : 0));
       });
-      const glitchStep = Math.floor(time / 135) % 29;
+      const glitchStep = LITE ? 0 : Math.floor(time / 135) % 29;
       const glitchScale = glitchStep === 4 ? .16 : glitchStep === 5 ? 1.3 : glitchStep === 12 ? .42 : 1;
       const glitchBreath = .94 + Math.sin(time * .0048) * .045;
       glitchLight.intensity = glitchLightBase * glitchScale * glitchBreath;

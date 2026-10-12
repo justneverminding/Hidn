@@ -17188,3 +17188,196 @@
   .hidn-term--access .hidn-access h1 { animation: none; }
   .hidn-term--access .hidn-access h1::before, .hidn-term--access .hidn-access h1::after { display: none; }
 }
+
+/* ===== Lite mode (phones and modest hardware) =========================
+   Same look, cheaper paint: static scanlines instead of animated noise, no
+   rolling bands or flicker loops, no backdrop blur. Typing stays. */
+html[data-perf="lite"] .public-page--theme-signal::after {
+  animation: none;
+  background: repeating-linear-gradient(180deg, transparent 0 2px, rgba(0, 0, 0, .14) 2px 3px);
+  inset: 0;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+html[data-perf="lite"] .hidn-welcome__panel,
+html[data-perf="lite"] .hidn-welcome__panel::after,
+html[data-perf="lite"] .public-page .public-main .hidn-term--access,
+html[data-perf="lite"] .hidn-term--access .hidn-term__body::after,
+html[data-perf="lite"] .hidn-watcher,
+html[data-perf="lite"] .hidn-watcher__enter,
+html[data-perf="lite"] .hidn-welcome h1,
+html[data-perf="lite"] .hidn-term--access .hidn-access h1,
+html[data-perf="lite"] .hidn-lost__title,
+html[data-perf="lite"] .museum-foyer .room-museum__stage::after { animation: none !important; }
+html[data-perf="lite"] .hidn-welcome__panel::after,
+html[data-perf="lite"] .hidn-term--access .hidn-term__body::after { display: none; }
+html[data-perf="lite"] .hidn-welcome h1::before,
+html[data-perf="lite"] .hidn-welcome h1::after,
+html[data-perf="lite"] .hidn-term--access .hidn-access h1::before,
+html[data-perf="lite"] .hidn-term--access .hidn-access h1::after,
+html[data-perf="lite"] .hidn-watcher__line::before,
+html[data-perf="lite"] .hidn-watcher__line::after,
+html[data-perf="lite"] .hidn-lost__title::before,
+html[data-perf="lite"] .hidn-lost__title::after { display: none; }
+html[data-perf="lite"] .hidn-welcome__panel {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(1, 5, 2, .84);
+}
+
+/* ===== Footers: one terminal line that fits any screen ================= */
+.public-page .room-museum__hint,
+.public-page .hidn-welcome__hint {
+  color: rgba(77, 255, 110, .72);
+  font-family: var(--hidn-font-mono);
+  font-size: 10px;
+  left: 50%;
+  letter-spacing: .14em;
+  line-height: 1;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  right: auto;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 8px rgba(77, 255, 110, .45);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  width: max-content;
+}
+.public-page .room-museum__hint::before,
+.public-page .hidn-welcome__hint::before { color: rgba(77, 255, 110, .5); content: "> "; }
+.public-page .museum-foyer__footer { font-family: var(--hidn-font-mono); font-size: 10px; letter-spacing: .12em; }
+@media (max-width: 760px) {
+  .public-page .room-museum__hint,
+  .public-page .hidn-welcome__hint { bottom: max(14px, env(safe-area-inset-bottom)); font-size: 9px; letter-spacing: .1em; }
+  /* Where walk buttons sit at the bottom, the hint rides just above them. */
+  .public-page .room-museum:has(.room-museum__walk-controls) .room-museum__hint { bottom: calc(92px + env(safe-area-inset-bottom)); }
+}
+
+/* ===== Library television: approach prompt and in-room viewer ======== */
+.hidn-tv-prompt {
+  background: rgba(1, 5, 2, .82);
+  border: 1px solid rgba(77, 255, 110, .55);
+  bottom: calc(150px + env(safe-area-inset-bottom));
+  color: #4dff6e;
+  cursor: pointer;
+  font: 13px var(--hidn-font-mono);
+  left: 50%;
+  letter-spacing: .12em;
+  min-height: 44px;
+  opacity: 0;
+  padding: 10px 16px;
+  pointer-events: none;
+  position: absolute;
+  text-shadow: 0 0 8px rgba(77, 255, 110, .5);
+  transform: translate(-50%, 8px);
+  transition: opacity .3s ease, transform .3s ease;
+  z-index: 4;
+}
+.room-museum[data-tv-near="true"] .hidn-tv-prompt { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.hidn-tv-prompt:hover, .hidn-tv-prompt:focus-visible { background: #4dff6e; color: #010201; outline: none; text-shadow: none; }
+
+.hidn-tv {
+  align-items: center;
+  background: rgba(0, 2, 1, .92);
+  display: grid;
+  font-family: var(--hidn-font-mono);
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  inset: 0;
+  padding: clamp(14px, 4vw, 48px);
+  position: absolute;
+  z-index: 20;
+}
+.hidn-tv__set {
+  background: linear-gradient(160deg, #24332a, #121a15);
+  border: 1px solid #33473a;
+  border-radius: 28px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .7), inset 0 2px 0 rgba(255, 255, 255, .06);
+  padding: clamp(14px, 2.4vw, 26px);
+}
+.hidn-tv__screen {
+  aspect-ratio: 4 / 3;
+  background: radial-gradient(ellipse at center, #0a2a14 0%, #031408 70%);
+  border-radius: 22px / 18px;
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, .85), 0 0 30px rgba(77, 255, 110, .18);
+  max-height: 70vh;
+  overflow: hidden;
+  position: relative;
+}
+.hidn-tv__slide { color: #7dff9a; display: grid; gap: 12px; height: 100%; padding: clamp(18px, 4vw, 44px); text-shadow: -1px 0 rgba(255, 60, 90, .35), 1px 0 rgba(60, 200, 255, .35), 0 0 10px rgba(77, 255, 110, .55); }
+.hidn-tv__slide--tune { animation: hidn-tv-tune .45s steps(4); }
+@keyframes hidn-tv-tune { 0% { filter: brightness(2.2) blur(2px); opacity: .3; transform: scaleY(.04); } 60% { transform: scaleY(1.04); } 100% { filter: none; opacity: 1; transform: none; } }
+.hidn-tv__ch { font-size: clamp(11px, 1.4vw, 14px); letter-spacing: .14em; margin: 0; opacity: .8; }
+.hidn-tv__slide h2 { color: #b9f7c4; font: 700 clamp(22px, 3.6vw, 40px)/1.15 var(--hidn-font-mono); letter-spacing: .06em; margin: .4em 0 0; }
+.hidn-tv__body { font-size: clamp(15px, 2vw, 22px); letter-spacing: .03em; line-height: 1.55; margin: 0; max-width: 46ch; }
+.hidn-tv__source { align-self: end; font-size: 11px; letter-spacing: .12em; margin: 0; opacity: .6; }
+.hidn-tv__glass { background: repeating-linear-gradient(180deg, rgba(0, 0, 0, .3) 0 1px, transparent 1px 3px), radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, .06), transparent 40%); inset: 0; pointer-events: none; position: absolute; }
+.hidn-tv__controls { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.hidn-tv__controls span { color: rgba(185, 247, 196, .7); font-size: 12px; letter-spacing: .1em; }
+.hidn-tv button {
+  background: transparent;
+  border: 1px solid rgba(77, 255, 110, .4);
+  color: #4dff6e;
+  cursor: pointer;
+  font: 12px var(--hidn-font-mono);
+  letter-spacing: .1em;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.hidn-tv button:hover, .hidn-tv button:focus-visible, .hidn-tv button[aria-pressed="true"] { background: #4dff6e; color: #010201; outline: none; }
+.hidn-tv [data-tv-close] { margin-left: auto; }
+.hidn-tv__channels { display: grid; gap: 6px; }
+.hidn-tv__channels button { justify-content: flex-start; text-align: left; }
+.hidn-tv__channels span { opacity: .7; }
+@media (max-width: 760px) {
+  .hidn-tv { align-content: start; grid-template-columns: 1fr; overflow-y: auto; }
+  .hidn-tv__channels { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .hidn-tv__channels button { flex: 0 0 auto; }
+  .hidn-tv-prompt { bottom: calc(130px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { .hidn-tv__slide--tune { animation: none; } }
+/* TV: scrollable detail, wallet links, scroll cue. */
+.hidn-tv__slide { align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgba(77, 255, 110, .4) transparent; scrollbar-width: thin; }
+.hidn-tv__detail { border-top: 1px dashed rgba(77, 255, 110, .3); color: #8fd9a0; font-size: clamp(13px, 1.6vw, 17px); letter-spacing: .03em; line-height: 1.7; margin: 6px 0 0; max-width: 52ch; padding-top: 14px; }
+.hidn-tv__link {
+  border: 1px solid rgba(77, 255, 110, .6);
+  color: #4dff6e;
+  font-size: clamp(13px, 1.6vw, 16px);
+  justify-self: start;
+  letter-spacing: .12em;
+  margin-top: 6px;
+  min-height: 44px;
+  padding: 11px 16px;
+  text-decoration: none;
+}
+.hidn-tv__link:hover, .hidn-tv__link:focus-visible { background: #4dff6e; color: #010201; outline: none; text-shadow: none; }
+.hidn-tv__source { margin-top: 18px !important; }
+.hidn-tv__more {
+  animation: hidn-caret 1.4s steps(1) infinite;
+  bottom: 10px;
+  color: rgba(185, 247, 196, .75);
+  font-size: 11px;
+  letter-spacing: .14em;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 18px;
+  transition: opacity .3s ease;
+}
+.hidn-tv--more .hidn-tv__more { opacity: 1; }
+/* The scroll cue sits on a fade, so the text slips under it instead of colliding. */
+.hidn-tv__more {
+  background: linear-gradient(transparent, #031408 55%);
+  border-radius: 0 0 22px 22px;
+  left: 0;
+  padding: 26px 18px 10px;
+  right: 0 !important;
+  text-align: right;
+  bottom: 0 !important;
+}
+.hidn-tv__slide { padding-bottom: 46px; }
+@media (max-width: 760px) {
+  /* Clear the window bar, and give the screen a portrait shape for reading. */
+  .hidn-tv { padding-top: calc(74px + env(safe-area-inset-top)); }
+  .hidn-tv__screen { aspect-ratio: 4 / 5; max-height: 62vh; }
+}
