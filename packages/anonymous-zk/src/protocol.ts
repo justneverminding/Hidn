@@ -12,7 +12,7 @@ export const ANONYMOUS_FIELD_MODULUS = 21888242871839275222246405745257275088548
 const ANONYMOUS_RECOVERY_PREFIX = "HIDN-ANON-";
 const ANONYMOUS_ALIAS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-export type AnonymousAction = "post" | "reply" | "reaction";
+export type AnonymousAction = "post" | "reply" | "reaction" | "report";
 
 export interface AnonymousIdentity {
   recoveryCode: string;

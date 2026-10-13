@@ -47,12 +47,12 @@ metadata. Product copy must name concrete behavior and known limitations.
 
 ## ZK and Zcash boundary
 
-The account milestone now uses a browser-generated Schnorr
-proof-of-knowledge credential for HIDN room login. The Worker stores the
-credential's public commitment and verifies a one-time challenge response; it
-does not receive the recovery secret. This proves control of the credential,
-but it does not provide an anonymous group-membership proof, hide transport
-metadata, or make a D1-linked profile history invisible to the operator.
+Room access is nameless. The browser creates a secret, which is also the
+recovery key, and sends the Worker only a Poseidon commitment to join the
+member tree. Each post, reply, reaction and report carries a Groth16 proof that
+the sender is a member, without revealing which one. The Worker never receives
+the secret. This does not hide transport metadata such as IP addresses or
+timing; that needs a relay or Tor transport. Handle accounts were removed.
 
 The broader zero-knowledge and Zcash protocol remain future technical
 components. HIDN must not imply that a proof has been verified for an

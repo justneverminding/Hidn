@@ -1,8 +1,7 @@
 # HIDN anonymous ZK milestone
 
-This milestone adds a separate anonymous participation path without removing
-the existing Schnorr account path. It is intentionally additive while the
-protocol is tested.
+This milestone added the anonymous participation path. It is now the only way
+into the room: the earlier Schnorr handle accounts have been removed.
 
 ## What is implemented
 
@@ -16,8 +15,8 @@ protocol is tested.
   posts/replies/reactions, and capability-based notifications.
 - Anonymous read, enrollment, post, reply, reaction, and notification API
   contracts under `/api/anonymous/*`.
-- The anonymous API sends requests with `credentials: omit`, so it does not
-  reuse the existing account session cookie.
+- The anonymous API sends requests with `credentials: omit`, so no session
+  cookie is involved.
 - Seven-day anonymous notification retention, matching the existing private
   activity retention policy.
 - A local protocol test and a real local Groth16 proof test. The proof test
@@ -86,9 +85,8 @@ The proving zkey and any ceremony secrets must never be committed.
    `POST /api/anonymous/notifications/read` use the local capability header.
 
 The client request helpers are in
-`apps/web/src/product/room-api.ts`. The existing account UI still uses the
-Schnorr/recovery flow; the anonymous UI can now be integrated behind a feature
-flag after the Worker configuration and D1 migration are applied.
+`apps/web/src/product/room-api.ts`. Reports use the same proof, with the
+`report` action bound to the target and reason (migration 0022).
 
 ## Remaining before production
 

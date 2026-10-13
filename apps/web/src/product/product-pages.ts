@@ -38,13 +38,6 @@ import {
 } from "./mock-data";
 import { fetchShieldedScanStats, type ShieldedScanStats } from "./shieldedscan";
 import {
-  buildZkChallengeMessage,
-  credentialFromRecoveryCode,
-  createZkProof,
-  generateZkCredential,
-  publicKeyToHex,
-} from "@hidn/zk";
-import {
   canonicalAnonymousMessage,
   createAnonymousCircuitInput,
   anonymousIdentityFromRecoveryCode,
@@ -65,62 +58,35 @@ import { mountTerminalFeed } from "./terminal-feed";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
-  createPaymentIntent,
   createAnonymousPost,
   createAnonymousReaction,
   createAnonymousReply,
-  createRoomPost,
-  createRoomReply,
-  createRoomSession,
   enrollAnonymousMember,
   fetchAnonymousStatus,
-  fetchAccountNotifications,
-  fetchAccountTipAddress,
   fetchAnonymousNotifications,
   fetchAnonymousPosts,
   fetchAnonymousThread,
-  fetchAccountSession,
   fetchAdminAudit,
   fetchAdminModerators,
   fetchAdminSession,
   createAdminModerator,
   fetchRoomActivity,
-  fetchRoomPosts,
-  fetchRoomThread,
-  fetchRoomReactionState,
   fetchAdminReports,
   fetchModerationVisibility,
-  fetchPaymentIntent,
-  fetchRoomConfig,
-  loginAccount,
-  loginRoomSession,
-  logoutAccount,
-  markAccountNotificationsRead,
   markAnonymousNotificationsRead,
   moderateAdminContent,
-  requestZkChallenge,
-  saveAccountTipAddress,
-  signupZkAccount,
   submitReport,
-  toggleRoomReaction,
   updateAdminModerator,
   updateAdminReport,
-  verifyRecoveryQuestions,
-  verifyZkLogin,
-  verifyRoomDemoPayment,
   type AdminAuditEvent,
   type AdminModerator,
   type AdminRole,
   type AdminReportsResponse,
   type AdminSession,
-  type AccountAccessLevel,
   type AccountNotification,
   type AccountNotificationsResponse,
-  type AccountResponse,
-  type AnonymousStatusResponse,
   type AnonymousProofEnvelope,
   type ModerationTargetType,
-  type PaymentIntentResponse,
   type RoomActivityEvent,
   type RoomComment,
   type RoomPost,
@@ -152,8 +118,6 @@ interface DeviceSignalHistory {
 
 const ROOM_FREE_POST_MAX_LENGTH = 500;
 const ROOM_FREE_REPLY_MAX_LENGTH = 500;
-const ROOM_VERIFIED_POST_MAX_LENGTH = 2000;
-const ROOM_VERIFIED_REPLY_MAX_LENGTH = 1200;
 const ROOM_ACCOUNT_RECOVERY_KEY_STORAGE = "hidn:account:recovery-key";
 const ROOM_ANONYMOUS_SESSION_STORAGE = "hidn:anonymous:session";
 const ROOM_SESSION_TTL_MS = 60 * 60 * 1000;
@@ -166,23 +130,19 @@ const ROOM_RECOVERY_CONFIRMATIONS = [
 ] as const;
 
 function roomPostCharacterLimit(): number {
-  return roomAccountAccessLevel === "full" ? ROOM_VERIFIED_POST_MAX_LENGTH : ROOM_FREE_POST_MAX_LENGTH;
+  return ROOM_FREE_POST_MAX_LENGTH;
 }
 
 function roomReplyCharacterLimit(): number {
-  return roomAccountAccessLevel === "full" ? ROOM_VERIFIED_REPLY_MAX_LENGTH : ROOM_FREE_REPLY_MAX_LENGTH;
+  return ROOM_FREE_REPLY_MAX_LENGTH;
 }
 
 function roomPostLimitCopy(): string {
-  return roomAccountAccessLevel === "full"
-    ? `Verified access allows posts up to ${roomPostCharacterLimit().toLocaleString()} characters.`
-    : `Free access allows posts up to ${roomPostCharacterLimit()} characters. Verify with ZEC for more.`;
+  return `Posts can be up to ${roomPostCharacterLimit()} characters.`;
 }
 
 function roomReplyLimitCopy(): string {
-  return roomAccountAccessLevel === "full"
-    ? `VERIFIED ACCESS / UP TO ${roomReplyCharacterLimit().toLocaleString()} CHARACTERS.`
-    : `FREE ACCESS / UP TO ${roomReplyCharacterLimit()} CHARACTERS. VERIFY WITH ZEC FOR MORE.`;
+  return `UP TO ${roomReplyCharacterLimit()} CHARACTERS.`;
 }
 
 function activeHidnTheme(): HidnTheme {
@@ -192,21 +152,11 @@ function activeHidnTheme(): HidnTheme {
 
 let activeFeedTab: FeedTab = "latest";
 let roomAccessMode: RoomAccessMode = "choose";
-let roomDemoId = "";
-let roomDemoMemo = "";
 let roomLoginError = "";
-let roomZecAmount = "CALCULATING...";
-let roomZecRateStatus = "";
-let roomBackendStatus: "local" | "connecting" | "connected" | "offline" = "local";
-let roomBackendId = "";
-let roomAccountUsername = "";
-let roomAccountAccessLevel: AccountAccessLevel = "read_only";
 let roomAccountRecoveryCode = "";
 let roomAccountWasCreated = false;
-let roomSessionValidationRequest: Promise<void> | undefined;
 let roomAnonymousIdentity: AnonymousIdentity | undefined;
 let roomAnonymousWitness: AnonymousMerkleWitness | undefined;
-let roomAnonymousStatus: AnonymousStatusResponse | undefined;
 let roomAnonymousSubmitting = false;
 let roomLoginSubmitting = false;
 let roomDeviceHistory: DeviceSignalHistory | undefined;
@@ -233,11 +183,7 @@ let roomRecoveryRevealMode: RoomRecoveryRevealMode = "hidden";
 let roomRecoveryRevealError = "";
 let roomRecoveryRevealTimer: number | undefined;
 let roomRecoveryVerificationSubmitting = false;
-let roomRecoveryUsernameInput = "";
 let roomRecoveryConfirmations: [boolean, boolean] = [false, false];
-let roomPaymentIntentId = "";
-let roomPayment: PaymentIntentResponse | undefined;
-let roomVerificationRequested = false;
 let roomVerificationNoticeOpen = false;
 let activeRoomChannel: RoomChannel = "general";
 let roomChannelNotice = "";
@@ -263,8 +209,6 @@ let roomMuseumLoadVersion = 0;
 const roomThreadDetailRequests = new Map<string, Promise<void>>();
 const roomThreadDetailLoaded = new Set<string>();
 const roomThreadDetailErrors = new Map<string, string>();
-let roomReactionStateKey = "";
-let roomReactionStateRequest: Promise<void> | undefined;
 let roomLiveActivityEvents: RoomActivityEvent[] = [];
 let roomLiveActivityRequest: Promise<void> | undefined;
 let roomLiveActivityTimer: number | undefined;
@@ -381,7 +325,6 @@ const HOME_AUDIO_BEATS_PER_LOOP = 16;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
 const ROOM_DOOR_SOUND_VOLUME = 0.16;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
-const ROOM_HANDLE_PATTERN = /^HIDN-[A-Z0-9]{1,20}$/i;
 const SHIELDEDSCAN_CACHE_DURATION_MS = 60_000;
 const ZCASH_STATUS_CAROUSEL_INTERVAL_MS = 4_500;
 const MODERATION_GATE_MIN_DURATION_MS = 800;
@@ -389,10 +332,6 @@ const ROOM_LIVE_ACTIVITY_REFRESH_MS = 10_000;
 const ROOM_NOTIFICATION_REFRESH_MS = 5_000;
 const ROOM_RECOVERY_REVEAL_DURATION_MS = 20_000;
 
-function completeRoomHandle(value: string): string {
-  const normalized = value.trim().toUpperCase();
-  return normalized.startsWith("HIDN-") ? normalized : `HIDN-${normalized}`;
-}
 let homeStreamItems: TransmissionView[] = MOCK_CONFESSIONS.slice(0, HOME_STREAM_LIMIT)
   .reverse()
   .map((confession) => ({
@@ -507,11 +446,7 @@ function deviceSignalHistoryScope(): string {
     return `anonymous:${roomAnonymousIdentity.commitment}`;
   }
 
-  if (roomAccountUsername) {
-    return `account:${roomAccountUsername.toLowerCase()}`;
-  }
-
-  return roomBackendId ? `account:${roomBackendId}` : "local";
+  return "local";
 }
 
 function emptyDeviceSignalHistory(): DeviceSignalHistory {
@@ -874,80 +809,6 @@ function reactionCountForThread(id: string, fallback = 0): number {
   return roomLikeCounts.get(id) ?? fallback;
 }
 
-function mockReactionBaseCount(id: string): number {
-  return getMockConfession(id)?.reactions ?? 0;
-}
-
-function roomReactionTargetIds(path: string): string[] {
-  if (path.startsWith("/c/")) {
-    try {
-      return [decodeURIComponent(path.slice(3).split("/")[0]).trim().toUpperCase()];
-    } catch {
-      return [];
-    }
-  }
-
-  if (path !== "/room" && !roomChannelSurfaceFromPath(path)) {
-    return [];
-  }
-
-  const persistedIds = roomPosts
-    .filter((post) => post.channel === activeRoomChannel && !isModerationHidden("thread", post.id))
-    .map((post) => post.id);
-  return [...new Set(persistedIds)];
-}
-
-function roomReactionStateSignature(path: string): string {
-  return roomReactionTargetIds(path).join("|");
-}
-
-async function refreshRoomReactionState(path = normalizePath(window.location.pathname)): Promise<void> {
-  if (roomAnonymousIdentity) {
-    return;
-  }
-
-  const targetIds = roomReactionTargetIds(path);
-  const signature = targetIds.join("|");
-  if (!targetIds.length || signature === roomReactionStateKey) {
-    return;
-  }
-
-  if (roomReactionStateRequest) {
-    await roomReactionStateRequest;
-    if (signature === roomReactionStateKey) {
-      return;
-    }
-  }
-
-  const requestedPath = path;
-  const request = fetchRoomReactionState("thread", targetIds)
-    .then((response) => {
-      for (const state of response.reactions) {
-        roomLikeCounts.set(state.targetId, mockReactionBaseCount(state.targetId) + state.reactions);
-        if (state.liked) {
-          roomLikedIds.add(state.targetId);
-        } else {
-          roomLikedIds.delete(state.targetId);
-        }
-      }
-      roomReactionStateKey = signature;
-      if (normalizePath(window.location.pathname) === requestedPath) {
-        rerenderProductRoute();
-      }
-    })
-    .catch(() => {
-      // Reaction state is additive; the existing local count remains usable if the optional read fails.
-    });
-  roomReactionStateRequest = request;
-  try {
-    await request;
-  } finally {
-    if (roomReactionStateRequest === request) {
-      roomReactionStateRequest = undefined;
-    }
-  }
-}
-
 const REPORT_REASON_OPTIONS: Array<{ value: ReportReason; label: string }> = [
   { value: "spam", label: "Spam or flooding" },
   { value: "harassment", label: "Harassment" },
@@ -1280,126 +1141,6 @@ async function refreshZcashNetworkStatus(root: ParentNode): Promise<void> {
       status.dataset.zcashState = "unavailable";
       status.title = "ShieldedScan could not provide current Zcash network data.";
     });
-  }
-}
-
-async function refreshRoomConfig(root: ParentNode): Promise<void> {
-  const amount = root.querySelector<HTMLElement>("[data-room-zec-amount]");
-  const status = root.querySelector<HTMLElement>("[data-room-rate-status]");
-  if (!amount) {
-    return;
-  }
-
-  amount.textContent = roomZecAmount;
-  if (status) {
-    status.textContent = roomZecRateStatus;
-  }
-
-  try {
-    const config = await fetchRoomConfig();
-    roomZecAmount = `${config.zecAmount} ZEC`;
-    roomZecRateStatus = `LIVE USD/ZEC RATE / ${config.source.toUpperCase()}`;
-  } catch {
-    roomZecAmount = "BACKEND OFFLINE";
-    roomZecRateStatus = "CONNECT CLOUDFLARE WORKER TO CALCULATE";
-  }
-
-  if (!amount.isConnected) {
-    return;
-  }
-
-  amount.textContent = roomZecAmount;
-  if (status) {
-    status.textContent = roomZecRateStatus;
-  }
-}
-
-function roomBackendStatusLabel(): string {
-  switch (roomBackendStatus) {
-    case "connecting":
-      return "SYNCING WORKER";
-    case "connected":
-      return "BACKEND READY";
-    case "offline":
-      return "LOCAL DEMO / BACKEND OFFLINE";
-    default:
-      return "LOCAL DEMO";
-  }
-}
-
-async function registerRoomBackend(): Promise<void> {
-  try {
-    const response = await createRoomSession({
-      memoReference: roomDemoMemo,
-      returnAddress: "",
-    });
-    if (!response.accessCode) {
-      throw new Error("The Worker did not return an access code.");
-    }
-
-    roomDemoId = response.accessCode;
-    roomBackendId = response.roomId;
-    roomBackendStatus = "connected";
-    roomLoginError = "";
-    sessionStorage.setItem("hidn:room:secret", roomDemoId);
-    sessionStorage.setItem("hidn:room:backend-id", roomBackendId);
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not issue an access code.";
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access" && roomAccessMode === "create") {
-    rerenderProductRoute();
-  }
-}
-
-async function verifyRoomBackend(): Promise<void> {
-  if (!roomBackendId) {
-    return;
-  }
-
-  try {
-    const response = await verifyRoomDemoPayment(roomBackendId, roomDemoId);
-    if (response.status !== "verified") {
-      throw new Error("The Worker did not verify this access code.");
-    }
-
-    roomBackendStatus = "connected";
-    roomLoginError = "";
-    roomAccessMode = "ready";
-    sessionStorage.setItem("hidn:room:verified", "true");
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not verify this access code.";
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access") {
-    rerenderProductRoute();
-  }
-}
-
-async function syncRoomLogin(accessCode: string): Promise<void> {
-  try {
-    const response = await loginRoomSession(accessCode);
-    if (response.status !== "verified") {
-      throw new Error("This access code is not verified yet.");
-    }
-
-    roomDemoId = accessCode.trim();
-    roomBackendId = response.roomId;
-    roomBackendStatus = "connected";
-    roomLoginError = "";
-    roomAccessMode = "ready";
-    sessionStorage.setItem("hidn:room:secret", roomDemoId);
-    sessionStorage.setItem("hidn:room:backend-id", roomBackendId);
-    sessionStorage.setItem("hidn:room:verified", "true");
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not verify this access code.";
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access") {
-    rerenderProductRoute();
   }
 }
 
@@ -2650,8 +2391,7 @@ function publicNavigation(path: string): string {
 }
 
 function renderRoomMenu(): string {
-  const profileName = roomAnonymousIdentity ? "ANONYMOUS" : roomAccountUsername || "HIDN-LOCAL";
-  const profileVerified = roomAccountAccessLevel === "full";
+  const profileName = roomAnonymousIdentity?.alias || "ANONYMOUS";
   return `<div class="room-menu" data-room-menu>
     <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
       <span class="room-menu__icon" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -2661,7 +2401,7 @@ function renderRoomMenu(): string {
       <div class="room-menu__bar" aria-hidden="true"><i></i><i></i><i></i><span>hidn@room: ~/menu</span></div>
       <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ whoami</p>
       <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
-        <span class="room-menu__profile-copy"><strong>&gt; PROFILE</strong><small>${escapeHtml(profileName)} · ${escapeHtml(profileVerified ? "VERIFIED" : "NOT VERIFIED")}</small></span>
+        <span class="room-menu__profile-copy"><strong>&gt; PROFILE</strong><small>${escapeHtml(profileName)} · NAMELESS</small></span>
         <b aria-hidden="true">↗</b>
       </a>
       <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ ls</p>
@@ -2965,9 +2705,7 @@ async function refreshRoomPosts(force = false): Promise<void> {
   }
 
   const requestedChannel = activeRoomChannel;
-  roomPostsRequest = (roomAnonymousIdentity
-    ? fetchAnonymousPosts(requestedChannel)
-    : fetchRoomPosts(requestedChannel))
+  roomPostsRequest = fetchAnonymousPosts(requestedChannel)
     .then((response) => {
       const pendingPosts = roomPosts.filter(
         (post) => post.channel === requestedChannel && roomPendingPostIds.has(post.id),
@@ -3010,9 +2748,8 @@ async function refreshMuseumGalleries(force = false): Promise<void> {
   if (!hasRoomSession() || (!force && roomMuseumLoaded)) return;
   if (roomMuseumRequest) return roomMuseumRequest;
 
-  const load = roomAnonymousIdentity ? fetchAnonymousPosts : fetchRoomPosts;
   roomMuseumRequest = Promise.allSettled(
-    roomChannelOptions.map(async (room) => ({ key: room.key, response: await load(room.key) })),
+    roomChannelOptions.map(async (room) => ({ key: room.key, response: await fetchAnonymousPosts(room.key) })),
   )
     .then((results) => {
       const next = new Map<RoomChannel, RoomPost[]>();
@@ -3060,12 +2797,10 @@ async function refreshRoomThread(threadId: string): Promise<void> {
     return existingRequest;
   }
 
-  const sessionMarker = roomAnonymousIdentity?.commitment ?? roomAccountUsername;
-  const request = (roomAnonymousIdentity
-    ? fetchAnonymousThread(threadId)
-    : fetchRoomThread(threadId))
+  const sessionMarker = roomAnonymousIdentity?.commitment;
+  const request = fetchAnonymousThread(threadId)
     .then((response) => {
-      if (!hasRoomSession() || (roomAnonymousIdentity?.commitment ?? roomAccountUsername) !== sessionMarker) {
+      if (!hasRoomSession() || roomAnonymousIdentity?.commitment !== sessionMarker) {
         return;
       }
 
@@ -3120,43 +2855,18 @@ async function refreshRoomTipAddress(): Promise<void> {
     return;
   }
 
-  if (roomAnonymousIdentity) {
-    const storedTipAddress = sessionStorage.getItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE) ?? "";
-    roomTipAddress = isClientMainnetTipAddress(storedTipAddress) ? storedTipAddress : "";
-    roomTipAddressDraft = roomTipAddress;
-    if (!roomPostTipAddressEdited) {
-      roomPostTipAddressDraft = roomTipAddress;
-    }
-    roomTipAddressLoaded = true;
-    roomTipAddressError = "";
-    if (normalizePath(window.location.pathname) === "/room/profile" || isRoomPostSurface()) {
-      rerenderProductRoute();
-    }
-    return;
+  // Tip destinations for nameless members live only in this browser.
+  const storedTipAddress = sessionStorage.getItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE) ?? "";
+  roomTipAddress = isClientMainnetTipAddress(storedTipAddress) ? storedTipAddress : "";
+  roomTipAddressDraft = roomTipAddress;
+  if (!roomPostTipAddressEdited) {
+    roomPostTipAddressDraft = roomTipAddress;
   }
-
-  roomTipAddressRequest = fetchAccountTipAddress()
-    .then((response) => {
-      roomTipAddress = response.tipAddress ?? "";
-      roomTipAddressDraft = roomTipAddress;
-      if (!roomPostTipAddressEdited) {
-        roomPostTipAddressDraft = roomTipAddress;
-      }
-      roomTipAddressLoaded = true;
-      roomTipAddressError = "";
-    })
-    .catch((error) => {
-      roomTipAddressLoaded = true;
-      roomTipAddressError = error instanceof Error ? error.message : "The mainnet tip address could not be loaded.";
-    })
-    .finally(() => {
-      roomTipAddressRequest = undefined;
-      if (normalizePath(window.location.pathname) === "/room/profile" || isRoomPostSurface()) {
-        rerenderProductRoute();
-      }
-    });
-
-  return roomTipAddressRequest;
+  roomTipAddressLoaded = true;
+  roomTipAddressError = "";
+  if (normalizePath(window.location.pathname) === "/room/profile" || isRoomPostSurface()) {
+    rerenderProductRoute();
+  }
 }
 
 async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
@@ -3179,37 +2889,19 @@ async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
   roomTipAddressFeedback = "";
   rerenderProductRoute();
 
-  if (roomAnonymousIdentity) {
-    try {
-      if (draft) {
-        sessionStorage.setItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE, draft);
-      } else {
-        sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
-      }
-      roomTipAddress = draft;
-      roomTipAddressLoaded = true;
-      roomTipAddressFeedback = roomTipAddress
-        ? "MAINNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
-        : "MAINNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
-    } catch {
-      roomTipAddressError = "THE BROWSER COULD NOT SAVE THIS LOCAL DESTINATION";
-    } finally {
-      roomTipAddressSaving = false;
-      rerenderProductRoute();
-    }
-    return;
-  }
-
   try {
-    const response = await saveAccountTipAddress(draft);
-    roomTipAddress = response.tipAddress ?? "";
-    roomTipAddressDraft = roomTipAddress;
+    if (draft) {
+      sessionStorage.setItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE, draft);
+    } else {
+      sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
+    }
+    roomTipAddress = draft;
     roomTipAddressLoaded = true;
     roomTipAddressFeedback = roomTipAddress
       ? "MAINNET DESTINATION SAVED / NEW POSTS CAN RECEIVE TIPS"
       : "MAINNET DESTINATION CLEARED / TIPPING OFF FOR NEW POSTS";
-  } catch (error) {
-    roomTipAddressError = error instanceof Error ? error.message : "The mainnet tip address could not be saved.";
+  } catch {
+    roomTipAddressError = "THE BROWSER COULD NOT SAVE THIS LOCAL DESTINATION";
   } finally {
     roomTipAddressSaving = false;
     rerenderProductRoute();
@@ -3246,9 +2938,10 @@ async function refreshAccountNotifications(): Promise<void> {
 
   const previousSignature = notificationStateSignature(roomNotifications);
   const notificationCapability = roomAnonymousIdentity?.notificationCapability;
-  roomNotificationsRequest = (notificationCapability
-    ? fetchAnonymousNotifications(notificationCapability)
-    : fetchAccountNotifications())
+  if (!notificationCapability) {
+    return;
+  }
+  roomNotificationsRequest = fetchAnonymousNotifications(notificationCapability)
     .then((response) => {
       if (!hasRoomSession()) {
         return;
@@ -3287,8 +2980,6 @@ async function markRoomNotificationsRead(): Promise<void> {
       .map((notification) => notification.id);
     if (roomAnonymousIdentity?.notificationCapability) {
       await markAnonymousNotificationsRead(roomAnonymousIdentity.notificationCapability, unreadIds);
-    } else {
-      await markAccountNotificationsRead(unreadIds);
     }
     const readAt = new Date().toISOString();
     roomNotifications = {
@@ -3314,8 +3005,6 @@ async function markRoomNotificationRead(notificationId: string): Promise<void> {
   try {
     if (roomAnonymousIdentity?.notificationCapability) {
       await markAnonymousNotificationsRead(roomAnonymousIdentity.notificationCapability, [notificationId]);
-    } else {
-      await markAccountNotificationsRead([notificationId]);
     }
     const readAt = new Date().toISOString();
     if (roomNotifications) {
@@ -3365,7 +3054,7 @@ async function submitRoomPost(): Promise<void> {
   }
   const maxLength = roomPostCharacterLimit();
   if (content.length > maxLength) {
-    roomPostError = `Posts must be ${maxLength} characters or fewer${roomAccountAccessLevel === "full" ? "." : ". VERIFY WITH ZEC FOR MORE."}`;
+    roomPostError = `Posts must be ${maxLength} characters or fewer.`;
     rerenderProductRoute();
     return;
   }
@@ -3386,26 +3075,17 @@ async function submitRoomPost(): Promise<void> {
   rerenderProductRoute();
 
   try {
-    const response = roomAnonymousIdentity
-      ? await (async () => {
-        const { scope, proof } = await createAnonymousRoomProof("post", "room", activeRoomChannel, content, selectedTipAddress);
-        return createAnonymousPost({
-          proof,
-          scope,
-          alias: roomAnonymousIdentity!.alias,
-          notificationCapability: roomAnonymousIdentity!.notificationCapability,
-          content,
-          channel: activeRoomChannel,
-          category: "IDENTITY",
-          tipAddress: selectedTipAddress || undefined,
-        });
-      })()
-      : await createRoomPost({
-        content,
-        channel: activeRoomChannel,
-        category: "IDENTITY",
-        tipAddress: selectedTipAddress,
-      });
+    const { scope, proof } = await createAnonymousRoomProof("post", "room", activeRoomChannel, content, selectedTipAddress);
+    const response = await createAnonymousPost({
+      proof,
+      scope,
+      alias: roomAnonymousIdentity!.alias,
+      notificationCapability: roomAnonymousIdentity!.notificationCapability,
+      content,
+      channel: activeRoomChannel,
+      category: "IDENTITY",
+      tipAddress: selectedTipAddress || undefined,
+    });
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
     roomLikeCounts.set(response.post.id, response.post.reactions);
@@ -3437,7 +3117,7 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   }
   const maxLength = roomReplyCharacterLimit();
   if (content.length > maxLength) {
-    roomPostError = `Replies must be ${maxLength} characters or fewer${roomAccountAccessLevel === "full" ? "." : ". VERIFY WITH ZEC FOR MORE."}`;
+    roomPostError = `Replies must be ${maxLength} characters or fewer.`;
     rerenderProductRoute();
     return;
   }
@@ -3469,19 +3149,15 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
   rerenderProductRoute();
 
   try {
-    const response = roomAnonymousIdentity
-      ? await (async () => {
-        const { scope, proof } = await createAnonymousRoomProof("reply", "thread", threadId, content);
-        return createAnonymousReply({
-          proof,
-          scope,
-          alias: roomAnonymousIdentity!.alias,
-          notificationCapability: roomAnonymousIdentity!.notificationCapability,
-          threadId,
-          content,
-        });
-      })()
-      : await createRoomReply({ threadId, content, submissionId: createRoomReplySubmissionId() });
+    const { scope, proof } = await createAnonymousRoomProof("reply", "thread", threadId, content);
+    const response = await createAnonymousReply({
+      proof,
+      scope,
+      alias: roomAnonymousIdentity!.alias,
+      notificationCapability: roomAnonymousIdentity!.notificationCapability,
+      threadId,
+      content,
+    });
     roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
     rememberDeviceSignalComment(response.comment);
     if (response.status === "created") {
@@ -3632,7 +3308,7 @@ function renderAdminReportCard(report: AdminReportsResponse["reports"][number]):
     </header>
     <dl class="admin-report-card__meta">
       <div><dt>TARGET</dt><dd>${escapeHtml(report.targetType)} / ${escapeHtml(report.targetId)}</dd></div>
-      <div><dt>REPORTED BY</dt><dd>${escapeHtml(report.reporterUsername ?? "ACCOUNT REMOVED")}</dd></div>
+      <div><dt>REPORTED BY</dt><dd>${escapeHtml(report.reporterUsername ?? "ANONYMOUS MEMBER")}</dd></div>
       <div><dt>CREATED</dt><dd>${escapeHtml(report.createdAt)}</dd></div>
     </dl>
     <blockquote class="admin-report-card__excerpt">“${escapeHtml(report.targetExcerpt || "NO CONTENT SNAPSHOT")}"</blockquote>
@@ -4681,29 +4357,6 @@ function renderDetail(id: string): RenderedProductRoute {
   };
 }
 
-function createRoomDemoId(): string {
-  const bytes = new Uint8Array(4);
-  if (window.crypto?.getRandomValues) {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    bytes.forEach((_, index) => {
-      bytes[index] = Math.floor(Math.random() * 256);
-    });
-  }
-
-  return `HIDN-DEMO-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
-}
-
-function createRoomReplySubmissionId(): string {
-  if (window.crypto?.randomUUID) {
-    return `HIDN-REPLY-${window.crypto.randomUUID().toUpperCase()}`;
-  }
-
-  const bytes = new Uint8Array(16);
-  window.crypto?.getRandomValues(bytes);
-  return `HIDN-REPLY-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
-}
-
 function resetRoomRecoveryReveal(): void {
   if (roomRecoveryRevealTimer !== undefined) {
     window.clearTimeout(roomRecoveryRevealTimer);
@@ -4713,7 +4366,6 @@ function resetRoomRecoveryReveal(): void {
   roomRecoveryRevealMode = "hidden";
   roomRecoveryRevealError = "";
   roomRecoveryVerificationSubmitting = false;
-  roomRecoveryUsernameInput = "";
   roomRecoveryConfirmations = [false, false];
 }
 
@@ -4731,7 +4383,6 @@ function openRoomRecoveryCheck(): void {
 
   roomRecoveryRevealMode = "prompt";
   roomRecoveryRevealError = "";
-  roomRecoveryUsernameInput = "";
   roomRecoveryConfirmations = [false, false];
   rerenderProductRoute();
 }
@@ -4743,41 +4394,16 @@ async function verifyRoomRecoveryCheck(root: ParentNode): Promise<void> {
 
   roomRecoveryConfirmations = [1, 2].map((index) => Boolean(root.querySelector<HTMLInputElement>(`#room-recovery-answer-${index}`)?.checked)) as [boolean, boolean];
   const answers = roomRecoveryConfirmations.map((confirmed) => confirmed ? "yes" : "");
-  if (roomAnonymousIdentity) {
-    if (answers.some((answer) => !answer)) {
-      roomRecoveryRevealError = "Confirm both recovery statements before revealing the key.";
-      rerenderProductRoute();
-      return;
-    }
-
-    // Anonymous keys live on this device, so the reveal is immediate; redraw
-    // so the key actually appears.
-    revealRoomRecoveryKeyTemporarily();
+  if (answers.some((answer) => !answer)) {
+    roomRecoveryRevealError = "Confirm both recovery statements before revealing the key.";
     rerenderProductRoute();
     return;
   }
 
-  const usernameInput = root.querySelector<HTMLInputElement>("#room-recovery-username");
-  roomRecoveryUsernameInput = usernameInput?.value ?? roomRecoveryUsernameInput;
-  const username = completeRoomHandle(roomRecoveryUsernameInput);
-  if (!ROOM_HANDLE_PATTERN.test(username) || username !== roomAccountUsername || answers.some((answer) => !answer)) {
-    roomRecoveryRevealError = "Enter the correct handle and confirm both recovery statements.";
-    rerenderProductRoute();
-    return;
-  }
-
-  roomRecoveryVerificationSubmitting = true;
-  roomRecoveryRevealError = "";
+  // The key lives on this device, so the reveal is immediate; redraw so the
+  // key actually appears.
+  revealRoomRecoveryKeyTemporarily();
   rerenderProductRoute();
-  try {
-    await verifyRecoveryQuestions(username, answers);
-    revealRoomRecoveryKeyTemporarily();
-  } catch (error) {
-    roomRecoveryRevealError = error instanceof Error ? error.message : "The recovery confirmations did not match.";
-  } finally {
-    roomRecoveryVerificationSubmitting = false;
-    rerenderProductRoute();
-  }
 }
 
 function revealRoomRecoveryKeyTemporarily(): void {
@@ -4902,10 +4528,7 @@ function restoreAnonymousSession(): boolean {
 
     roomAnonymousIdentity = parsed.identity;
     roomAnonymousWitness = parsed.witness;
-    roomAccountUsername = "";
     roomAccountRecoveryCode = roomAnonymousIdentity.recoveryCode;
-    roomAccountAccessLevel = "read_only";
-    roomBackendStatus = "connected";
     return true;
   } catch {
     sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
@@ -4915,11 +4538,9 @@ function restoreAnonymousSession(): boolean {
 
 async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
   roomAnonymousSubmitting = true;
-  roomBackendStatus = "connecting";
   roomLoginError = "";
   try {
     const status = await fetchAnonymousStatus();
-    roomAnonymousStatus = status;
     if (!status.enabled) {
       throw new Error("Anonymous ZK access is not activated on this Worker yet. The username-free entry screen is ready, but the Worker still needs its verification key.");
     }
@@ -4939,14 +4560,8 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
       pathElements: enrollment.pathElements,
       pathIndices: enrollment.pathIndices,
     };
-    roomAccountUsername = "";
     roomAccountRecoveryCode = identity.recoveryCode;
-    roomAccountAccessLevel = "read_only";
     roomAccountWasCreated = !recoveryCode;
-    roomBackendStatus = "connected";
-    roomPaymentIntentId = "";
-    roomPayment = undefined;
-    roomVerificationRequested = false;
     roomLoginError = "";
     persistAnonymousSession();
     if (recoveryCode) {
@@ -4956,7 +4571,6 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
       revealRoomRecoveryKeyTemporarily();
     }
   } catch (error) {
-    roomBackendStatus = "offline";
     roomLoginError = error instanceof Error ? error.message : "The anonymous room access could not be activated.";
   } finally {
     roomAnonymousSubmitting = false;
@@ -4985,16 +4599,9 @@ function clearRoomSession(): void {
   sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
   sessionStorage.removeItem("hidn:account:payment-intent");
   sessionStorage.removeItem("hidn:account:verification-requested");
-  void logoutAccount().catch(() => undefined);
   roomAccessMode = "choose";
-  roomDemoId = "";
-  roomDemoMemo = "";
   roomLoginError = "";
   roomLoginSubmitting = false;
-  roomBackendStatus = "local";
-  roomBackendId = "";
-  roomAccountUsername = "";
-  roomAccountAccessLevel = "read_only";
   roomTipAddress = "";
   roomTipAddressDraft = "";
   roomTipAddressLoaded = false;
@@ -5007,7 +4614,6 @@ function clearRoomSession(): void {
   roomTipAddressCopyFeedback = "";
   roomAnonymousIdentity = undefined;
   roomAnonymousWitness = undefined;
-  roomAnonymousStatus = undefined;
   roomAnonymousSubmitting = false;
   roomPostComposerOpen = false;
   roomPostText = "";
@@ -5026,8 +4632,6 @@ function clearRoomSession(): void {
   roomThreadDetailRequests.clear();
   roomThreadDetailLoaded.clear();
   roomThreadDetailErrors.clear();
-  roomReactionStateKey = "";
-  roomReactionStateRequest = undefined;
   roomLikeCounts.clear();
   roomLikedIds.clear();
   roomAccountRecoveryCode = "";
@@ -5041,67 +4645,17 @@ function clearRoomSession(): void {
   roomNotificationsMarkingRead = false;
   roomLocalComments = [];
   roomReplySubmitting = false;
-  roomPaymentIntentId = "";
-  roomPayment = undefined;
-  roomVerificationRequested = false;
   roomVerificationNoticeOpen = false;
 }
 
 function restoreRoomAccountState(): void {
-  if (restoreAnonymousSession()) {
-    return;
-  }
-
-  if (sessionStorage.getItem("hidn:account:logged-in") !== "true") {
-    return;
-  }
-
-  if (roomSessionIsExpired()) {
-    clearRoomSession();
-    return;
-  }
-  if (!sessionStorage.getItem(ROOM_SESSION_EXPIRES_AT_STORAGE)) {
-    sessionStorage.setItem(ROOM_SESSION_EXPIRES_AT_STORAGE, String(Date.now() + ROOM_SESSION_TTL_MS));
-  }
-
-  roomBackendId = sessionStorage.getItem("hidn:account:user-id") ?? "";
-  roomAccountUsername = sessionStorage.getItem("hidn:account:username") ?? "";
-  roomAccountAccessLevel = sessionStorage.getItem("hidn:account:access-level") === "full" ? "full" : "read_only";
-  roomAccountRecoveryCode = sessionStorage.getItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE) ?? "";
-  roomPaymentIntentId = sessionStorage.getItem("hidn:account:payment-intent") ?? "";
-  roomVerificationRequested = sessionStorage.getItem("hidn:account:verification-requested") === "true" || Boolean(roomPaymentIntentId);
-  roomBackendStatus = roomBackendId && roomAccountUsername ? "connected" : "offline";
+  restoreAnonymousSession();
 }
 
-function persistAccountSession(account: AccountResponse, refreshExpiry = true): void {
-  roomBackendId = account.userId;
-  roomAccountUsername = account.username;
-  roomAccountAccessLevel = account.accessLevel;
-  roomBackendStatus = "connected";
-  roomTipAddress = "";
-  roomTipAddressDraft = "";
-  roomTipAddressLoaded = false;
-  roomTipAddressRequest = undefined;
-  roomTipAddressSaving = false;
-  roomTipAddressFeedback = "";
-  roomTipAddressError = "";
-  sessionStorage.setItem("hidn:account:logged-in", "true");
-  sessionStorage.setItem("hidn:account:user-id", account.userId);
-  sessionStorage.setItem("hidn:account:username", account.username);
-  sessionStorage.setItem("hidn:account:access-level", account.accessLevel);
-  if (refreshExpiry || !sessionStorage.getItem(ROOM_SESSION_EXPIRES_AT_STORAGE)) {
-    sessionStorage.setItem(ROOM_SESSION_EXPIRES_AT_STORAGE, String(Date.now() + ROOM_SESSION_TTL_MS));
-  }
-}
-
+// The only way in is a nameless key: a member holds their anonymous
+// identity and its membership witness in this browser.
 function hasRoomSession(): boolean {
-  return !roomSessionIsExpired() && (Boolean(roomAnonymousIdentity && roomAnonymousWitness)
-    || sessionStorage.getItem("hidn:account:logged-in") === "true"
-    || (sessionStorage.getItem("hidn:room:verified") === "true" && Boolean(sessionStorage.getItem("hidn:room:secret"))));
-}
-
-function formattedZecAmount(zatoshis: number): string {
-  return `${(zatoshis / 100_000_000).toFixed(8)} ZEC`;
+  return !roomSessionIsExpired() && Boolean(roomAnonymousIdentity && roomAnonymousWitness);
 }
 
 function navigateIntoRoom(path = "/room", options: { portal?: boolean } = {}): void {
@@ -5112,185 +4666,6 @@ function navigateIntoRoom(path = "/room", options: { portal?: boolean } = {}): v
     return;
   }
   navigateProductRoute(path);
-}
-
-async function registerRoomAccount(username: string): Promise<void> {
-  roomAccountRecoveryCode = "";
-  roomLocalComments = [];
-  resetRoomRecoveryReveal();
-  try {
-    const credential = generateZkCredential();
-    const account = await signupZkAccount(username, publicKeyToHex(credential.publicKey));
-    persistAccountSession(account);
-    roomAccountRecoveryCode = credential.recoveryCode;
-    roomAccountWasCreated = true;
-    sessionStorage.setItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE, roomAccountRecoveryCode);
-    revealRoomRecoveryKeyTemporarily();
-    roomPaymentIntentId = "";
-    roomPayment = undefined;
-    sessionStorage.removeItem("hidn:account:payment-intent");
-    roomVerificationRequested = false;
-    sessionStorage.removeItem("hidn:account:verification-requested");
-    roomLoginError = "";
-    roomAccessMode = "ready";
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not create this account.";
-  } finally {
-    roomLoginSubmitting = false;
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access") {
-    rerenderProductRoute();
-  }
-}
-
-function createZkProofInWorker(secretKey: Uint8Array, message: string): Promise<string> {
-  const runOnMainThread = (): Promise<string> => new Promise((resolve, reject) => {
-    window.setTimeout(() => {
-      try {
-        resolve(createZkProof(secretKey, message));
-      } catch (error) {
-        reject(error);
-      }
-    }, 0);
-  });
-
-  if (typeof Worker === "undefined") {
-    return runOnMainThread();
-  }
-
-  return new Promise((resolve, reject) => {
-    let worker: Worker;
-    try {
-      worker = new Worker(new URL("./zk-proof-worker.ts", import.meta.url), { type: "module" });
-    } catch {
-      void runOnMainThread().then(resolve, reject);
-      return;
-    }
-
-    const finish = (): void => {
-      worker.terminate();
-    };
-
-    worker.onmessage = (event: MessageEvent<{ type: "proof" | "error"; proof?: string; message?: string }>) => {
-      finish();
-      if (event.data.type === "proof" && event.data.proof) {
-        resolve(event.data.proof);
-        return;
-      }
-
-      reject(new Error(event.data.message ?? "The browser could not create the proof."));
-    };
-    worker.onerror = () => {
-      finish();
-      reject(new Error("The browser could not create the proof."));
-    };
-
-    const secretKeyBuffer = Uint8Array.from(secretKey).buffer;
-    worker.postMessage({ type: "create-proof", secretKey: secretKeyBuffer, message }, [secretKeyBuffer]);
-  });
-}
-
-async function syncAccountLogin(username: string, recoveryCode: string): Promise<void> {
-  try {
-    let account: AccountResponse | undefined;
-    let credential: ReturnType<typeof credentialFromRecoveryCode> | undefined;
-    try {
-      credential = credentialFromRecoveryCode(recoveryCode);
-    } catch {
-      // Pre-ZK accounts keep using the original recovery-code endpoint.
-      account = await loginAccount(username, recoveryCode);
-    }
-
-    if (!account) {
-      if (!credential) {
-        throw new Error("The recovery key could not be read by the browser.");
-      }
-
-      const challenge = await requestZkChallenge(username);
-      const message = buildZkChallengeMessage(username, challenge.challengeId, challenge.challenge);
-      const proof = await createZkProofInWorker(credential.secretKey, message);
-      account = await verifyZkLogin({
-        username,
-        challengeId: challenge.challengeId,
-        challenge: challenge.challenge,
-        proof,
-      });
-    }
-
-    persistAccountSession(account);
-    roomAccountRecoveryCode = recoveryCode;
-    roomAccountWasCreated = false;
-    sessionStorage.setItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE, roomAccountRecoveryCode);
-    resetRoomRecoveryReveal();
-    roomLocalComments = [];
-    roomPayment = undefined;
-    roomVerificationRequested = false;
-    sessionStorage.removeItem("hidn:account:verification-requested");
-    roomLoginError = "";
-    // Login opens the artifact foyer first; its museum door leads into the hallway.
-    navigateIntoRoom("/room/main", { portal: true });
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not log in this account.";
-  } finally {
-    roomLoginSubmitting = false;
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access") {
-    rerenderProductRoute();
-  }
-}
-
-async function createRoomPaymentIntent(refundAddress: string): Promise<void> {
-  try {
-    roomBackendStatus = "connecting";
-    roomVerificationRequested = true;
-    sessionStorage.setItem("hidn:account:verification-requested", "true");
-    roomLoginError = "";
-    rerenderProductRoute();
-    const payment = await createPaymentIntent(refundAddress);
-    roomPayment = payment;
-    roomPaymentIntentId = payment.paymentIntentId;
-    sessionStorage.setItem("hidn:account:payment-intent", payment.paymentIntentId);
-    roomBackendStatus = "connected";
-    roomLoginError = "";
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not create a payment request.";
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access") {
-    rerenderProductRoute();
-  }
-}
-
-async function refreshRoomPayment(): Promise<void> {
-  if (!roomPaymentIntentId) {
-    return;
-  }
-
-  try {
-    const payment = await fetchPaymentIntent(roomPaymentIntentId);
-    roomPayment = payment;
-    if (payment.status === "confirmed") {
-      roomAccountAccessLevel = "full";
-      sessionStorage.setItem("hidn:account:access-level", "full");
-    } else if (payment.status === "reorged" || payment.status === "underpaid" || payment.status === "overpaid") {
-      roomAccountAccessLevel = "read_only";
-      sessionStorage.setItem("hidn:account:access-level", "read_only");
-    }
-    roomBackendStatus = "connected";
-    roomLoginError = "";
-  } catch (error) {
-    roomBackendStatus = "offline";
-    roomLoginError = error instanceof Error ? error.message : "The Worker could not read this payment request.";
-  }
-
-  if (normalizePath(window.location.pathname) === "/room/access") {
-    rerenderProductRoute();
-  }
 }
 
 function renderRoomAccessChooser(): string {
@@ -5341,25 +4716,6 @@ function renderRoomLogin(): string {
   </div>`;
 }
 
-function roomPaymentStatusLabel(status: PaymentIntentResponse["status"]): string {
-  switch (status) {
-    case "confirmed":
-      return "ZEC CONFIRMED / FULL ACCESS";
-    case "detected":
-      return "PAYMENT DETECTED / WAITING";
-    case "underpaid":
-      return "UNDERPAID / MANUAL REVIEW";
-    case "overpaid":
-      return "OVERPAID / MANUAL REVIEW";
-    case "reorged":
-      return "REORGED / ACCESS PAUSED";
-    case "expired":
-      return "INTENT EXPIRED";
-    default:
-      return "WAITING FOR ZEC";
-  }
-}
-
 function renderRecoveryConfirmationFields(): string {
   return ROOM_RECOVERY_CONFIRMATIONS.map((question, index) => `<fieldset class="room-recovery-question">
     <legend>CONFIRMATION ${String(index + 1).padStart(2, "0")}</legend>
@@ -5372,20 +4728,11 @@ function renderRecoveryConfirmationFields(): string {
 }
 
 function renderRecoveryRevealPrompt(className: string): string {
-  const isAnonymous = Boolean(roomAnonymousIdentity);
-  const handleField = isAnonymous ? "" : `<label class="room-access-field">
-        <span>USERNAME / HIDN PRIVATE HANDLE</span>
-        <div class="room-handle-input">
-          <span class="room-handle-input__prefix" aria-hidden="true">HIDN-</span>
-          <input id="room-recovery-username" type="text" value="${escapeHtml(roomRecoveryUsernameInput)}" placeholder="NOIR42" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="25" pattern="[A-Za-z0-9]+" />
-        </div>
-      </label>`;
-  const label = isAnonymous ? "RECOVERY KEY / CONFIRM OWNERSHIP" : "RECOVERY KEY / CONFIRM HANDLE";
+  const label = "RECOVERY KEY / CONFIRM OWNERSHIP";
   const note = "Confirm both statements. The recovery key will be visible for 20 seconds only.";
 
   return `<form class="${className}" data-room-recovery-form novalidate>
       <span class="room-access-key__label">${label}</span>
-      ${handleField}
       ${renderRecoveryConfirmationFields()}
       ${roomRecoveryRevealError ? AlertMessage("KEY NOT REVEALED", roomRecoveryRevealError, "danger") : ""}
       <p class="room-payment-card__note">${note}</p>
@@ -5418,85 +4765,29 @@ function renderRoomRecoveryPanel(): string {
     </section>`;
   }
 
-  if (!roomAccountRecoveryCode) {
-    return `<section class="room-access-key room-recovery-panel room-recovery-panel--hidden">
-      <span class="room-access-key__label">RECOVERY KEY / NOT IN THIS SESSION</span>
-      <p>The recovery key cannot be recovered from HIDN. Return with the key you saved to restore it in this browser session.</p>
-      ${SecondaryButton({ label: "RETURN WITH SAVED KEY →", dataAction: "room-login" })}
-    </section>`;
-  }
-
-  if (roomRecoveryRevealMode === "visible") {
-    return `<section class="room-access-key room-recovery-panel room-recovery-panel--visible" aria-live="polite">
-      <span class="room-access-key__label" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
-      <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
-        <code>${escapeHtml(roomAccountRecoveryCode)}</code>
-      </button>
-      <span class="room-access-key__warning">Save it before entering the room. HIDN cannot recover a lost key.</span>
-    </section>`;
-  }
-
-  if (roomRecoveryRevealMode === "prompt") {
-    return renderRecoveryRevealPrompt("room-login-card room-recovery-panel");
-  }
-
-  return `<section class="room-access-key room-recovery-panel room-recovery-panel--hidden">
-    <span class="room-access-key__label">RECOVERY KEY / HIDDEN</span>
-    <p>The recovery key is not displayed automatically. Confirm both recovery statements to reveal it temporarily.</p>
-    ${SecondaryButton({ label: "RECOVER KEY →", dataAction: "room-recovery-open" })}
-    <span class="room-access-key__warning">The recovery key cannot be recovered from HIDN. So keep it safely; it is your key to the private room.</span>
-  </section>`;
+  return "";
 }
 
 function renderRoomReady(): string {
-  const isFull = roomAccountAccessLevel === "full";
   const isNewAccount = roomAccountWasCreated;
   const signalMode = activeHidnTheme() === "signal";
-  const payment = roomPayment;
-  const accountLabel = roomAnonymousIdentity ? "ANONYMOUS ACCESS" : roomAccountUsername ? `@${roomAccountUsername}` : "ACCOUNT SESSION";
-  const showVerification = roomVerificationRequested && !isFull;
   const titleText = isNewAccount ? "SAVE YOUR KEY." : "THE ROOM IS OPEN.";
   const titlePrefix = isNewAccount ? "SAVE YOUR" : "THE ROOM IS";
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
-    ? signalMode ? `${accountLabel} is ready. Save the recovery key below, then enter the room.` : "The private room is ready. Save the recovery key below, then enter the room."
-    : isFull
-      ? `${accountLabel} is active with full room access.`
-      : `${accountLabel} is active with free room access. Enter the private room to post, reply, and keep your history.`;
+    ? "Your nameless access is ready. Save the recovery key below, then enter the room."
+    : "Your nameless access is active. Enter the private room to post, reply and read.";
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
-      ${signalMode ? TerminalLabel(isFull ? "HIDN / VERIFIED ACCESS" : "HIDN / FREE ACCESS") : ""}
+      ${signalMode ? TerminalLabel("HIDN / NAMELESS ACCESS") : ""}
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
         ${escapeHtml(signalMode ? "THE ROOM IS" : titlePrefix)}<br />
         <em>${escapeHtml(titleSignal)}</em>
       </h1>
       <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
     </header>
-    ${roomAnonymousIdentity || roomAccountUsername ? renderRoomRecoveryPanel() : ""}
-    ${showVerification && payment ? `<section class="room-payment-card" aria-labelledby="room-payment-title">
-      <div class="room-payment-card__header">
-        <span class="room-payment-card__eyebrow">PAYMENT INTENT / MAINNET</span>
-        <span class="room-payment-card__status"><span aria-hidden="true"></span>${escapeHtml(roomPaymentStatusLabel(payment.status))}</span>
-      </div>
-      <h2 id="room-payment-title">SEND THE EXACT AMOUNT</h2>
-      <p class="room-payment-card__explainer">Use the receiving address and one-time reference below. Optional ZEC verification unlocks higher room limits and advanced privileges after the signed watcher reports the exact zatoshi amount with the required confirmations.</p>
-      <code class="room-payment-card__address">${escapeHtml(payment.receivingAddress ?? "PAYMENT ADDRESS NOT CONFIGURED")}</code>
-      <div class="room-payment-card__details">
-        <div><span>EXACT AMOUNT</span><strong>${escapeHtml(formattedZecAmount(payment.expectedAmountZat))}</strong></div>
-        <div><span>CONFIRMATIONS</span><strong>${escapeHtml(String(payment.confirmations))} / ${escapeHtml(String(payment.minimumConfirmations))}</strong></div>
-      </div>
-      <p class="room-payment-card__memo"><strong>MEMO REFERENCE</strong> <code>${escapeHtml(payment.paymentReference)}</code><br />Include this one-time reference in the wallet memo so the watcher can match the payment to your account. It is not a password.</p>
-      <p class="room-payment-card__note">Refund address stored: ${payment.refundAddressStored ? "YES / ENCRYPTED" : "NO / AUTOMATIC REFUND NOT AVAILABLE"}. Wrong amounts and missing references are held for manual review and do not unlock the account.</p>
-      ${PrimaryButton({ label: "CHECK PAYMENT STATUS →", dataAction: "room-check-payment" })}
-    </section>` : showVerification ? `<form class="room-login-card room-payment-request-card" novalidate>
-      <label class="room-access-field" for="room-refund-address">
-        <span>REFUND ADDRESS / OPTIONAL BUT RECOMMENDED</span>
-        <input id="room-refund-address" type="text" placeholder="zs1..." autocomplete="off" spellcheck="false" maxlength="240" />
-      </label>
-      <p class="room-payment-card__note">If a payment is underpaid, overpaid, or cannot be matched, a refund address lets an authorized payout process contact you. It is encrypted before D1 storage. No automatic refund is promised until a payout signer is configured.</p>
-      ${SecondaryButton({ label: roomBackendStatus === "connecting" ? "CREATING PAYMENT REQUEST..." : "CREATE PAYMENT REQUEST →", disabled: roomBackendStatus === "connecting", dataAction: "room-create-payment-intent" })}
-    </form>` : ""}
+    ${roomAnonymousIdentity ? renderRoomRecoveryPanel() : ""}
     <div class="room-access-actions">
       ${SecondaryButton({ label: isNewAccount ? "ENTER THE ROOM →" : "GO BACK TO ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
     </div>
@@ -5552,9 +4843,7 @@ function renderProfileRecoveryKey(): string {
   }
 
   if (roomRecoveryRevealMode === "visible") {
-    const repeatInstruction = roomAnonymousIdentity
-      ? "VISIBLE FOR 20 SECONDS / REPEAT THE CONFIRMATIONS TO REVEAL IT AGAIN."
-      : "VISIBLE FOR 20 SECONDS / REPEAT THE HANDLE CHECK TO REVEAL IT AGAIN.";
+    const repeatInstruction = "VISIBLE FOR 20 SECONDS / REPEAT THE CONFIRMATIONS TO REVEAL IT AGAIN.";
     return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--visible" aria-labelledby="room-profile-key-title" aria-live="polite">
       <span class="room-access-key__label" id="room-profile-key-title" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
       <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
@@ -5636,9 +4925,7 @@ function renderRoomProfile(): RenderedProductRoute {
     };
   }
 
-  const isFull = roomAccountAccessLevel === "full";
-  const isAnonymous = Boolean(roomAnonymousIdentity);
-  const profileLabel = isAnonymous ? "ANONYMOUS ACCESS" : roomAccountUsername;
+  const profileLabel = roomAnonymousIdentity?.alias || "ANONYMOUS ACCESS";
   const deviceHistory = loadDeviceSignalHistory();
   const posts = deviceHistory.posts;
   const comments = deviceHistory.comments;
@@ -5658,26 +4945,26 @@ function renderRoomProfile(): RenderedProductRoute {
           <header class="hidn-access">
             <p class="hidn-access__code">/// PROFILE</p>
             <h1>YOUR SIGNALS STAY WITH YOU.</h1>
-            <p class="hidn-access__line" data-hidn-type>&gt; ${isAnonymous ? "This is a private anonymous access surface. Your recovery key stays on this device and is never used as a public name." : `${escapeHtml(roomAccountUsername)} is a private account surface. Your handle is pseudonymous; your recovery key stays behind this session.`} Your signals are stored only in this browser and cannot move to another device.</p>
+            <p class="hidn-access__line" data-hidn-type>&gt; This is a private, nameless access surface. Your recovery key stays on this device and is never used as a public name. Your signals are stored only in this browser and cannot move to another device.</p>
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
               <div>
-                ${TerminalLabel(isAnonymous ? "ACCESS / ANONYMOUS CREDENTIAL" : "ACCOUNT / PRIVATE HANDLE")}
+                ${TerminalLabel("ACCESS / ANONYMOUS CREDENTIAL")}
                 <h2 id="room-profile-status-title">${escapeHtml(profileLabel)}</h2>
               </div>
-              ${StatusIndicator(isFull ? "VERIFIED ACCESS" : "FREE ACCESS / OPTIONAL ZEC", isFull ? "online" : "warning", true)}
+              ${StatusIndicator("NAMELESS ACCESS", "online", true)}
             </div>
-            <p class="room-profile-card__note">${isFull ? "Verified access is enabled for this account. Posts allow up to 2,000 characters and replies allow up to 1,200." : "Free access includes anonymous posts, replies, reactions, and private history. Posts allow 500 characters and replies allow 500; optional ZEC verification unlocks higher limits and advanced room privileges."} This history is saved only on this device. It is not synced, exported, or recoverable on another device.</p>
+            <p class="room-profile-card__note">Nameless access includes posts, replies, reactions and private history. Posts and replies allow up to ${roomPostCharacterLimit()} characters. Zcash verification is coming. This history is saved only on this device. It is not synced, exported, or recoverable on another device.</p>
             <div class="room-profile-stats" aria-label="Private account totals">
               <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats.posts)}</strong></div>
               <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats.comments)}</strong></div>
               <div><span>LIKES RECEIVED</span><strong>${formatPrivateTotal(profileStats.likes)}</strong></div>
             </div>
-            ${isFull ? "" : `<div class="room-profile-card__actions">
+            <div class="room-profile-card__actions">
               ${SecondaryButton({ label: "[ VERIFY WITH ZEC ]", dataAction: "room-open-verification" })}
-              ${GhostButton({ label: "[ CONTINUE FREE ]", dataAction: "room-profile-back" })}
-            </div>`}
+              ${GhostButton({ label: "[ CONTINUE ]", dataAction: "room-profile-back" })}
+            </div>
           </section>
           ${renderProfileTipAddress()}
           ${renderProfileRecoveryKey()}
@@ -5763,7 +5050,7 @@ function placeholderForPath(path: string): PlaceholderPage {
       eyebrow: "HIDN / PRIVACY",
       title: "REVEAL LESS BY DEFAULT.",
       copy: "Concrete privacy principles for anonymous thoughts, private room access, and recovery keys.",
-      body: "HIDN keeps personal identity out of the conversation. Room access uses a pseudonymous handle and a recovery key; private account history stays behind the room session. Privacy controls are described concretely rather than as a promise of universal anonymity.",
+      body: "HIDN keeps personal identity out of the conversation. Room access uses a nameless recovery key that never leaves your browser; your private history stays on your device. Privacy controls are described concretely rather than as a promise of universal anonymity.",
     };
   }
 
@@ -6075,7 +5362,6 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 }
 
 interface RoomRecoveryInteractionState {
-  username: string;
   confirmations: [boolean, boolean];
   tipAddress: string;
   activeControlId?: string;
@@ -6090,7 +5376,6 @@ function captureRoomRecoveryInteractionState(): RoomRecoveryInteractionState | u
     return undefined;
   }
 
-  const usernameInput = form?.querySelector<HTMLInputElement>("#room-recovery-username");
   const activeElement = document.activeElement;
   const activeInput = activeElement instanceof HTMLInputElement
     && (Boolean(form?.contains(activeElement)) || activeElement === tipInput)
@@ -6101,7 +5386,6 @@ function captureRoomRecoveryInteractionState(): RoomRecoveryInteractionState | u
   roomTipAddressDraft = tipAddress;
 
   return {
-    username: usernameInput?.value ?? roomRecoveryUsernameInput,
     confirmations,
     tipAddress,
     activeControlId: activeInput?.id,
@@ -6117,11 +5401,6 @@ function restoreRoomRecoveryInteractionState(state: RoomRecoveryInteractionState
 
   const form = document.querySelector<HTMLFormElement>("[data-room-recovery-form]");
   const tipInput = document.querySelector<HTMLInputElement>("#room-tip-address");
-
-  const usernameInput = form?.querySelector<HTMLInputElement>("#room-recovery-username");
-  if (usernameInput) {
-    usernameInput.value = state.username;
-  }
 
   state.confirmations.forEach((checked, index) => {
     const checkbox = form?.querySelector<HTMLInputElement>(`#room-recovery-answer-${index + 1}`);
@@ -6163,39 +5442,6 @@ function navigateProductRoute(path: string): void {
   roomTipAddressCopyFeedback = "";
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
-}
-
-function validateRestoredRoomSession(path: string): void {
-  if (
-    !hasRoomSession()
-    || roomAnonymousIdentity
-    || sessionStorage.getItem("hidn:account:logged-in") !== "true"
-    || roomSessionValidationRequest
-  ) {
-    return;
-  }
-
-  const shouldReturnHome = isProtectedRoomPath(path) || path === "/room/access";
-  roomSessionValidationRequest = fetchAccountSession()
-    .then((account) => {
-      persistAccountSession(account, false);
-    })
-    .catch((error: unknown) => {
-      const status = error instanceof Error
-        ? (error as Error & { status?: number }).status
-        : undefined;
-      if (status !== 401) {
-        return;
-      }
-
-      clearRoomSession();
-      if (shouldReturnHome) {
-        navigateProductRoute("/");
-      }
-    })
-    .finally(() => {
-      roomSessionValidationRequest = undefined;
-    });
 }
 
 function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
@@ -6263,15 +5509,6 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
         roomLikeCounts.set(threadId, response.reactions);
         roomLikedIds.add(threadId);
         roomChannelNotice = "REACTION SAVED / PRIVATE";
-      } else {
-        const response = await toggleRoomReaction({ targetType: "thread", targetId: threadId });
-        roomLikeCounts.set(threadId, mockReactionBaseCount(threadId) + response.reactions);
-        if (response.liked) {
-          roomLikedIds.add(threadId);
-        } else {
-          roomLikedIds.delete(threadId);
-        }
-        roomChannelNotice = response.liked ? "REACTION SAVED / PRIVATE" : "REACTION REMOVED / PRIVATE";
       }
       roomPostError = "";
     } catch (error) {
@@ -6370,7 +5607,17 @@ async function submitActiveReport(): Promise<void> {
   rerenderProductRoute();
 
   try {
+    if (target.targetType === "account") {
+      throw new Error("Only posts and replies can be reported.");
+    }
+    if (!hasRoomSession()) {
+      throw new Error("Return with your recovery key to send a report.");
+    }
+    // The proof shows a member sent this report without saying which one.
+    const { scope, proof } = await createAnonymousRoomProof("report", target.targetType, target.targetId, reason);
     await submitReport({
+      proof,
+      scope,
       targetType: target.targetType,
       targetId: target.targetId,
       targetExcerpt: target.targetExcerpt,
@@ -6612,11 +5859,6 @@ function bindRoomRecoveryInteractions(root: ParentNode): void {
   if (!form) {
     return;
   }
-
-  const usernameInput = form.querySelector<HTMLInputElement>("#room-recovery-username");
-  usernameInput?.addEventListener("input", () => {
-    roomRecoveryUsernameInput = usernameInput.value;
-  });
 
   form.querySelectorAll<HTMLInputElement>("input[id^='room-recovery-answer-']").forEach((checkbox, index) => {
     checkbox.addEventListener("change", () => {
@@ -7106,12 +6348,6 @@ export function bindProductRoute(root: ParentNode = document): void {
   } else {
     stopLiveRoomActivity();
   }
-  if (isRoomAccessPath && roomAccessMode === "create") {
-    void refreshRoomConfig(root);
-  }
-  if (isRoomAccessPath && roomPaymentIntentId && !roomPayment) {
-    void refreshRoomPayment();
-  }
   root.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
     if (link.matches("[data-room-logout]") || link.textContent?.trim() === "LOG OUT" || link.textContent?.trim() === "LEAVE ROOM") {
       link.addEventListener("click", clearRoomSession);
@@ -7132,7 +6368,6 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
 
   const normalizedPath = normalizePath(window.location.pathname);
-  validateRestoredRoomSession(normalizedPath);
   root.querySelectorAll<HTMLAnchorElement>("[data-room-notification-link]").forEach((link) => {
     link.addEventListener("click", () => {
       void markRoomNotificationRead(link.dataset.notificationId ?? "");
@@ -7142,9 +6377,6 @@ export function bindProductRoute(root: ParentNode = document): void {
     startRoomNotificationPolling();
   } else {
     stopRoomNotificationPolling();
-  }
-  if (hasRoomSession() && roomReactionStateSignature(normalizedPath)) {
-    void refreshRoomReactionState(normalizedPath);
   }
   if ((normalizedPath === "/room" || normalizedPath === "/room/rooms" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath))) && hasRoomSession()) {
     void refreshRoomPosts();
@@ -7425,10 +6657,6 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         }
         case "room-open-verification":
-          if (roomAccountAccessLevel === "full") {
-            break;
-          }
-
           roomVerificationNoticeOpen = true;
           rerenderProductRoute(true);
           break;
@@ -7439,7 +6667,6 @@ export function bindProductRoute(root: ParentNode = document): void {
         case "room-create":
           roomAccessMode = "create";
           roomLoginError = "";
-          roomBackendStatus = "local";
           rerenderProductRoute();
           break;
         case "room-login":
@@ -7459,24 +6686,11 @@ export function bindProductRoute(root: ParentNode = document): void {
           }
 
           roomAnonymousSubmitting = true;
-          roomBackendStatus = "connecting";
           roomLoginError = "";
           rerenderProductRoute();
           void registerAnonymousRoomAccess();
           break;
         }
-        case "room-verify-demo":
-          if (roomBackendStatus !== "connected" || !roomBackendId || !roomDemoId) {
-            roomLoginError = "Wait for the Worker to issue your access code before verifying the demo payment.";
-            rerenderProductRoute();
-            break;
-          }
-
-          roomBackendStatus = "connecting";
-          roomLoginError = "";
-          rerenderProductRoute();
-          void verifyRoomBackend();
-          break;
         case "room-submit-login": {
           if (roomLoginSubmitting || roomAnonymousSubmitting) {
             break;
@@ -7493,23 +6707,10 @@ export function bindProductRoute(root: ParentNode = document): void {
           roomLoginError = "";
           roomLoginSubmitting = true;
           roomAnonymousSubmitting = true;
-          roomBackendStatus = "connecting";
           rerenderProductRoute();
           void registerAnonymousRoomAccess(recoveryCode);
           break;
         }
-        case "room-create-payment-intent": {
-          const input = root.querySelector<HTMLInputElement>("#room-refund-address");
-          const refundAddress = input?.value.trim() ?? "";
-          void createRoomPaymentIntent(refundAddress);
-          break;
-        }
-        case "room-check-payment":
-          roomBackendStatus = "connecting";
-          roomLoginError = "";
-          rerenderProductRoute();
-          void refreshRoomPayment();
-          break;
         case "room-enter":
           navigateIntoRoom("/room/main", { portal: true });
           break;

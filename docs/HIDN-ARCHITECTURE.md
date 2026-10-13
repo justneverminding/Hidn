@@ -25,8 +25,10 @@ public/
 docs/        source-of-truth product, brand, privacy, and architecture docs
 ```
 
-The public frontend and its Cloudflare Worker live in `apps/web`. The first
-account/payment boundary is implemented there with D1 migrations. The
+The public frontend and its Cloudflare Worker live in `apps/web`. Room access
+is nameless only: an anonymous membership proof, with D1 migrations for the
+member tree and content. Handle accounts and the account payment upgrade have
+been removed. The
 separate `payment-watcher` process observes a configured Zcash wallet RPC
 endpoint and sends signed events to the Worker. `admin`, `api`, `zk`, and
 `zcash` remain explicit extraction boundaries rather than public browser
@@ -61,9 +63,9 @@ authentication, secrets, and access controls for it are later work.
 - public Phase 2 routes at `/`, `/room`, `/explore`, `/c/:id`,
   `/manifesto`, `/how-it-works`, and `/privacy`;
 - local in-memory mock data for message content and room interactions;
-  - a Worker + D1 Room Access boundary for pseudonymous accounts, browser-held
-  Schnorr proof credentials, legacy hashed recovery codes, HttpOnly sessions,
-  payment intents, and signed watcher events;
+  - a Worker + D1 Room Access boundary for nameless members: a browser-held
+  secret, a Poseidon Merkle member tree, and Groth16 membership proofs on every
+  post, reply, reaction and report;
 - a separate Node payment watcher that may observe a shielded address but has
   no spending-key or refund-signing authority.
 
@@ -99,9 +101,9 @@ path, retention period, and deletion behavior before shipping.
 The web shell must not import a general-purpose identity helper. Privacy,
 proof, and Zcash logic belong behind their named package boundaries so that
 the consumer surface can remain understandable and wallet-free by default.
-The account milestone uses `@hidn/zk` for a browser-generated Schnorr
-proof-of-knowledge credential; it is intentionally linked to the selected HIDN
-handle and is not yet an operator-blind anonymous-posting protocol.
+Room access uses `@hidn/anonymous-zk`: the browser keeps the secret and proves
+membership without revealing which member acted. The earlier handle accounts
+and their `@hidn/zk` Schnorr credential have been removed.
 
 ## Observability boundary
 

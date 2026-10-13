@@ -1,37 +1,9 @@
-export interface RoomConfig {
-  usdTargetCents: number;
-  zecUsdPrice: number;
-  zecAmount: string;
-  source: string;
-}
-
-export interface RoomSessionResponse {
-  roomId: string;
-  status: "pending" | "verified";
-  accessCode?: string;
-}
-
 export type AccountAccessLevel = "read_only" | "full";
-export type AccountAuthMethod = "recovery_code" | "schnorr";
 export type ReportTargetType = "thread" | "reply" | "account";
 export type ReportReason = "spam" | "harassment" | "threats" | "sexual_content" | "personal_data" | "self_harm" | "other";
 export type ReportStatus = "open" | "reviewed" | "dismissed" | "actioned";
 export type ModerationTargetType = "thread" | "reply";
 export type ModerationAction = "approve" | "hide" | "reject";
-
-export interface AccountResponse {
-  userId: string;
-  username: string;
-  accessLevel: AccountAccessLevel;
-  paymentStatus: "not_started" | "pending" | "confirmed";
-  authMethod?: AccountAuthMethod;
-  recoveryCode?: string;
-}
-
-export interface AccountTipAddressResponse {
-  network: "mainnet";
-  tipAddress: string | null;
-}
 
 export interface RoomPost {
   id: string;
@@ -48,10 +20,6 @@ export interface RoomPost {
 
 export type ContentStatus = "visible" | "pending" | "hidden" | "rejected";
 
-export interface AccountHistoryPost extends RoomPost {
-  status: ContentStatus;
-}
-
 export interface RoomComment {
   id: string;
   threadId: string;
@@ -59,18 +27,6 @@ export interface RoomComment {
   channel: string;
   time: string;
   status: ContentStatus;
-}
-
-export interface AccountHistoryStats {
-  posts: number;
-  comments: number;
-  likes: number;
-}
-
-export interface AccountHistoryResponse {
-  posts: AccountHistoryPost[];
-  comments: RoomComment[];
-  stats?: AccountHistoryStats;
 }
 
 export type AccountNotificationType = "reaction" | "reply";
@@ -121,11 +77,6 @@ export interface AnonymousNotificationsResponse {
   unreadCount: number;
 }
 
-export interface RecoveryQuestionsResponse {
-  configured: boolean;
-  questions: string[];
-}
-
 export interface RoomPostsResponse {
   posts: RoomPost[];
   channel: string;
@@ -134,17 +85,6 @@ export interface RoomPostsResponse {
 export interface RoomThreadResponse {
   post: RoomPost;
   replies: RoomComment[];
-}
-
-export interface RoomReactionState {
-  targetId: string;
-  reactions: number;
-  liked: boolean;
-}
-
-export interface RoomReactionStateResponse {
-  targetType: "thread" | "reply";
-  reactions: RoomReactionState[];
 }
 
 export interface RoomActivityEvent {
@@ -156,39 +96,6 @@ export interface RoomActivityEvent {
 
 export interface RoomActivityResponse {
   activities: RoomActivityEvent[];
-}
-
-export interface ZkChallengeResponse {
-  protocol: "hidn-schnorr-v1";
-  challengeId: string;
-  challenge: string;
-  expiresAt: string;
-}
-
-export interface PaymentIntentResponse {
-  paymentIntentId: string;
-  paymentReference: string;
-  expectedAmountZat: number;
-  receivingAddress: string | null;
-  refundAddressStored: boolean;
-  status:
-    | "pending"
-    | "detected"
-    | "confirmed"
-    | "underpaid"
-    | "overpaid"
-    | "expired"
-    | "refund_pending"
-    | "refunded"
-    | "reorged";
-  transactionId: string | null;
-  outputIndex: number | null;
-  observedAmountZat: number | null;
-  confirmations: number;
-  minimumConfirmations: number;
-  createdAt: string;
-  expiresAt: string;
-  confirmedAt: string | null;
 }
 
 export interface ReportSubmissionResponse {
@@ -204,7 +111,7 @@ export interface AdminReport {
   targetExcerpt: string;
   reason: ReportReason;
   details: string;
-  reporterUserId: string;
+  reporterUserId: string | null;
   reporterUsername: string | null;
   status: ReportStatus;
   createdAt: string;
@@ -258,61 +165,6 @@ export interface ModerationVisibilityResponse {
   }>;
 }
 
-export async function fetchRoomConfig(): Promise<RoomConfig> {
-  const response = await fetch("/api/room/config", {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Room config returned HTTP ${response.status}.`);
-  }
-
-  const payload = (await response.json()) as {
-    usdTargetCents?: unknown;
-    zecUsdPrice?: unknown;
-    zecAmount?: unknown;
-    source?: unknown;
-    zcash?: { usd?: unknown };
-  };
-  const zecUsdPrice =
-    typeof payload.zecUsdPrice === "number" ? payload.zecUsdPrice : Number(payload.zcash?.usd);
-  const zecAmount =
-    typeof payload.zecAmount === "string" ? payload.zecAmount : Number.isFinite(zecUsdPrice) && zecUsdPrice > 0 ? (1 / zecUsdPrice).toFixed(8) : "";
-
-  if (!Number.isFinite(zecUsdPrice) || zecUsdPrice <= 0 || !zecAmount) {
-    throw new Error("Room config returned an invalid ZEC amount.");
-  }
-
-  return {
-    usdTargetCents: typeof payload.usdTargetCents === "number" ? payload.usdTargetCents : 100,
-    zecUsdPrice,
-    zecAmount,
-    source: typeof payload.source === "string" ? payload.source : "COINGECKO",
-  };
-}
-
-async function roomRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
-    const message = typeof payload?.error === "string"
-      ? payload.error
-      : response.status === 405 && path.startsWith("/api/account/zk/")
-        ? "The deployed Room Worker is older than this local frontend. Apply D1 migration 0004 and deploy the updated Worker before creating a proof account."
-        : `Room backend returned HTTP ${response.status}.`;
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
-}
-
 async function roomGet<T>(path: string): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -327,10 +179,6 @@ async function roomGet<T>(path: string): Promise<T> {
   }
 
   return (await response.json()) as T;
-}
-
-async function accountRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  return roomRequest<T>(path, body);
 }
 
 async function anonymousRequest<T>(
@@ -472,137 +320,29 @@ export function markAnonymousNotificationsRead(
   );
 }
 
-export function signupAccount(username: string): Promise<AccountResponse> {
-  return accountRequest<AccountResponse>("/api/account/signup", { username });
-}
-
-export function signupZkAccount(username: string, identityCommitment: string): Promise<AccountResponse> {
-  return accountRequest<AccountResponse>("/api/account/zk/signup", { username, identityCommitment });
-}
-
-export function loginAccount(username: string, recoveryCode: string): Promise<AccountResponse> {
-  return accountRequest<AccountResponse>("/api/account/login", { username, recoveryCode });
-}
-
-export function requestZkChallenge(username: string): Promise<ZkChallengeResponse> {
-  return accountRequest<ZkChallengeResponse>("/api/account/zk/challenge", { username });
-}
-
-export function verifyZkLogin(input: {
-  username: string;
-  challengeId: string;
-  challenge: string;
-  proof: string;
-}): Promise<AccountResponse> {
-  return accountRequest<AccountResponse>("/api/account/zk/verify", input);
-}
-
-export async function fetchAccountSession(): Promise<AccountResponse> {
-  const response = await fetch("/api/account/session", {
-    credentials: "same-origin",
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
-    const message = typeof payload?.error === "string" ? payload.error : `Account session returned HTTP ${response.status}.`;
-    const error = new Error(message) as Error & { status?: number };
-    error.status = response.status;
-    throw error;
-  }
-
-  return (await response.json()) as AccountResponse;
-}
-
-export function logoutAccount(): Promise<{ ok: boolean }> {
-  return accountRequest<{ ok: boolean }>("/api/account/logout", {});
-}
-
-export function fetchAccountHistory(): Promise<AccountHistoryResponse> {
-  return roomGet<AccountHistoryResponse>("/api/account/history");
-}
-
-export function fetchAccountNotifications(): Promise<AccountNotificationsResponse> {
-  return roomGet<AccountNotificationsResponse>("/api/account/notifications?limit=30");
-}
-
-export function fetchAccountTipAddress(): Promise<AccountTipAddressResponse> {
-  return roomGet<AccountTipAddressResponse>("/api/account/tip-address");
-}
-
-export function saveAccountTipAddress(tipAddress: string): Promise<AccountTipAddressResponse> {
-  return accountRequest<AccountTipAddressResponse>("/api/account/tip-address", { tipAddress });
-}
-
-export function markAccountNotificationsRead(notificationIds: string[] = []): Promise<{ status: "read" }> {
-  return accountRequest<{ status: "read" }>("/api/account/notifications/read", { notificationIds });
-}
-
-export function fetchRecoveryQuestions(): Promise<RecoveryQuestionsResponse> {
-  return roomGet<RecoveryQuestionsResponse>("/api/account/recovery/questions");
-}
-
-export function saveRecoveryQuestions(questions: Array<{ question: string; answer: string }>): Promise<RecoveryQuestionsResponse> {
-  return accountRequest<RecoveryQuestionsResponse>("/api/account/recovery/questions", { questions });
-}
-
-export function verifyRecoveryQuestions(username: string, answers: string[]): Promise<{ verified: boolean }> {
-  return accountRequest<{ verified: boolean }>("/api/account/recovery/verify", { username, answers });
-}
-
-export function fetchRoomPosts(channel: string): Promise<RoomPostsResponse> {
-  return roomGet<RoomPostsResponse>(`/api/room/posts?channel=${encodeURIComponent(channel)}`);
-}
-
-export function fetchRoomThread(threadId: string): Promise<RoomThreadResponse> {
-  return roomGet<RoomThreadResponse>(`/api/room/thread?threadId=${encodeURIComponent(threadId)}`);
-}
-
-export function fetchRoomReactionState(
-  targetType: "thread" | "reply",
-  targetIds: string[],
-): Promise<RoomReactionStateResponse> {
-  const params = new URLSearchParams({ targetType, ids: targetIds.join(",") });
-  return roomGet<RoomReactionStateResponse>(`/api/room/reactions?${params.toString()}`);
-}
-
 export function fetchRoomActivity(): Promise<RoomActivityResponse> {
   return roomGet<RoomActivityResponse>("/api/room/activity?limit=8");
 }
 
-export function createRoomPost(input: {
-  content: string;
-  channel: string;
-  category: string;
-  tipAddress?: string | null;
-}): Promise<{ post: RoomPost; status: "created" }> {
-  return accountRequest<{ post: RoomPost; status: "created" }>("/api/room/posts", input);
-}
-
-export function createRoomReply(input: {
-  threadId: string;
-  content: string;
-  submissionId: string;
-}): Promise<{ comment: RoomComment; status: "created" | "already_saved" }> {
-  return accountRequest<{ comment: RoomComment; status: "created" | "already_saved" }>("/api/room/replies", input);
-}
-
-export function toggleRoomReaction(input: {
-  targetType: "thread" | "reply";
-  targetId: string;
-}): Promise<{ targetType: "thread" | "reply"; targetId: string; liked: boolean; reactions: number }> {
-  return accountRequest<{ targetType: "thread" | "reply"; targetId: string; liked: boolean; reactions: number }>("/api/room/reactions", input);
-}
-
+/** Reports carry an anonymous membership proof instead of an account. */
 export function submitReport(input: {
-  targetType: ReportTargetType;
+  proof: AnonymousProofEnvelope;
+  scope: string;
+  targetType: "thread" | "reply";
   targetId: string;
   targetExcerpt: string;
   reason: ReportReason;
   details: string;
 }): Promise<ReportSubmissionResponse> {
-  return accountRequest<ReportSubmissionResponse>("/api/reports", input);
+  return anonymousRequest<ReportSubmissionResponse>("/api/reports", {
+    ...input.proof,
+    scope: input.scope,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    targetExcerpt: input.targetExcerpt,
+    reason: input.reason,
+    details: input.details,
+  });
 }
 
 async function adminRequest<T>(path: string, token = "", init: RequestInit = {}): Promise<T> {
@@ -734,37 +474,3 @@ export async function fetchModerationVisibility(): Promise<ModerationVisibilityR
   return (await response.json()) as ModerationVisibilityResponse;
 }
 
-export function createPaymentIntent(refundAddress: string): Promise<PaymentIntentResponse> {
-  return accountRequest<PaymentIntentResponse>("/api/payments/intents", { refundAddress });
-}
-
-export async function fetchPaymentIntent(paymentIntentId: string): Promise<PaymentIntentResponse> {
-  const response = await fetch(`/api/payments/intents/${encodeURIComponent(paymentIntentId)}`, {
-    credentials: "same-origin",
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
-    const message = typeof payload?.error === "string" ? payload.error : `Payment status returned HTTP ${response.status}.`;
-    throw new Error(message);
-  }
-
-  return (await response.json()) as PaymentIntentResponse;
-}
-
-export function createRoomSession(input: {
-  memoReference: string;
-  returnAddress: string;
-}): Promise<RoomSessionResponse> {
-  return roomRequest<RoomSessionResponse>("/api/room/sessions", input);
-}
-
-export function verifyRoomDemoPayment(roomId: string, accessCode: string): Promise<RoomSessionResponse> {
-  return roomRequest<RoomSessionResponse>(`/api/room/sessions/${encodeURIComponent(roomId)}/verify-demo`, { accessCode });
-}
-
-export function loginRoomSession(accessCode: string): Promise<RoomSessionResponse> {
-  return roomRequest<RoomSessionResponse>("/api/room/login", { accessCode });
-}

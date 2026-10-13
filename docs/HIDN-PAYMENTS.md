@@ -1,6 +1,13 @@
-# HIDN account and payment boundary
+# HIDN account and payment boundary (retired)
 
-This is the first server-backed account/payment milestone for HIDN.
+> **Retired.** Handle accounts, account sessions, recovery questions, payment
+> intents, the watcher ingestion route and access-code sessions were removed.
+> Room access is nameless only (see `HIDN-ANONYMOUS-ZK-MILESTONE.md`), and
+> reports now carry an anonymous membership proof. This document is kept as
+> history for the planned Zcash verification work; none of the endpoints below
+> exist any more.
+
+This was the first server-backed account/payment milestone for HIDN.
 
 ## What is implemented
 
