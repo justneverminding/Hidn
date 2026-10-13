@@ -152,6 +152,19 @@ export function createAnonymousScope(): string {
   return fieldToString(bytesToField(randomBytes(31)));
 }
 
+/** A scope fixed to one target, so a member's nullifier repeats only when the
+ * same member acts on the same target twice (one like per member per post),
+ * while actions on different targets stay unlinkable. */
+export function anonymousTargetScope(action: AnonymousAction, targetType: "thread" | "reply" | "room", targetId: string): string {
+  return fieldToString(anonymousMessageHash(`hidn-scope-v1\n${action}\n${targetType}\n${targetId.trim().toUpperCase()}`));
+}
+
+/** A fresh notification key for one post or reply. Each piece of content gets
+ * its own, so the server cannot group a member's posts by a shared key. */
+export function createNotificationCapability(): string {
+  return bytesToHex(randomBytes(32));
+}
+
 export function createAnonymousAlias(): string {
   const bytes = randomBytes(5);
   let alias = "ANON-";

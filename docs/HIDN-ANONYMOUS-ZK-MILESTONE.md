@@ -88,6 +88,15 @@ The client request helpers are in
 `apps/web/src/product/room-api.ts`. Reports use the same proof, with the
 `report` action bound to the target and reason (migration 0022).
 
+Content is not groupable by member (migration 0024). Posts, replies and likes
+store no member alias. Each post and reply carries its own one-off
+notification key, generated and kept in the browser; the server stores only a
+hash per item, and a member reads notifications by sending the keys of their
+own items, which the server matches for that request without recording them
+together. Likes use a scope fixed to the target, so a repeat like by the same
+member on the same post reuses its nullifier and is refused, while likes on
+different posts remain unlinkable. Notifications never name the actor.
+
 ## Remaining before production
 
 - Use a reviewed, multi-party Groth16 ceremony or a proof system with a

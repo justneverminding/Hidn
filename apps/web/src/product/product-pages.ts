@@ -43,6 +43,8 @@ import {
   anonymousIdentityFromRecoveryCode,
   createAnonymousIdentity,
   createAnonymousScope,
+  anonymousTargetScope,
+  createNotificationCapability,
   type AnonymousAction,
   type AnonymousCircuitInput,
   type AnonymousIdentity,
@@ -394,12 +396,15 @@ async function createAnonymousRoomProof(
   targetId: string,
   content: string,
   tipAddress = "",
+  fixedScope = "",
 ): Promise<{ scope: string; proof: AnonymousProofEnvelope }> {
   if (!roomAnonymousIdentity || !roomAnonymousWitness) {
     throw new Error("The anonymous room session is not available. Return with your recovery key first.");
   }
 
-  const scope = createAnonymousScope();
+  // A fresh scope makes each action unlinkable; a fixed one (likes) makes a
+  // repeat on the same target detectable without revealing the member.
+  const scope = fixedScope || createAnonymousScope();
   const message = canonicalAnonymousMessage(action, targetType, targetId, content, tipAddress);
   const input = createAnonymousCircuitInput(roomAnonymousIdentity.secret, roomAnonymousWitness, scope, message);
   const proof = await createAnonymousProofInWorker(input);
@@ -494,6 +499,32 @@ function saveDeviceSignalHistory(history: DeviceSignalHistory): void {
     );
   } catch {
     // The current tab still retains the history if browser storage is unavailable.
+  }
+}
+
+// Each post and reply gets its own notification key, kept only in this
+// browser. The server stores just a hash per post, so nothing there groups a
+// member's posts together; this list is how this browser reads its own
+// notifications.
+const ROOM_NOTIFICATION_KEYS_STORAGE = "hidn:notify-keys";
+const MAX_NOTIFICATION_KEYS = 80;
+
+function loadNotificationKeys(): string[] {
+  try {
+    const stored = window.localStorage.getItem(`${ROOM_NOTIFICATION_KEYS_STORAGE}:${deviceSignalHistoryScope()}`);
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string" && /^[0-9a-f]{64}$/.test(value)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberNotificationKey(key: string): void {
+  const keys = [key, ...loadNotificationKeys().filter((existing) => existing !== key)].slice(0, MAX_NOTIFICATION_KEYS);
+  try {
+    window.localStorage.setItem(`${ROOM_NOTIFICATION_KEYS_STORAGE}:${deviceSignalHistoryScope()}`, JSON.stringify(keys));
+  } catch {
+    // Without storage this browser simply will not see notifications for it.
   }
 }
 
@@ -2939,11 +2970,11 @@ async function refreshAccountNotifications(): Promise<void> {
   }
 
   const previousSignature = notificationStateSignature(roomNotifications);
-  const notificationCapability = roomAnonymousIdentity?.notificationCapability;
-  if (!notificationCapability) {
+  const notificationKeys = loadNotificationKeys();
+  if (!notificationKeys.length) {
     return;
   }
-  roomNotificationsRequest = fetchAnonymousNotifications(notificationCapability)
+  roomNotificationsRequest = fetchAnonymousNotifications(notificationKeys)
     .then((response) => {
       if (!hasRoomSession()) {
         return;
@@ -2980,8 +3011,9 @@ async function markRoomNotificationsRead(): Promise<void> {
     const unreadIds = roomNotifications.notifications
       .filter((notification) => !notification.readAt)
       .map((notification) => notification.id);
-    if (roomAnonymousIdentity?.notificationCapability) {
-      await markAnonymousNotificationsRead(roomAnonymousIdentity.notificationCapability, unreadIds);
+    if (unreadIds.length) {
+      // An empty id list marks everything read for these keys.
+      await markAnonymousNotificationsRead(loadNotificationKeys(), []);
     }
     const readAt = new Date().toISOString();
     roomNotifications = {
@@ -3005,9 +3037,7 @@ async function markRoomNotificationRead(notificationId: string): Promise<void> {
   }
 
   try {
-    if (roomAnonymousIdentity?.notificationCapability) {
-      await markAnonymousNotificationsRead(roomAnonymousIdentity.notificationCapability, [notificationId]);
-    }
+    await markAnonymousNotificationsRead(loadNotificationKeys(), [notificationId]);
     const readAt = new Date().toISOString();
     if (roomNotifications) {
       const wasUnread = roomNotifications.notifications.some(
@@ -3078,16 +3108,17 @@ async function submitRoomPost(): Promise<void> {
 
   try {
     const { scope, proof } = await createAnonymousRoomProof("post", "room", activeRoomChannel, content, selectedTipAddress);
+    const notificationCapability = createNotificationCapability();
     const response = await createAnonymousPost({
       proof,
       scope,
-      alias: roomAnonymousIdentity!.alias,
-      notificationCapability: roomAnonymousIdentity!.notificationCapability,
+      notificationCapability,
       content,
       channel: activeRoomChannel,
       category: "IDENTITY",
       tipAddress: selectedTipAddress || undefined,
     });
+    rememberNotificationKey(notificationCapability);
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
     roomLikeCounts.set(response.post.id, response.post.reactions);
@@ -3152,14 +3183,15 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
 
   try {
     const { scope, proof } = await createAnonymousRoomProof("reply", "thread", threadId, content);
+    const notificationCapability = createNotificationCapability();
     const response = await createAnonymousReply({
       proof,
       scope,
-      alias: roomAnonymousIdentity!.alias,
-      notificationCapability: roomAnonymousIdentity!.notificationCapability,
+      notificationCapability,
       threadId,
       content,
     });
+    rememberNotificationKey(notificationCapability);
     roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
     rememberDeviceSignalComment(response.comment);
     if (response.status === "created") {
@@ -5499,11 +5531,10 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
     button.disabled = true;
     try {
       if (roomAnonymousIdentity) {
-        const { scope, proof } = await createAnonymousRoomProof("reaction", "thread", threadId, "like");
+        const { scope, proof } = await createAnonymousRoomProof("reaction", "thread", threadId, "like", "", anonymousTargetScope("reaction", "thread", threadId));
         const response = await createAnonymousReaction({
           proof,
           scope,
-          alias: roomAnonymousIdentity.alias,
           targetType: "thread",
           targetId: threadId,
         });
@@ -5513,8 +5544,15 @@ async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Prom
       }
       roomPostError = "";
     } catch (error) {
-      roomPostError = error instanceof Error ? error.message : "The reaction could not be saved.";
-      roomChannelNotice = "";
+      if (error instanceof Error && /already liked/i.test(error.message)) {
+        // One like per member per post: this member has liked it already.
+        roomLikedIds.add(threadId);
+        roomPostError = "";
+        roomChannelNotice = "ALREADY LIKED / PRIVATE";
+      } else {
+        roomPostError = error instanceof Error ? error.message : "The reaction could not be saved.";
+        roomChannelNotice = "";
+      }
     } finally {
       delete button.dataset.pending;
     }

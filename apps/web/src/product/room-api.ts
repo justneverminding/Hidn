@@ -184,11 +184,11 @@ async function roomGet<T>(path: string): Promise<T> {
 async function anonymousRequest<T>(
   path: string,
   body: Record<string, unknown>,
-  notificationCapability = "",
+  notificationCapabilities: string[] = [],
 ): Promise<T> {
   const headers = new Headers({ Accept: "application/json", "Content-Type": "application/json" });
-  if (notificationCapability) {
-    headers.set("X-HIDN-Notification-Capability", notificationCapability);
+  if (notificationCapabilities.length) {
+    headers.set("X-HIDN-Notification-Capabilities", notificationCapabilities.join(","));
   }
   const response = await fetch(path, {
     method: "POST",
@@ -208,10 +208,10 @@ async function anonymousRequest<T>(
   return payload as T;
 }
 
-async function anonymousGet<T>(path: string, notificationCapability = ""): Promise<T> {
+async function anonymousGet<T>(path: string, notificationCapabilities: string[] = []): Promise<T> {
   const headers = new Headers({ Accept: "application/json" });
-  if (notificationCapability) {
-    headers.set("X-HIDN-Notification-Capability", notificationCapability);
+  if (notificationCapabilities.length) {
+    headers.set("X-HIDN-Notification-Capabilities", notificationCapabilities.join(","));
   }
   const response = await fetch(path, {
     credentials: "omit",
@@ -252,17 +252,15 @@ export function fetchAnonymousThread(threadId: string): Promise<RoomThreadRespon
 export function createAnonymousPost(input: {
   proof: AnonymousProofEnvelope;
   scope: string;
-  alias: string;
   notificationCapability: string;
   content: string;
   channel: string;
   category: string;
   tipAddress?: string;
-}): Promise<{ post: RoomPost; status: "created"; anonymousAlias: string }> {
-  return anonymousRequest<{ post: RoomPost; status: "created"; anonymousAlias: string }>("/api/anonymous/posts", {
+}): Promise<{ post: RoomPost; status: "created" }> {
+  return anonymousRequest<{ post: RoomPost; status: "created" }>("/api/anonymous/posts", {
     ...input.proof,
     scope: input.scope,
-    alias: input.alias,
     notificationCapability: input.notificationCapability,
     content: input.content,
     channel: input.channel,
@@ -274,15 +272,13 @@ export function createAnonymousPost(input: {
 export function createAnonymousReply(input: {
   proof: AnonymousProofEnvelope;
   scope: string;
-  alias: string;
   notificationCapability: string;
   threadId: string;
   content: string;
-}): Promise<{ comment: RoomComment; status: "created"; anonymousAlias: string }> {
-  return anonymousRequest<{ comment: RoomComment; status: "created"; anonymousAlias: string }>("/api/anonymous/replies", {
+}): Promise<{ comment: RoomComment; status: "created" }> {
+  return anonymousRequest<{ comment: RoomComment; status: "created" }>("/api/anonymous/replies", {
     ...input.proof,
     scope: input.scope,
-    alias: input.alias,
     notificationCapability: input.notificationCapability,
     threadId: input.threadId,
     content: input.content,
@@ -292,31 +288,31 @@ export function createAnonymousReply(input: {
 export function createAnonymousReaction(input: {
   proof: AnonymousProofEnvelope;
   scope: string;
-  alias: string;
   targetType: "thread" | "reply";
   targetId: string;
 }): Promise<{ targetType: "thread" | "reply"; targetId: string; liked: true; reactions: number }> {
   return anonymousRequest<{ targetType: "thread" | "reply"; targetId: string; liked: true; reactions: number }>("/api/anonymous/reactions", {
     ...input.proof,
     scope: input.scope,
-    alias: input.alias,
     targetType: input.targetType,
     targetId: input.targetId,
   });
 }
 
-export function fetchAnonymousNotifications(notificationCapability: string): Promise<AnonymousNotificationsResponse> {
-  return anonymousGet<AnonymousNotificationsResponse>("/api/anonymous/notifications?limit=30", notificationCapability);
+/** Notifications are read with the one-off keys of this browser's own posts
+ * and replies; the server only matches them for this request. */
+export function fetchAnonymousNotifications(notificationCapabilities: string[]): Promise<AnonymousNotificationsResponse> {
+  return anonymousGet<AnonymousNotificationsResponse>("/api/anonymous/notifications?limit=30", notificationCapabilities);
 }
 
 export function markAnonymousNotificationsRead(
-  notificationCapability: string,
+  notificationCapabilities: string[],
   notificationIds: string[] = [],
 ): Promise<{ status: "read" }> {
   return anonymousRequest<{ status: "read" }>(
     "/api/anonymous/notifications/read",
     { notificationIds },
-    notificationCapability,
+    notificationCapabilities,
   );
 }
 
