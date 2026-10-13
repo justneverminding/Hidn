@@ -11,14 +11,13 @@ isolated without forcing blockchain or identity code into the consumer app.
 ```text
 apps/
   web/       public consumer product
-  payment-watcher/  separate Zcash wallet/RPC observer
   admin/     private administrative console (reserved)
   api/       backend API boundary (reserved)
 packages/
   ui/        shared tokens and visual effects
   shared/    product vocabulary and cross-surface types
   privacy/   privacy protocol boundary (reserved implementation)
-  zk/        browser proof-of-knowledge boundary and future ZK protocols
+  anonymous-zk/  nameless membership circuit, prover and verifier
   zcash/     Zcash integration boundary (reserved)
 public/
   brand/     supplied canonical brand assets
@@ -28,10 +27,7 @@ docs/        source-of-truth product, brand, privacy, and architecture docs
 The public frontend and its Cloudflare Worker live in `apps/web`. Room access
 is nameless only: an anonymous membership proof, with D1 migrations for the
 member tree and content. Handle accounts and the account payment upgrade have
-been removed. The
-separate `payment-watcher` process observes a configured Zcash wallet RPC
-endpoint and sends signed events to the Worker. `admin`, `api`, `zk`, and
-`zcash` remain explicit extraction boundaries rather than public browser
+been removed. `admin`, `api` and `zcash` remain explicit extraction boundaries rather than public browser
 surfaces.
 
 ## Deployment boundaries
@@ -66,8 +62,6 @@ authentication, secrets, and access controls for it are later work.
   - a Worker + D1 Room Access boundary for nameless members: a browser-held
   secret, a Poseidon Merkle member tree, and Groth16 membership proofs on every
   post, reply, reaction and report;
-- a separate Node payment watcher that may observe a shielded address but has
-  no spending-key or refund-signing authority.
 
 The repository-level `/public` directory is configured as the Vite public
 directory so brand assets, `robots.txt`, and `sitemap.xml` have one canonical

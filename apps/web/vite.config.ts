@@ -141,14 +141,6 @@ const apiProxy = {
     changeOrigin: true,
     target: roomApiTarget,
   },
-  "/api/account": {
-    changeOrigin: true,
-    target: roomApiTarget,
-  },
-  "/api/payments": {
-    changeOrigin: true,
-    target: roomApiTarget,
-  },
   "/api/reports": {
     changeOrigin: true,
     target: roomApiTarget,

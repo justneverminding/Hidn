@@ -70,12 +70,6 @@ interface RoomDatabase {
 interface HidnWorkerEnv {
   ASSETS: AssetFetcher;
   ROOM_DB?: RoomDatabase;
-  ZEC_USD_PRICE?: string;
-  ROOM_SHIELDED_ADDRESS?: string;
-  ROOM_PAYMENT_ZATOSHIS?: string;
-  PAYMENT_MIN_CONFIRMATIONS?: string;
-  PAYMENT_WATCHER_SECRET?: string;
-  REFUND_ENCRYPTION_KEY?: string;
   REPORT_ADMIN_TOKEN?: string;
   ALLOW_LEGACY_ADMIN_TOKEN?: string;
   CLOUDFLARE_ACCESS_TEAM_DOMAIN?: string;

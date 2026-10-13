@@ -44,22 +44,16 @@ non-custodial.
 
 ## What already exists in HIDN
 
-- D1 tables for accounts, payment intents, payment events, and unmatched
-  payments.
-- Worker routes for creating and checking payment intents.
-- Signed watcher-event intake.
-- Exact zatoshi matching.
-- Confirmation thresholds.
-- Idempotent transaction/output handling.
-- Reorg-aware access recalculation.
-- A separate Node watcher process in `apps/payment-watcher`.
+An earlier account-based payment boundary (payment intents, a signed watcher
+intake and a separate watcher process) has been removed along with handle
+accounts. Verification will need a new design that fits nameless access.
+
 - Direct mainnet tip-address and payment-request UI (without HIDN custody or a
   payment watcher).
 
 References:
 
-- [Payment boundary and deployment requirements](./HIDN-PAYMENTS.md)
-- [Payment watcher README](../apps/payment-watcher/README.md)
+- [Retired account and payment boundary](./HIDN-PAYMENTS.md)
 - [Architecture source of truth](./HIDN-ARCHITECTURE.md)
 
 ## What will be reused

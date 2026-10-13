@@ -828,32 +828,34 @@ function renderReportDialog(): string {
     return "";
   }
 
-  return `<section class="hidn-report-dialog" role="dialog" aria-modal="true" aria-labelledby="hidn-report-title">
+  return `<section class="hidn-report-dialog hidn-report-dialog--term" role="dialog" aria-modal="true" aria-labelledby="hidn-report-title">
     <button class="hidn-report-dialog__backdrop" type="button" data-action="report-close" aria-label="Close report dialog"></button>
-    <form class="hidn-report-dialog__panel" novalidate>
-      <header class="hidn-report-dialog__header">
-        <div>
-          ${TerminalLabel("MODERATION / PRIVATE REPORT")}
-          <h2 id="hidn-report-title">REPORT THIS SURFACE.</h2>
+    <form class="hidn-report-dialog__panel hidn-term hidn-term--report" novalidate>
+      <div class="hidn-term__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/report</span>
+        <button class="hidn-report__close-x" type="button" data-action="report-close" aria-label="Close report dialog">×</button>
+      </div>
+      <div class="hidn-term__body hidn-report">
+        <p class="hidn-report__log">hidn@room:~$ ./report --private</p>
+        <h2 id="hidn-report-title" class="hidn-report__title" data-text="REPORT THIS SIGNAL.">REPORT THIS SIGNAL.</h2>
+        <blockquote class="hidn-report__target"><span>// ${escapeHtml(activeReportTarget.label)}</span>${escapeHtml(activeReportTarget.targetExcerpt || "NO CONTENT SNAPSHOT")}</blockquote>
+        <fieldset class="hidn-report__reasons">
+          <legend>&gt; SELECT A REASON</legend>
+          ${REPORT_REASON_OPTIONS.map((option, index) => `<label class="hidn-report__reason">
+            <input type="radio" name="hidn-report-reason" value="${option.value}"${option.value === roomReportReason ? " checked" : ""} />
+            <span class="hidn-report__num" aria-hidden="true">[${index + 1}]</span>
+            <span>${escapeHtml(option.label.toUpperCase())}</span>
+          </label>`).join("")}
+        </fieldset>
+        <label class="hidn-report__details" for="hidn-report-details">
+          <span>&gt; DETAILS / OPTIONAL</span>
+          <textarea id="hidn-report-details" rows="3" maxlength="2000" placeholder="add context for the moderator_">${escapeHtml(roomReportDetails)}</textarea>
+        </label>
+        <p class="hidn-report__note">&gt; Your report carries a membership proof: it shows a member sent it, never which one. It is not shown publicly.</p>
+        ${roomReportFeedback ? `<p class="hidn-report__feedback" role="status">!! ${escapeHtml(roomReportFeedback)}</p>` : ""}
+        <div class="hidn-report__actions">
+          <button class="hidn-report__btn" type="button" data-action="report-close">[ CANCEL ]</button>
+          <button class="hidn-report__btn hidn-report__btn--send" type="button" data-action="report-submit"${roomReportSubmitting ? " disabled" : ""}>${roomReportSubmitting ? "[ PROVING &amp; SENDING… ]" : "[ SEND REPORT ]"}</button>
         </div>
-        <button class="hidn-report-dialog__close" type="button" data-action="report-close" aria-label="Close report dialog">×</button>
-      </header>
-      <p class="hidn-report-dialog__target"><span>${escapeHtml(activeReportTarget.label)}</span><br />“${escapeHtml(activeReportTarget.targetExcerpt || "NO CONTENT SNAPSHOT")}"</p>
-      <label class="ui-field" for="hidn-report-reason">
-        <span class="ui-field__label">REASON</span>
-        <select id="hidn-report-reason">
-          ${REPORT_REASON_OPTIONS.map((option) => `<option value="${option.value}"${option.value === roomReportReason ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-        </select>
-      </label>
-      <label class="ui-field" for="hidn-report-details">
-        <span class="ui-field__label">DETAILS / OPTIONAL</span>
-        <textarea id="hidn-report-details" rows="4" maxlength="2000" placeholder="Add context for the moderator...">${escapeHtml(roomReportDetails)}</textarea>
-      </label>
-      <p class="hidn-report-dialog__note">Your report is tied to your pseudonymous HIDN account for abuse prevention. It is not displayed publicly.</p>
-      ${roomReportFeedback ? `<p class="hidn-report-dialog__feedback" role="status">${escapeHtml(roomReportFeedback)}</p>` : ""}
-      <div class="hidn-report-dialog__actions">
-        ${GhostButton({ label: "CANCEL", dataAction: "report-close" })}
-        ${PrimaryButton({ label: roomReportSubmitting ? "SENDING..." : "SEND REPORT →", disabled: roomReportSubmitting, dataAction: "report-submit" })}
       </div>
     </form>
   </section>`;
@@ -2498,7 +2500,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isHome = normalizedPath === "/";
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
-  const isAdminPage = normalizedPath.startsWith("/admin/");
+  const isAdminPage = normalizedPath === "/admin" || normalizedPath.startsWith("/admin/");
   const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
@@ -3353,7 +3355,8 @@ function renderAdminReports(): RenderedProductRoute {
         <div class="hidn-container--reading admin-reports-page">
           <header class="admin-reports-page__header">
             ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
-            <h1 class="type-display-lg">REPORT<br /><em>CONSOLE.</em></h1>
+            <p class="hidn-admin__log">hidn@admin:~$ ./queue --reports</p>
+            <h1 class="type-display-lg hidn-admin__title" data-text="REPORT CONSOLE.">REPORT CONSOLE.</h1>
             <p>Review user-submitted moderation reports, then hide or restore thread and reply content. Cloudflare Access protects this surface before the Worker checks your HIDN administrator role.</p>
           </header>
           <section class="admin-reports-gate" aria-labelledby="admin-reports-gate-title">
@@ -3421,7 +3424,8 @@ function renderAdminDashboard(): RenderedProductRoute {
         <div class="hidn-container--reading admin-reports-page">
           <header class="admin-reports-page__header">
             ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
-            <h1 class="type-display-lg">ADMIN<br /><em>CONTROL.</em></h1>
+            <p class="hidn-admin__log">hidn@admin:~$ ./control --status</p>
+            <h1 class="type-display-lg hidn-admin__title" data-text="ADMIN CONTROL.">ADMIN CONTROL.</h1>
             <p>This is the control room for HIDN moderation. Cloudflare Access handles the human login; HIDN applies the role after the Worker verifies the Access identity.</p>
           </header>
           <section class="admin-reports-gate" aria-labelledby="admin-control-session-title">
@@ -3456,9 +3460,10 @@ function renderAdminModerators(): RenderedProductRoute {
         <div class="hidn-container--reading admin-reports-page">
           <header class="admin-reports-page__header">
             ${TerminalLabel("HIDN / SUPER ADMIN ONLY")}
-            <h1 class="type-display-lg">ADMIN<br /><em>ROLES.</em></h1>
+            <p class="hidn-admin__log">hidn@admin:~$ ./roles --list</p>
+            <h1 class="type-display-lg hidn-admin__title" data-text="ADMIN ROLES.">ADMIN ROLES.</h1>
             <p>Add or disable moderator and reviewer identities. They must sign in through the Cloudflare Access application with the same email before HIDN grants the role.</p>
-            <p><a href="/admin">← ADMIN CONTROL</a></p>
+            <p><a class="hidn-admin__back" href="/admin">&lt; cd /admin</a></p>
           </header>
           <section class="admin-reports-gate" aria-labelledby="admin-role-add-title">
             ${TerminalLabel("ADD ADMINISTRATOR")}
@@ -3502,9 +3507,10 @@ function renderAdminAudit(): RenderedProductRoute {
         <div class="hidn-container--reading admin-reports-page">
           <header class="admin-reports-page__header">
             ${TerminalLabel("HIDN / SUPER ADMIN ONLY")}
-            <h1 class="type-display-lg">AUDIT<br /><em>LOG.</em></h1>
+            <p class="hidn-admin__log">hidn@admin:~$ tail -n 50 /var/log/hidn-admin</p>
+            <h1 class="type-display-lg hidn-admin__title" data-text="AUDIT LOG.">AUDIT LOG.</h1>
             <p>Every role change, report update, and content action is recorded here with the acting admin identity.</p>
-            <p><a href="/admin">← ADMIN CONTROL</a></p>
+            <p><a class="hidn-admin__back" href="/admin">&lt; cd /admin</a></p>
           </header>
           <section class="admin-reports-results" aria-labelledby="admin-audit-list-title">
             ${TerminalLabel("RECENT ADMIN ACTIONS")}
@@ -4215,7 +4221,7 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     <header class="thread-room__header">
       <div>
         ${TerminalLabel("THREAD / WITHOUT NAMES")}
-        <h2 id="thread-room-title">KEEP THE THOUGHT MOVING.</h2>
+        <h2 id="thread-room-title">&gt;&gt; REPLIES</h2>
       </div>
       <span class="thread-room__signal"><i aria-hidden="true"></i> ${replyCount ? `RECEIVING / ${replyCount}` : "OPEN CHANNEL"}</span>
     </header>
@@ -4223,12 +4229,12 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     <div class="thread-room__messages" aria-live="polite">${messages}</div>
     <form class="thread-room__composer${roomAccess ? "" : " thread-room__composer--locked"}" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
-        <span class="ui-field__label">QUOTE / REPLY WITHOUT A NAME</span>
+        <span class="ui-field__label">&gt; REPLY WITHOUT A NAME</span>
         <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" maxlength="${roomReplyCharacterLimit()}" placeholder="${roomAccess ? "Add your thought to the thread..." : "Enter the room to reply anonymously."}"${roomAccess ? "" : " disabled"}></textarea>
       </label>
       <div class="thread-room__composer-footer">
-        <span>${roomAccess ? "FREE ACCESS / NO HANDLE / NO TRAIL" : "ROOM ACCESS REQUIRED"}</span>
-        ${SecondaryButton({ label: roomReplySubmitting ? "SAVING REPLY..." : roomAccess ? "TRANSMIT REPLY →" : "ENTER THE ROOM FIRST", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
+        <span>${roomAccess ? "NAMELESS / NO TRAIL" : "ROOM ACCESS REQUIRED"}</span>
+        ${SecondaryButton({ label: roomReplySubmitting ? "[ TRANSMITTING… ]" : roomAccess ? "[ TRANSMIT ]" : "[ ENTER THE ROOM FIRST ]", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
     ${roomChannelNotice ? `<p class="thread-room__feedback" role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
@@ -4315,11 +4321,13 @@ function renderDetail(id: string): RenderedProductRoute {
         `<main id="main-content" class="public-main detail-main">
         <div class="hidn-container--reading detail-page">
           <header class="detail-header">
-            ${TerminalLabel("ANONYMOUS TRANSMISSION")}
-            <h1 class="detail-page__title">ANONYMOUS CONFESSION</h1>
-            <div class="detail-header__meta"><span>${escapeHtml(confession.reference)}</span><time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></div>
+            ${livePost ? `<a class="hidn-detail__back" href="/room/channel/${escapeHtml(livePost.channel)}/feed">&lt; cd ..</a>` : ""}
+            <p class="hidn-detail__log">hidn@room:~$ cat /rooms/${escapeHtml(livePost?.channel ?? "archive")}/${escapeHtml(confession.reference.replace(/^\/\/\s*/, "").toLowerCase())}.txt</p>
+            <h1 class="detail-page__title hidn-detail__title" data-text="ANONYMOUS CONFESSION">ANONYMOUS CONFESSION</h1>
+            <div class="detail-header__meta"><span>[rx] ${escapeHtml(confession.reference)}</span><time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></div>
           </header>
           <article class="detail-card" aria-labelledby="detail-thought">
+            <p class="hidn-detail__signed" aria-label="Signed: name withheld">&gt; SIGNED: <span class="hidn-detail__redact" aria-hidden="true"></span></p>
             <p id="detail-thought" class="detail-card__thought" data-share-text data-share-id="${escapeHtml(confession.id)}" data-share-kind="thread" data-share-label="${escapeHtml(confession.reference)}" data-share-category="${escapeHtml(confession.category)}" data-share-time="${escapeHtml(confession.time)}">“${escapeHtml(confession.text)}”</p>
             <div class="detail-card__footer">
               ${CategoryTag(confession.category)}
@@ -4331,9 +4339,6 @@ function renderDetail(id: string): RenderedProductRoute {
             <div><span>COMMENTS</span><strong>${escapeHtml(String(detailReplyCount))}</strong></div>
             <div><span>POSTED</span><strong>${escapeHtml(confession.relativeTime)}</strong></div>
           </div>
-          ${isLivePost
-            ? SystemMessage("ROOM STATUS / LIVE THREAD", "This thread is stored in the private room feed. No public identity is attached to the conversation.", "INFO")
-            : SystemMessage("PROOF STATUS / DEMO ONLY", "The public card contains no proof material. This mock route does not verify a person or connect a network identity.", "DEMO")}
           <div class="detail-actions" aria-label="Confession actions">
             <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasRoomSession() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
             <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(detailReplyCount))}</a>
@@ -4346,8 +4351,8 @@ function renderDetail(id: string): RenderedProductRoute {
           </div>
           <p class="thread-share-status thread-share-status--detail" data-share-status="${escapeHtml(confession.id)}" role="status" aria-live="polite"></p>
           ${roomReportNotice ? `<p class="thread-share-status thread-share-status--detail" role="status">${escapeHtml(roomReportNotice)}</p>` : ""}
-          ${renderThreadRoom(confession.id, confession.text)}
-          <p class="detail-boundary">NO PROFILE / NO AUTHOR PAGE / NO MORE FROM THIS PERSON</p>
+          ${renderThreadRoom(confession.id)}
+
           ${actionLink("BACK TO THE ROOM", "/room", "ghost", "detail-back")}
         </div>
         ${renderReportDialog()}
@@ -4585,20 +4590,16 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
   stopRoomNotificationPolling();
-  sessionStorage.removeItem("hidn:room:secret");
-  sessionStorage.removeItem("hidn:room:backend-id");
   sessionStorage.removeItem("hidn:room:entered");
-  sessionStorage.removeItem("hidn:room:verified");
-  sessionStorage.removeItem("hidn:account:logged-in");
-  sessionStorage.removeItem("hidn:account:user-id");
-  sessionStorage.removeItem("hidn:account:username");
-  sessionStorage.removeItem("hidn:account:access-level");
-  sessionStorage.removeItem(ROOM_ACCOUNT_RECOVERY_KEY_STORAGE);
   sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
   sessionStorage.removeItem(ROOM_SESSION_EXPIRES_AT_STORAGE);
   sessionStorage.removeItem(ROOM_ANONYMOUS_TIP_ADDRESS_STORAGE);
-  sessionStorage.removeItem("hidn:account:payment-intent");
-  sessionStorage.removeItem("hidn:account:verification-requested");
+  // Sweep this tab's stored key along with anything an older build left.
+  for (const key of Object.keys(sessionStorage)) {
+    if (key.startsWith("hidn:account:") || /^hidn:room:(secret|backend-id|verified)$/.test(key)) {
+      sessionStorage.removeItem(key);
+    }
+  }
   roomAccessMode = "choose";
   roomLoginError = "";
   roomLoginSubmitting = false;
@@ -6498,7 +6499,7 @@ export function bindProductRoute(root: ParentNode = document): void {
           rerenderProductRoute();
           break;
         case "report-submit": {
-          const reason = root.querySelector<HTMLSelectElement>("#hidn-report-reason")?.value ?? "";
+          const reason = root.querySelector<HTMLInputElement>('input[name="hidn-report-reason"]:checked')?.value ?? "";
           const details = root.querySelector<HTMLTextAreaElement>("#hidn-report-details")?.value.trim() ?? "";
           if (!REPORT_REASON_OPTIONS.some((option) => option.value === reason)) {
             roomReportFeedback = "Choose a report reason before sending.";

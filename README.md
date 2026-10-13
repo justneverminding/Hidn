@@ -8,8 +8,8 @@ The product is built around a simple boundary:
 **WRITE FREELY / STAY PRIVATE**
 
 This repository contains the current web product, its Cloudflare Worker and
-D1 room boundary, the browser-held account and anonymous proof flows, the
-shared visual system, and the separate Zcash payment-watcher boundary.
+D1 room boundary, the nameless anonymous proof flow, and the shared visual
+system.
 
 ## Current build
 
@@ -132,15 +132,6 @@ repository must not be presented as having a production-trustworthy ceremony
 yet. Ceremony toxic waste and all private deployment secrets must never be
 committed.
 
-### Account credential flow
-
-The ordinary account path uses a separate secp256k1 Schnorr proof-of-knowledge
-credential from [`packages/zk/`](packages/zk/). The browser holds the recovery
-secret; the Worker stores the public commitment and verifies a challenge-bound
-proof. This credential is intentionally linked to a selected HIDN handle. It
-is not the anonymous group-membership protocol and does not hide IP address,
-timing, browser metadata, payment linkage, or account history.
-
 ## Architecture
 
 ```text
@@ -150,12 +141,10 @@ apps/web/
 
 packages/ui/             shared tokens, typography, effects, and components
 packages/anonymous-zk/   Circom/Groth16 anonymous membership protocol
-packages/zk/             account Schnorr proof-of-knowledge boundary
 packages/privacy/        privacy protocol boundary
 packages/shared/         cross-surface types and vocabulary
 packages/zcash/          reusable Zcash integration boundary
 
-apps/payment-watcher/    separate watch-only Zcash RPC observer
 apps/admin/              reserved/private administrative surface
 apps/api/                reserved API extraction boundary
 migrations/              Cloudflare D1 migrations
@@ -163,11 +152,10 @@ public/                  brand assets, metadata, and public ZK assets
 docs/                    product, privacy, brand, architecture, and protocol notes
 ```
 
-The Worker uses the `ROOM_DB` D1 binding for account sessions, payment
-intents, anonymous membership roots, nullifiers, posts, replies, reactions,
-notifications, reports, and moderation state. The payment watcher is a
-separate Node process: it observes a configured Zcash RPC wallet and forwards
-signed normalized events; it must never receive a spending key.
+The Worker uses the `ROOM_DB` D1 binding for anonymous membership roots,
+nullifiers, posts, replies, reactions, notifications, reports, and moderation
+state. Room access is nameless only: there are no usernames, handles or
+account sessions.
 
 ## Verify the anonymous protocol locally
 
@@ -191,21 +179,15 @@ ANONYMOUS_ZK_ENABLED=true
 ANONYMOUS_ZK_VERIFICATION_KEY=<JSON verification key>
 ```
 
-Keep Worker secrets, admin credentials, payment watcher secrets, RPC
-credentials, spending keys, recovery keys, and ceremony secrets outside Git.
+Keep Worker secrets, admin credentials, RPC credentials, spending keys,
+recovery keys, and ceremony secrets outside Git.
 
 ## Zcash and payment boundary
 
 HIDN keeps Zcash optional. Ordinary room use does not require a wallet. The
-current room tip surface uses shielded testnet destinations and labels the
-asset as TAZ. The account verification/payment boundary is separate from
-anonymous room membership and requires the Worker, D1 migrations, configured
-payment secrets, and the watch-only payment watcher before real intake is
-enabled.
-
-See [`docs/HIDN-PAYMENTS.md`](docs/HIDN-PAYMENTS.md) and
-[`apps/payment-watcher/README.md`](apps/payment-watcher/README.md) for the
-operational boundary.
+room tip surface sends ZEC directly between members' shielded wallets; HIDN
+never holds funds. Zcash verification is planned; see
+[`docs/HIDN-MAINNET-ZCASH-VERIFICATION-MILESTONE.md`](docs/HIDN-MAINNET-ZCASH-VERIFICATION-MILESTONE.md).
 
 ## Source-of-truth documentation
 
