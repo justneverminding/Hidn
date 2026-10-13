@@ -1,7 +1,7 @@
 import { poseidon1, poseidon2, poseidon16 } from "poseidon-lite";
 
 export const ANONYMOUS_PROTOCOL_VERSION = "hidn-anonymous-groth16-v1";
-export const ANONYMOUS_TREE_DEPTH = 8;
+export const ANONYMOUS_TREE_DEPTH = 20;
 export const ANONYMOUS_MESSAGE_CHUNKS = 16;
 export const ANONYMOUS_BYTES_PER_CHUNK = 31;
 export const ANONYMOUS_MAX_MESSAGE_BYTES = ANONYMOUS_MESSAGE_CHUNKS * ANONYMOUS_BYTES_PER_CHUNK;

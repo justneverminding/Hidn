@@ -65,4 +65,5 @@ template HidnMembership(depth, messageChunks) {
     binding === bindingHash.out;
 }
 
-component main {public [root, nullifier, binding]} = HidnMembership(8, 16);
+// Depth 20: room for 1,048,576 members.
+component main {public [root, nullifier, binding]} = HidnMembership(20, 16);

@@ -39,8 +39,8 @@ export function createAnonymousMerkleSnapshot(
   leafValues: Array<bigint | string>,
   depth = ANONYMOUS_TREE_DEPTH,
 ): AnonymousMerkleSnapshot {
-  if (!Number.isInteger(depth) || depth < 1 || depth > 16) {
-    throw new Error("Anonymous Merkle depth must be between 1 and 16.");
+  if (!Number.isInteger(depth) || depth < 1 || depth > 24) {
+    throw new Error("Anonymous Merkle depth must be between 1 and 24.");
   }
 
   const leaves = leafValues.map((value) => ensureLeaf(typeof value === "string" ? parseField(value) : value));

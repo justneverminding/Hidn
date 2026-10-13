@@ -328,11 +328,13 @@ function htmlSecurityHeaders(request: Request): Record<string, string> {
 }
 
 function anonymousZkAssetContentType(pathname: string): string | null {
-  if (pathname === "/anonymous-zk/hidn_membership_js/hidn_membership.wasm") {
+  // Versioned by tree depth: the files are cached as immutable, so a new
+  // circuit is published under a new path rather than replacing these.
+  if (pathname === "/anonymous-zk/depth20/hidn_membership.wasm") {
     return "application/wasm";
   }
 
-  if (pathname === "/anonymous-zk/hidn_membership_final.zkey") {
+  if (pathname === "/anonymous-zk/depth20/hidn_membership_final.zkey") {
     return "application/octet-stream";
   }
 

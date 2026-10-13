@@ -45,6 +45,7 @@ import {
   createAnonymousScope,
   anonymousTargetScope,
   createNotificationCapability,
+  ANONYMOUS_TREE_DEPTH,
   type AnonymousAction,
   type AnonymousCircuitInput,
   type AnonymousIdentity,
@@ -369,8 +370,8 @@ function createAnonymousProofInWorker(input: AnonymousCircuitInput): Promise<Ano
     return Promise.reject(new Error("This browser cannot generate the anonymous proof locally."));
   }
 
-  const wasmUrl = new URL("/anonymous-zk/hidn_membership_js/hidn_membership.wasm", window.location.origin).toString();
-  const zkeyUrl = new URL("/anonymous-zk/hidn_membership_final.zkey", window.location.origin).toString();
+  const wasmUrl = new URL("/anonymous-zk/depth20/hidn_membership.wasm", window.location.origin).toString();
+  const zkeyUrl = new URL("/anonymous-zk/depth20/hidn_membership_final.zkey", window.location.origin).toString();
 
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../anonymous-proof-worker.ts", import.meta.url), { type: "module" });
@@ -400,6 +401,12 @@ async function createAnonymousRoomProof(
 ): Promise<{ scope: string; proof: AnonymousProofEnvelope }> {
   if (!roomAnonymousIdentity || !roomAnonymousWitness) {
     throw new Error("The anonymous room session is not available. Return with your recovery key first.");
+  }
+
+  // A session saved before the member tree grew holds a shorter proof path;
+  // fetch a fresh one for the same key before proving.
+  if (roomAnonymousWitness.pathElements.length !== ANONYMOUS_TREE_DEPTH) {
+    await refreshAnonymousWitness();
   }
 
   // A fresh scope makes each action unlinkable; a fixed one (likes) makes a
@@ -4571,6 +4578,25 @@ function restoreAnonymousSession(): boolean {
     sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
     return false;
   }
+}
+
+/** Ask for this member's current proof path. Enrolling an existing
+ * commitment returns its place in the tree without adding a new member. */
+async function refreshAnonymousWitness(): Promise<void> {
+  if (!roomAnonymousIdentity) {
+    throw new Error("The anonymous room session is not available. Return with your recovery key first.");
+  }
+  const enrollment = await enrollAnonymousMember({
+    commitment: roomAnonymousIdentity.commitment,
+    notificationCapability: roomAnonymousIdentity.notificationCapability,
+  });
+  roomAnonymousWitness = {
+    root: enrollment.root,
+    leafIndex: enrollment.leafIndex,
+    pathElements: enrollment.pathElements,
+    pathIndices: enrollment.pathIndices,
+  };
+  persistAnonymousSession();
 }
 
 async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {

@@ -99,8 +99,8 @@ ordinary account credential flow.
 ### Anonymous room actions
 
 - The browser creates and holds a 31-byte anonymous secret.
-- The secret becomes a Poseidon commitment in an 8-level Merkle membership
-  tree with a current maximum of 256 members.
+- The secret becomes a Poseidon commitment in a 20-level Merkle membership
+  tree with room for 1,048,576 members.
 - Circom 2 and Groth16 prove membership without sending the secret, username,
   account ID, leaf index, or Merkle witness to the Worker.
 - `Poseidon(secret, scope)` produces a one-use nullifier.
@@ -126,11 +126,17 @@ network address and timing are not hidden from the edge. Anonymous
 notification capabilities are hashed in D1, but notification payloads are not
 currently end-to-end encrypted.
 
-The committed proving key is public browser material. The current local
-Groth16 setup has not been replaced by a reviewed multi-party ceremony, so the
-repository must not be presented as having a production-trustworthy ceremony
-yet. Ceremony toxic waste and all private deployment secrets must never be
-committed.
+The committed proving key (`public/anonymous-zk/depth20/`) is public browser
+material. The trusted setup for the depth-20 circuit: phase 1 is the public Hermez
+Powers of Tau (`powersOfTau28_hez_final_15.ptau`, BLAKE2b checked against the
+value published in the snarkjs README). Phase 2
+has one HIDN contribution made with random entropy that was not kept, followed
+by a public beacon from Zcash mainnet block 3,515,842
+(`000000000033ba47…6da69e8`); `snarkjs zkey verify` passes against the circuit
+and the Hermez file. Phase 2 is still a single-party contribution, so it is not
+yet a full multi-party ceremony: more independent phase-2 contributions are
+needed before it can be called one. Ceremony toxic waste and all private deployment secrets
+must never be committed.
 
 ## Architecture
 

@@ -52,11 +52,20 @@ Compile it with:
 npm --workspace @hidn/anonymous-zk run build:circuit
 ```
 
-For local development only, create a disposable Groth16 setup, export a
-verification key, and keep all generated files under the ignored `build/`
-directory. The setup must be replaced by a documented multi-party ceremony
-before production use. A locally generated zkey is not a production trust
-anchor.
+The circuit is depth 20 (1,048,576 members). The trusted setup for the depth-20 circuit: phase 1 is the public Hermez
+Powers of Tau (`powersOfTau28_hez_final_15.ptau`, BLAKE2b checked against the
+value published in the snarkjs README). Phase 2
+has one HIDN contribution made with random entropy that was not kept, followed
+by a public beacon from Zcash mainnet block 3,515,842
+(`000000000033ba47…6da69e8`); `snarkjs zkey verify` passes against the circuit
+and the Hermez file. Phase 2 is still a single-party contribution, so it is not
+yet a full multi-party ceremony: more independent phase-2 contributions are
+needed before it can be called one.
+
+Generated build files stay under the ignored `build/` directory; the published
+proving files are versioned by depth under `public/anonymous-zk/depth20/`
+because they are served as immutable. Browsers holding an older, shorter proof
+path fetch a fresh one automatically on their next action.
 
 The Worker needs these non-source configuration values:
 
@@ -67,7 +76,7 @@ ANONYMOUS_ZK_VERIFICATION_KEY=<JSON verification key>
 
 The verification key is public cryptographic material, but it still belongs in
 Worker configuration rather than the public repository for operational control.
-The proving zkey and any ceremony secrets must never be committed.
+Ceremony secrets (contribution entropy) must never be committed.
 
 ## API shape
 
