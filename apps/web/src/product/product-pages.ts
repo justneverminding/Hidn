@@ -2283,7 +2283,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath === "/admin" || normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room/feed" || normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room/feed" || normalizedPath === "/room/inbox" || normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   // Reading pages stay fully lit; the flashlight would hide the posts.
   const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage && !isPublicRead;
@@ -2306,8 +2306,8 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${isPointerSurface ? renderPointerSpotlight() : ""}
     ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
     ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
+    ${showsRoomTabs(normalizedPath) ? renderRoomTabs(normalizedPath) : ""}
     ${main}
-    ${showsRoomBottomNav(normalizedPath) ? renderRoomBottomNav(normalizedPath) : ""}
     ${isRoomSurface ? renderRoomTipDialog() : ""}
     ${isRoomSurface ? renderSelectionTools() : ""}
     ${isRoomSurface || isAdminPage || pageClass.includes("public-page--home-museum") ? "" : FooterShell({
@@ -4690,9 +4690,10 @@ function hasRoomSession(): boolean {
   return !roomSessionIsExpired() && Boolean(roomAnonymousIdentity && roomAnonymousWitness);
 }
 
-/** The phone-style bar along the bottom of the reading pages. The museum
- * pages keep their own walking controls there, so it stays off them. */
-function showsRoomBottomNav(path: string): boolean {
+/** The room's tabs, pinned to the top of the page. The bottom of a phone
+ * screen belongs to the browser (iOS Safari floats its toolbar there), so
+ * the tabs live where nothing covers them. */
+function showsRoomTabs(path: string): boolean {
   return hasRoomSession() && (
     path === MIXED_FEED_PATH
     || Boolean(roomChannelSurfaceFromPath(path))
@@ -4711,43 +4712,19 @@ function isMuseumPath(path: string): boolean {
   return path === "/room" || path === "/room/main" || path === "/room/library" || path === "/room/orb" || Boolean(roomChannelFromPath(path));
 }
 
-function renderRoomBottomNav(path: string): string {
+function renderRoomTabs(path: string): string {
   const inboxUnread = linkInboxUnreadCount();
   const meUnread = roomNotifications?.unreadCount ?? 0;
-  const badge = (count: number): string => (count > 0 ? `<b class="hidn-bottom-nav__badge" aria-label="${count} new">${count > 99 ? "99+" : count}</b>` : "");
+  const badge = (count: number): string => (count > 0 ? `<b class="hidn-tabs__badge" aria-label="${count} new">${count > 99 ? "99+" : count}</b>` : "");
   const item = (href: string, label: string, active: boolean, extra = ""): string =>
-    `<a class="hidn-bottom-nav__item${active ? " hidn-bottom-nav__item--active" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}><span>${label}</span>${extra}</a>`;
-  return `<nav class="hidn-bottom-nav" aria-label="Room" data-bottom-nav>
+    `<a class="hidn-tabs__item${active ? " hidn-tabs__item--active" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}><span>${label}</span>${extra}</a>`;
+  return `<nav class="hidn-tabs" aria-label="Room">
     ${item(MIXED_FEED_PATH, "FEED", path === MIXED_FEED_PATH || path.startsWith("/c/"))}
     ${item("/room/rooms", "ROOMS", path === "/room/rooms" || Boolean(roomChannelFeedFromPath(path)))}
     ${item("/room/main", "MUSEUM", isMuseumPath(path))}
     ${item("/room/inbox", "INBOX", path === "/room/inbox", badge(inboxUnread))}
     ${item("/room/profile", "ME", path === "/room/profile", badge(meUnread))}
   </nav>`;
-}
-
-/** The bar slides out of the way while scrolling down through posts and
- * comes back on the way up, so it never sits on top of what people read. */
-let bottomNavScrollWatched = false;
-let bottomNavLastY = 0;
-let bottomNavHidden = false;
-function watchBottomNavScroll(): void {
-  const apply = (): void => {
-    document.querySelector("[data-bottom-nav]")?.classList.toggle("hidn-bottom-nav--away", bottomNavHidden);
-  };
-  apply();
-  if (bottomNavScrollWatched) return;
-  bottomNavScrollWatched = true;
-  window.addEventListener("scroll", () => {
-    const y = window.scrollY;
-    const nearBottom = window.innerHeight + y >= document.documentElement.scrollHeight - 40;
-    const next = y > 120 && y > bottomNavLastY + 6 && !nearBottom ? true : y < bottomNavLastY - 6 || y <= 120 || nearBottom ? false : bottomNavHidden;
-    bottomNavLastY = y;
-    if (next !== bottomNavHidden) {
-      bottomNavHidden = next;
-      apply();
-    }
-  }, { passive: true });
 }
 
 /** Where members land: the feed, so reading and posting come first. The 3D
@@ -5628,7 +5605,6 @@ function navigateProductRoute(path: string): void {
   roomTipPostId = "";
   roomTipCopyFeedback = "";
   roomTipAddressCopyFeedback = "";
-  bottomNavHidden = false;
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
   window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
@@ -6539,7 +6515,6 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (normalizePath(window.location.pathname) === MIXED_FEED_PATH) {
     void refreshMixedFeed();
   }
-  watchBottomNavScroll();
   root.querySelectorAll<HTMLButtonElement>("[data-feed-more]").forEach((button) => {
     button.addEventListener("click", () => {
       void (button.dataset.feedMore === "mixed" ? loadMoreMixedFeed() : loadMoreRoomFeed());
@@ -6555,7 +6530,7 @@ export function bindProductRoute(root: ParentNode = document): void {
     hrefFor: (id) => (memberReading ? `/c/${encodeURIComponent(id)}` : "/read"),
     feedHref: memberReading ? MIXED_FEED_PATH : "/read",
   } : null);
-  if (roomAnonymousIdentity && showsRoomBottomNav(normalizePath(window.location.pathname))) {
+  if (roomAnonymousIdentity && showsRoomTabs(normalizePath(window.location.pathname))) {
     const secret = roomAnonymousIdentity.secret;
     refreshLinkUnread(() => deriveLinkInboxKey(secret));
   }
