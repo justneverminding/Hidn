@@ -341,21 +341,15 @@ interface HomeAmbientAudioSession {
 
 interface HomeAudioGraph {
   context: AudioContext;
-  stringSource: AudioBufferSourceNode;
-  voiceTextureSource: AudioBufferSourceNode;
-  oscillators: OscillatorNode[];
 }
 
 const HOME_STREAM_LIMIT = 4;
 // The room sound: a three-minute seamless loop built from the story ad's
-// soundtrack (marketing/tools/render-site-ambience.swift). The original
-// 53-second sound is kept at /audio/hidn-recording-source.m4a; point this
-// back at it to switch.
+// soundtrack (marketing/tools/render-site-ambience.swift). It is the only
+// sound the site plays; the earlier recordings are kept in marketing/audio.
 const HOME_AUDIO_SRC = "/audio/hidn-room-loop.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
-const HOME_AUDIO_MASTER_GAIN = 0.50587;
-const HOME_AUDIO_TEMPO = 54;
-const HOME_AUDIO_BEATS_PER_LOOP = 16;
+const HOME_AUDIO_MASTER_GAIN = 0.6;
 const HOME_AUDIO_PREFERENCE_KEY = "hidn:audio:enabled";
 const ROOM_DOOR_SOUND_VOLUME = 0.16;
 const HOME_HEADLINE_LINES = ["SAY WHAT YOU", "CAN'T SAY", "PUBLICLY."] as const;
@@ -1280,152 +1274,6 @@ function writeHomeAudioPreference(enabled: boolean): void {
   }
 }
 
-function createHomeAudioSaturationCurve(): Float32Array<ArrayBuffer> {
-  const curve = new Float32Array(new ArrayBuffer(2048 * Float32Array.BYTES_PER_ELEMENT)) as Float32Array<ArrayBuffer>;
-  const drive = 1.35;
-  const normalization = Math.tanh(drive);
-
-  for (let index = 0; index < curve.length; index += 1) {
-    const sample = (index * 2) / (curve.length - 1) - 1;
-    curve[index] = Math.tanh(sample * drive) / normalization;
-  }
-
-  return curve;
-}
-
-function createHomeAudioStringBuffer(context: AudioContext): AudioBuffer {
-  const beatFrames = Math.round(context.sampleRate * (60 / HOME_AUDIO_TEMPO));
-  const frameCount = beatFrames * HOME_AUDIO_BEATS_PER_LOOP;
-  const duration = frameCount / context.sampleRate;
-  const buffer = context.createBuffer(2, frameCount, context.sampleRate);
-  const left = buffer.getChannelData(0);
-  const right = buffer.getChannelData(1);
-  const addBowedNote = (
-    startBeat: number,
-    lengthBeats: number,
-    frequency: number,
-    gain: number,
-    phaseOffset: number,
-  ): void => {
-    const startFrame = startBeat * beatFrames;
-    const length = Math.min(Math.floor(lengthBeats * beatFrames), frameCount - startFrame);
-    const noteDuration = length / context.sampleRate;
-    const cycles = Math.round(frequency * noteDuration);
-
-    for (let offset = 0; offset < length; offset += 1) {
-      const time = offset / context.sampleRate;
-      const remaining = noteDuration - time;
-      const attack = 1 - Math.exp(-time * 7);
-      const release = Math.min(1, remaining * 7);
-      const envelope = attack * release;
-      const vibrato = Math.sin((Math.PI * 2 * time * 0.32) + phaseOffset) * 0.035;
-      const phase = ((Math.PI * 2 * cycles * time) / noteDuration) + vibrato + phaseOffset;
-      const bowedShape = (Math.sin(phase) * 0.58)
-        + (Math.sin(phase * 2) * 0.25)
-        + (Math.sin(phase * 3) * 0.1)
-        + (Math.sin(phase * 4) * 0.045)
-        + (Math.sin(phase * 5) * 0.02);
-      const weight = bowedShape * envelope * gain;
-      left[startFrame + offset] += weight * 1.02;
-      right[startFrame + offset] += weight * 0.98;
-    }
-  };
-
-  const padVoices = [
-    { frequency: 55, gain: 0.11, phaseOffset: 0 },
-    { frequency: 65.41, gain: 0.07, phaseOffset: 1.7 },
-    { frequency: 77.78, gain: 0.05, phaseOffset: 3.2 },
-  ];
-  for (const voice of padVoices) {
-    const cycles = Math.round(voice.frequency * duration);
-    let phase = 0;
-    for (let frame = 0; frame < frameCount; frame += 1) {
-      const time = frame / context.sampleRate;
-      const swell = 0.44 + (0.2 * Math.sin((Math.PI * 2 * time / duration) - Math.PI / 2));
-      phase = (Math.PI * 2 * cycles * time) / duration;
-      const bowedShape = (Math.sin(phase + voice.phaseOffset) * 0.62)
-        + (Math.sin((phase + voice.phaseOffset) * 2) * 0.22)
-        + (Math.sin((phase + voice.phaseOffset) * 3) * 0.08);
-      const weight = bowedShape * swell * voice.gain;
-      left[frame] += weight * 1.02;
-      right[frame] += weight * 0.98;
-    }
-  }
-
-  const phrase = [164.81, 146.83, 123.47, 98, 123.47, 110, 92.5, 82.41];
-  phrase.forEach((frequency, index) => {
-    addBowedNote(index * 2, 1.15, frequency, 0.06, index * 0.7);
-    addBowedNote(index * 2 + 1, 0.58, frequency * 2, 0.016, index * 0.7 + 0.4);
-  });
-
-  return buffer;
-}
-
-function createHomeAudioVoiceTextureBuffer(context: AudioContext): AudioBuffer {
-  const beatFrames = Math.round(context.sampleRate * (60 / HOME_AUDIO_TEMPO));
-  const frameCount = beatFrames * HOME_AUDIO_BEATS_PER_LOOP;
-  const buffer = context.createBuffer(2, frameCount, context.sampleRate);
-  const left = buffer.getChannelData(0);
-  const right = buffer.getChannelData(1);
-
-  const addVocalTexture = (
-    startBeat: number,
-    lengthBeats: number,
-    fundamental: number,
-    gain: number,
-    pan: number,
-  ): void => {
-    const startFrame = Math.max(0, Math.floor(startBeat * beatFrames));
-    const length = Math.min(Math.floor(lengthBeats * beatFrames), frameCount - startFrame);
-    if (length <= 0) {
-      return;
-    }
-
-    const duration = length / context.sampleRate;
-    const isShortGesture = lengthBeats < 0.5;
-    const attackTime = isShortGesture ? 0.016 : 0.45;
-    const releaseTime = isShortGesture ? 0.11 : 0.7;
-    let phase = 0;
-
-    for (let offset = 0; offset < length; offset += 1) {
-      const time = offset / context.sampleRate;
-      const remaining = duration - time;
-      const attack = 1 - Math.exp(-time / attackTime);
-      const release = Math.min(1, remaining / releaseTime);
-      const envelope = attack * release;
-      const pitchDrift = 1 + (Math.sin((Math.PI * 2 * time * 0.7) + startBeat) * 0.018);
-      phase += (Math.PI * 2 * fundamental * pitchDrift) / context.sampleRate;
-
-      // Tonal breath: intentionally nonverbal, like a voice heard through a wall.
-      const voiced = (Math.sin(phase) * 0.52)
-        + (Math.sin(phase * 2.01 + 0.35) * 0.24)
-        + (Math.sin(phase * 3.02 + 1.1) * 0.1)
-        + (Math.sin(phase * 4.03 + 1.8) * 0.1)
-        + (Math.sin(phase * 5.01 + 2.4) * 0.04);
-      const breath = (Math.sin((phase * 4.7) + time * 19) * 0.16)
-        + (Math.sin((phase * 7.3) - time * 13) * 0.1);
-      const sample = (voiced + breath) * envelope * gain;
-      const leftGain = 0.84 - (pan * 0.16);
-      const rightGain = 0.84 + (pan * 0.16);
-      left[startFrame + offset] += sample * leftGain;
-      right[startFrame + offset] += sample * rightGain;
-    }
-  };
-
-  const addChuckle = (startBeat: number, gain: number, pan: number): void => {
-    [0, 0.22, 0.42].forEach((offset, index) => {
-      addVocalTexture(startBeat + offset, 0.16 - (index * 0.01), 205 - (index * 24), gain * (1 - index * 0.14), pan);
-    });
-  };
-
-  addVocalTexture(1.65, 2.25, 148, 0.075, -0.28);
-  addVocalTexture(8.8, 2.05, 132, 0.064, 0.3);
-  addChuckle(3.8, 0.11, -0.2);
-  addChuckle(11.65, 0.09, 0.24);
-
-  return buffer;
-}
-
 function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefined {
   const AudioContextConstructor = window.AudioContext
     ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -1434,141 +1282,14 @@ function createHomeAudioGraph(audio: HTMLAudioElement): HomeAudioGraph | undefin
   }
 
   try {
+    // The room loop carries its own space and texture, so it plays as it is:
+    // no generated layers and no extra effects on top.
     const context = new AudioContextConstructor();
-    const mixBus = context.createGain();
-    const highPass = context.createBiquadFilter();
-    const warmth = context.createBiquadFilter();
-    const lowPass = context.createBiquadFilter();
-    const presenceCut = context.createBiquadFilter();
-    const saturation = context.createWaveShaper();
-    const compressor = context.createDynamicsCompressor();
-    const dryGain = context.createGain();
-    const roomDelay = context.createDelay(0.8);
-    const roomFeedback = context.createGain();
-    const roomWetGain = context.createGain();
-    const longEchoDelay = context.createDelay(1);
-    const longEchoFeedback = context.createGain();
-    const longEchoWetGain = context.createGain();
-    const voiceTone = context.createBiquadFilter();
-    const voiceGain = context.createGain();
-    const voiceEchoDelay = context.createDelay(0.9);
-    const voiceEchoFeedback = context.createGain();
-    const voiceEchoWetGain = context.createGain();
-    const stringTone = context.createBiquadFilter();
-    const sourceGain = context.createGain();
-    const stringGain = context.createGain();
     const outputGain = context.createGain();
-    const stringSource = context.createBufferSource();
-    const voiceTextureSource = context.createBufferSource();
-    const wowOscillator = context.createOscillator();
-    const wowDepth = context.createGain();
-    const flutterOscillator = context.createOscillator();
-    const flutterDepth = context.createGain();
-
-    highPass.type = "highpass";
-    highPass.frequency.value = 42;
-    highPass.Q.value = 0.45;
-
-    warmth.type = "lowshelf";
-    warmth.frequency.value = 135;
-    warmth.gain.value = 1.8;
-
-    lowPass.type = "lowpass";
-    lowPass.frequency.value = 2700;
-    lowPass.Q.value = 0.55;
-
-    presenceCut.type = "peaking";
-    presenceCut.frequency.value = 1500;
-    presenceCut.Q.value = 0.75;
-    presenceCut.gain.value = -3.2;
-
-    stringTone.type = "peaking";
-    stringTone.frequency.value = 520;
-    stringTone.Q.value = 0.7;
-    stringTone.gain.value = 2.8;
-
-    saturation.curve = createHomeAudioSaturationCurve();
-    saturation.oversample = "2x";
-
-    compressor.threshold.value = -26;
-    compressor.knee.value = 18;
-    compressor.ratio.value = 1.8;
-    compressor.attack.value = 0.08;
-    compressor.release.value = 0.55;
-
-    mixBus.gain.value = 1;
-    sourceGain.gain.value = 0.62;
-    stringGain.gain.value = 0.32;
-    dryGain.gain.value = 0.68;
-    roomDelay.delayTime.value = 0.3;
-    roomFeedback.gain.value = 0.16;
-    roomWetGain.gain.value = 0.22;
-    longEchoDelay.delayTime.value = 0.7;
-    longEchoFeedback.gain.value = 0.08;
-    longEchoWetGain.gain.value = 0.12;
-    voiceTone.type = "bandpass";
-    voiceTone.frequency.value = 650;
-    voiceTone.Q.value = 0.55;
-    voiceGain.gain.value = 0.24;
-    voiceEchoDelay.delayTime.value = 0.48;
-    voiceEchoFeedback.gain.value = 0.2;
-    voiceEchoWetGain.gain.value = 0.17;
     outputGain.gain.value = HOME_AUDIO_MASTER_GAIN;
-
-    wowOscillator.frequency.value = 0.12;
-    wowDepth.gain.value = 8;
-    flutterOscillator.frequency.value = 3.7;
-    flutterDepth.gain.value = 0.7;
-    stringSource.buffer = createHomeAudioStringBuffer(context);
-    stringSource.loop = true;
-    voiceTextureSource.buffer = createHomeAudioVoiceTextureBuffer(context);
-    voiceTextureSource.loop = true;
-
-    const source = context.createMediaElementSource(audio);
-    source.connect(sourceGain);
-    sourceGain.connect(mixBus);
-    stringSource.connect(stringTone);
-    stringTone.connect(stringGain);
-    stringGain.connect(mixBus);
-    voiceTextureSource.connect(voiceTone);
-    voiceTone.connect(voiceGain);
-    voiceGain.connect(mixBus);
-    voiceGain.connect(voiceEchoDelay);
-    voiceEchoDelay.connect(voiceEchoFeedback);
-    voiceEchoFeedback.connect(voiceEchoDelay);
-    voiceEchoDelay.connect(voiceEchoWetGain);
-    voiceEchoWetGain.connect(mixBus);
-
-    mixBus.connect(highPass);
-    highPass.connect(warmth);
-    warmth.connect(lowPass);
-    lowPass.connect(presenceCut);
-    presenceCut.connect(saturation);
-    saturation.connect(compressor);
-    compressor.connect(dryGain);
-    compressor.connect(roomDelay);
-    roomDelay.connect(roomFeedback);
-    roomFeedback.connect(roomDelay);
-    roomDelay.connect(roomWetGain);
-    compressor.connect(longEchoDelay);
-    longEchoDelay.connect(longEchoFeedback);
-    longEchoFeedback.connect(longEchoDelay);
-    longEchoDelay.connect(longEchoWetGain);
-    dryGain.connect(outputGain);
-    roomWetGain.connect(outputGain);
-    longEchoWetGain.connect(outputGain);
+    context.createMediaElementSource(audio).connect(outputGain);
     outputGain.connect(context.destination);
-
-    wowOscillator.connect(wowDepth);
-    wowDepth.connect(lowPass.detune);
-    flutterOscillator.connect(flutterDepth);
-    flutterDepth.connect(lowPass.detune);
-    const oscillators = [wowOscillator, flutterOscillator];
-    stringSource.start();
-    voiceTextureSource.start();
-    oscillators.forEach((oscillator) => oscillator.start());
-
-    return { context, stringSource, voiceTextureSource, oscillators };
+    return { context };
   } catch {
     return undefined;
   }
@@ -1710,21 +1431,6 @@ function stopHomeAudio(root?: ParentNode, rememberChoice = false): void {
     session.audio.currentTime = 0;
     session.audio.removeAttribute("src");
     session.audio.load();
-    try {
-      session.graph.stringSource.stop();
-    } catch {
-      // The string bed may already be stopped during route teardown.
-    }
-    try {
-      session.graph.voiceTextureSource.stop();
-    } catch {
-      // The voice texture may already be stopped during route teardown.
-    }
-    try {
-      session.graph.oscillators.forEach((oscillator) => oscillator.stop());
-    } catch {
-      // Oscillators may already be stopped during route teardown.
-    }
     void session.graph.context.close();
     if (root) {
       setHomeAudioState(root, false);

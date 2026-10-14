@@ -3,12 +3,10 @@ import AVFoundation
 // Renders the site's room sound as a long, seamless loop built from the
 // story ad's soundtrack: the dark D-minor bed, wind and crackle, the music-box
 // tune in sparse phrases, the doll-like servo turn, soft terminal beeps and
-// typing, with the original interface sound underneath. Usage:
+// typing. Usage:
 //   swift -O marketing/tools/render-site-ambience.swift public/audio/hidn-room-loop.m4a
-// The original sound stays at public/audio/hidn-recording-source.m4a.
 
 let outPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "hidn-room-loop.m4a"
-let originalPath = "public/audio/hidn-recording-source.m4a"
 let sampleRate = 44_100.0
 let loopLength = 180.0      // seconds in one loop
 let tailLength = 10.0       // rendered past the end, then folded onto the start
@@ -146,33 +144,6 @@ func braam(_ at: Double, _ amp: Double) {
 }
 braam(56, 0.14)
 braam(118, 0.12)
-
-// 6. The original interface sound underneath, looped with its own seam softened.
-do {
-  let file = try! AVAudioFile(forReading: URL(fileURLWithPath: originalPath))
-  let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: file.fileFormat.sampleRate, channels: 2, interleaved: false)!
-  let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(file.length))!
-  try! file.read(into: buf)
-  let n = Int(buf.frameLength), srcL = buf.floatChannelData![0], srcR = buf.floatChannelData![1]
-  var peak: Float = 0
-  for i in 0..<n { peak = max(peak, abs(srcL[i]), abs(srcR[i])) }
-  let norm = Double(1 / max(peak, 0.0001))
-  let fadeLen = Int(1.5 * file.fileFormat.sampleRate)
-  let step = file.fileFormat.sampleRate / sampleRate
-  for i in 0..<total {
-    let pos = Int(Double(i) * step) % n
-    // Near the end of the source, blend in its start so each wrap is smooth.
-    var l = Double(srcL[pos]), rr = Double(srcR[pos])
-    if pos >= n - fadeLen {
-      let w = Double(pos - (n - fadeLen)) / Double(fadeLen)
-      let k = pos - (n - fadeLen)
-      l = l * cos(w * .pi / 2) + Double(srcL[k]) * sin(w * .pi / 2)
-      rr = rr * cos(w * .pi / 2) + Double(srcR[k]) * sin(w * .pi / 2)
-    }
-    let level = 0.16 * norm
-    left[i] += Float(l * level); right[i] += Float(rr * level)
-  }
-}
 
 // Fold the tail onto the start with an equal-power crossfade: the end of the
 // file now flows straight into its beginning.

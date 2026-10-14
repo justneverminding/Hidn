@@ -9,7 +9,7 @@ import CoreMedia
 let outDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "marketing/video"
 let shotsDir = "\(outDir)/shots"
 let voDir = "\(outDir)/vo"
-let roomAudioPath = "public/audio/hidn-recording-source.m4a"
+let roomAudioPath = "marketing/audio/hidn-recording-source.m4a"
 let W = 1080, H = 1920
 let fps: Int32 = 30
 let duration: Double = 45
