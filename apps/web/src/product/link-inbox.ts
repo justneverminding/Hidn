@@ -286,6 +286,8 @@ let ownerContext: LinkOwnerContext | null = null;
 
 /** Forget the inbox when the member leaves, so another key never sees it. */
 export function resetLinkInbox(): void {
+  backgroundUnread = 0;
+  backgroundCheckedAt = 0;
   inbox.status = "idle";
   inbox.data = null;
   inbox.unreadIds = new Set();
@@ -294,8 +296,26 @@ export function resetLinkInbox(): void {
   inbox.feedback = "";
 }
 
+// The unread count for the bottom bar, checked at most once a minute.
+let backgroundUnread = 0;
+let backgroundCheckedAt = 0;
+
 export function linkInboxUnreadCount(): number {
-  return inbox.data?.unreadCount ?? 0;
+  return backgroundUnread;
+}
+
+export function refreshLinkUnread(inboxKey: () => Promise<string>): void {
+  if (Date.now() - backgroundCheckedAt < 60_000) return;
+  backgroundCheckedAt = Date.now();
+  void inboxKey()
+    .then((key) => fetchMyLinkInbox(key))
+    .then((data) => {
+      if (data.unreadCount !== backgroundUnread) {
+        backgroundUnread = data.unreadCount;
+        rerender();
+      }
+    })
+    .catch(() => undefined);
 }
 
 function applyInbox(data: LinkInboxResponse): void {
@@ -315,6 +335,8 @@ async function loadInbox(context: LinkOwnerContext): Promise<void> {
     const data = await fetchMyLinkInbox(key);
     applyInbox(data);
     inbox.status = "ready";
+    // Opening the inbox reads everything in it.
+    backgroundUnread = 0;
     if (data.unreadCount > 0) {
       // Seen now; the highlight stays for this visit only.
       void markMyLinkMessagesRead(key).then(() => {
@@ -405,13 +427,15 @@ export function renderLinkInboxBody(): string {
     </div>`;
   }
 
-  return `<div class="hidn-link">${head}${renderLinkCard(data.link)}${error}${status}${renderMessages(data)}</div>`;
+  // Messages first: they are what people come back for.
+  return `<div class="hidn-link">${head}${error}${status}${renderMessages(data)}${renderLinkCard(data.link)}</div>`;
 }
 
 export function bindLinkInbox(root: ParentNode, context: LinkOwnerContext): void {
   if (!root.querySelector(".hidn-link")) return;
   ownerContext = context;
-  if (inbox.status === "idle") {
+  // Load on first visit, and again when new messages have arrived since.
+  if (inbox.status === "idle" || (inbox.status === "ready" && backgroundUnread > 0)) {
     void loadInbox(context);
   }
 

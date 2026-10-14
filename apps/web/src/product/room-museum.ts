@@ -250,7 +250,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   if (!host) return () => {};
   const galleries: MuseumGallery[] = options.galleries?.length
     ? options.galleries
-    : [{ key: "general", label: "GENERAL", description: "all signals", posts }];
+    : [{ key: "general", label: "GENERAL", description: "everything people are saying", posts }];
   const singleRoom = options.roomMode === "gallery";
   const galleryLayout: GalleryLayout[] = options.foyer || singleRoom ? [] : createMuseumLayout(galleries);
   const galleryPairs = Math.max(1, Math.ceil(galleryLayout.length / 2));

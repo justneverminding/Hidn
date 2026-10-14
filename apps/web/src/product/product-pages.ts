@@ -64,10 +64,13 @@ import {
   bindLinkSendPage,
   linkSlugFromPath,
   renderLinkInboxBody,
+  linkInboxUnreadCount,
+  refreshLinkUnread,
   renderLinkSendBody,
   resetLinkInbox,
 } from "./link-inbox";
-import { bindReadPage, mountHomeTicker, readChannelFromPath, renderReadBody } from "./public-feed";
+import { setLivePulse } from "./live-pulse";
+import { bindReadPage, mountHomeTicker, readChannelFromPath, renderReadBody, timeAgo } from "./public-feed";
 import {
   KEY_CREDENTIAL_NAME,
   bindKeyReminder,
@@ -310,13 +313,15 @@ const roomChannelOptions: Array<{
   description: string;
   categories?: MockCategory[];
 }> = [
-  { key: "general", label: "GENERAL", description: "all signals" },
+  { key: "general", label: "GENERAL", description: "everything people are saying" },
   { key: "love", label: "LETTING GO", description: "what remains after goodbye", categories: ["RELATIONSHIPS", "REGRET", "LONELINESS"] },
   { key: "blackbox", label: "BLACKBOX", description: "strange ideas, no explanations", categories: ["UNCERTAINTY", "IDENTITY", "FEAR"] },
   { key: "redacted", label: "REDACTED", description: "what you won’t say publicly", categories: ["IDENTITY", "UNCERTAINTY"] },
   { key: "night-shift", label: "NIGHT SHIFT", description: "posts made after midnight", categories: ["LONELINESS", "FEAR", "IDENTITY"] },
   { key: "underground", label: "THE UNDERGROUND", description: "what stays unsaid", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
 ];
+
+const ROOM_CHANNEL_KEYS: RoomChannel[] = roomChannelOptions.map((channel) => channel.key);
 
 const museumThemeByChannel: Record<RoomChannel, MuseumTheme> = {
   general: { accent: "#a9e6b4", glow: "#74c88b", trim: "#3d6b4a", wall: "#14241c", floor: "#202b24" },
@@ -637,7 +642,7 @@ function shareableConfessionForId(id: string): MockConfession | undefined {
     return mockConfession;
   }
 
-  const post = roomPosts.find((candidate) => candidate.id === id);
+  const post = findLoadedPost(id);
   if (!post) {
     return undefined;
   }
@@ -645,8 +650,13 @@ function shareableConfessionForId(id: string): MockConfession | undefined {
   return mockConfessionFromRoomPost(post);
 }
 
+/** A post from the current room or from the mixed feed. */
+function findLoadedPost(id: string): RoomPost | undefined {
+  return roomPosts.find((candidate) => candidate.id === id) ?? mixedFeedPosts.find((candidate) => candidate.id === id);
+}
+
 function roomTipPost(): RoomPost | undefined {
-  return roomTipPostId ? roomPosts.find((post) => post.id === roomTipPostId) : undefined;
+  return roomTipPostId ? findLoadedPost(roomTipPostId) : undefined;
 }
 
 function roomTipPaymentUri(post: RoomPost): string {
@@ -923,7 +933,7 @@ function renderReportDialog(): string {
 
 function renderTransmissionRow(
   transmission: TransmissionView,
-  options: { href?: string; incoming?: boolean } = {},
+  options: { href?: string; incoming?: boolean; roomLabel?: string } = {},
 ): string {
   const className = options.incoming ? " transmission-row--incoming motion-transmission-arrival" : "";
   const category = transmission.category
@@ -940,11 +950,9 @@ function renderTransmissionRow(
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasRoomSession() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
-        <a class="room-message__action" href="${escapeHtml(options.href)}">REPLIES ${replyCount}</a>
-        <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE IMAGE</button>
-        <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE IMAGE</button>
+        <a class="room-message__action" href="${escapeHtml(options.href)}">↳ ${replyCount} ${replyCount === 1 ? "REPLY" : "REPLIES"}</a>
+        <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE</button>
         ${tipAction}
-        <a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>
         <span class="thread-share-status" data-share-status="${escapeHtml(threadId)}" role="status" aria-live="polite"></span>
       </div>`
     : options.href
@@ -953,12 +961,12 @@ function renderTransmissionRow(
 
   return `<article class="transmission-row${className}">
     <div class="transmission-row__meta">
-      <span>${escapeHtml(transmission.reference ?? "ANONYMOUS MESSAGE")}</span>
-      <time>${escapeHtml(formatTransmissionTime(transmission.time))}</time>
+      <span>ANONYMOUS${options.roomLabel ? ` · IN ${escapeHtml(options.roomLabel)}` : ""}</span>
+      <time datetime="${escapeHtml(transmission.time)}">${escapeHtml(threadId ? timeAgo(transmission.time) || formatTransmissionTime(transmission.time) : formatTransmissionTime(transmission.time))}</time>
     </div>
     <p class="transmission-row__thought" ${shareTextAttributes}>“${escapeHtml(transmission.text)}”</p>
     <footer class="transmission-row__footer">
-      ${category}
+      ${threadId ? "" : category}
       ${action}
     </footer>
   </article>`;
@@ -2473,7 +2481,7 @@ function renderRoomMenu(): string {
       <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ ls</p>
       <nav aria-label="Private room channels">
         <a href="/room/rooms"><span>[1]</span> ROOMS <b aria-hidden="true">↗</b></a>
-        <a href="/room"><span>[2]</span> 3D MUSEUM <b aria-hidden="true">↗</b></a>
+        <a href="/room/main"><span>[2]</span> 3D MUSEUM <b aria-hidden="true">↗</b></a>
         <a href="/how-it-works"><span>[3]</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
         <a href="/"><span>[4]</span> HOME <b aria-hidden="true">↗</b></a>
       </nav>
@@ -2565,7 +2573,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isRoomCreation = normalizedPath === "/room/access";
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath === "/admin" || normalizedPath.startsWith("/admin/");
-  const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
+  const isRoomSurface = normalizedPath === "/room/feed" || normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   // Reading pages stay fully lit; the flashlight would hide the posts.
   const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage && !isPublicRead;
@@ -2589,7 +2597,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
     ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
     ${main}
-    ${isRoomSurface && hasRoomSession() ? renderKeyReminder(roomAccountRecoveryCode) : ""}
+    ${showsRoomBottomNav(normalizedPath) ? renderRoomBottomNav(normalizedPath) : ""}
     ${isRoomSurface ? renderRoomTipDialog() : ""}
     ${isRoomSurface ? renderSelectionTools() : ""}
     ${isRoomSurface || isAdminPage || pageClass.includes("public-page--home-museum") ? "" : FooterShell({
@@ -2613,6 +2621,122 @@ function roomPostRandomKey(id: string): number {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
   return hash;
+}
+
+// MARK: The mixed feed, /room/feed: recent posts from every room, shuffled.
+
+type MixedFeedTab = "mixed" | "latest" | "felt";
+const MIXED_FEED_PATH = "/room/feed";
+const MIXED_FEED_RECENT = 150;
+const MIXED_FEED_REFRESH_MS = 60_000;
+let mixedFeedPosts: RoomPost[] = [];
+let mixedFeedShuffled: RoomPost[] = [];
+let mixedFeedLoadedAt = 0;
+let mixedFeedRequest: Promise<void> | undefined;
+let mixedFeedError = "";
+let activeMixedTab: MixedFeedTab = "mixed";
+
+function shuffled<T>(items: T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+async function refreshMixedFeed(force = false): Promise<void> {
+  if (!hasRoomSession() || mixedFeedRequest) return mixedFeedRequest;
+  if (!force && mixedFeedLoadedAt && Date.now() - mixedFeedLoadedAt < MIXED_FEED_REFRESH_MS) return;
+  mixedFeedRequest = Promise.allSettled(ROOM_CHANNEL_KEYS.map((channel) => fetchAnonymousPosts(channel)))
+    .then((results) => {
+      const posts = results.flatMap((result) => (result.status === "fulfilled" ? result.value.posts : []));
+      if (!posts.length && results.every((result) => result.status === "rejected")) {
+        mixedFeedError = "The rooms could not be reached. Pull to refresh in a moment.";
+        return;
+      }
+      // Most recent first, then a fresh shuffle of that recent slice.
+      const recent = posts.sort((left, right) => right.time.localeCompare(left.time)).slice(0, MIXED_FEED_RECENT);
+      const known = new Set(mixedFeedShuffled.map((post) => post.id));
+      mixedFeedPosts = recent;
+      // Keep the order people are reading in; new arrivals go on top.
+      const byId = new Map(recent.map((post) => [post.id, post]));
+      mixedFeedShuffled = mixedFeedShuffled.length
+        ? [...recent.filter((post) => !known.has(post.id)), ...mixedFeedShuffled.filter((post) => byId.has(post.id)).map((post) => byId.get(post.id)!)]
+        : shuffled(recent);
+      for (const post of recent) {
+        if (!roomLikeCounts.has(post.id)) roomLikeCounts.set(post.id, post.reactions);
+        if (post.liked) roomLikedIds.add(post.id);
+      }
+      mixedFeedError = "";
+      mixedFeedLoadedAt = Date.now();
+      if (normalizePath(window.location.pathname) === MIXED_FEED_PATH) rerenderProductRoute();
+    })
+    .finally(() => {
+      mixedFeedRequest = undefined;
+    });
+  return mixedFeedRequest;
+}
+
+function mixedFeedRows(): string {
+  if (!mixedFeedLoadedAt) {
+    return mixedFeedError
+      ? EmptyState("SIGNAL LOST", mixedFeedError)
+      : LoadingState("LISTENING TO EVERY ROOM", "Gathering recent posts from all rooms.");
+  }
+  const visible = (activeMixedTab === "mixed"
+    ? mixedFeedShuffled
+    : activeMixedTab === "latest"
+      ? mixedFeedPosts
+      : [...mixedFeedPosts].sort((left, right) => reactionCountForThread(right.id, right.reactions) - reactionCountForThread(left.id, left.reactions) || right.time.localeCompare(left.time))
+  ).filter((post) => !isModerationHidden("thread", post.id));
+  if (!visible.length) {
+    return EmptyState("QUIET FOR NOW", "Nobody has posted yet. Be the first voice in the room.");
+  }
+  return visible
+    .map((post) => renderTransmissionRow(transmissionViewFromRoomPost(post), {
+      href: `/c/${encodeURIComponent(post.id)}`,
+      roomLabel: roomChannelOption(post.channel as RoomChannel).label,
+    }))
+    .join("");
+}
+
+function renderMixedFeed(): RenderedProductRoute {
+  const tabs: Array<{ key: MixedFeedTab; label: string }> = [
+    { key: "mixed", label: "MIXED" },
+    { key: "latest", label: "LATEST" },
+    { key: "felt", label: "FELT" },
+  ];
+  return {
+    metadata: { ...EXPLORE_METADATA, title: "HIDN — Feed", canonicalPath: MIXED_FEED_PATH },
+    html: !hasRoomSession()
+      ? publicFrame(MIXED_FEED_PATH, renderConnectionLost(), "public-page--explore")
+      : publicFrame(
+        MIXED_FEED_PATH,
+        `<main id="main-content" class="public-main explore-main">
+          <div class="hidn-container--wide explore-page">
+            <header class="explore-header">
+              ${TerminalLabel("FEED / EVERY ROOM")}
+              <h1 class="type-display-lg hidn-glitch-title" data-text="THE FEED">THE FEED</h1>
+              <p>Recent posts from every room, shuffled. No names, ever.</p>
+              <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/* · listening<span class="hidn-feed-log__caret">▌</span></p>
+              ${renderKeyReminder(roomAccountRecoveryCode)}
+              ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
+            </header>
+            <div class="explore-layout">
+              <section class="explore-feed" aria-label="Posts from every room">
+                <div class="explore-tabs" role="tablist" aria-label="Feed order">
+                  ${tabs.map((tab) => `<button class="explore-tabs__tab" type="button" role="tab" data-mixed-tab="${tab.key}" aria-selected="${activeMixedTab === tab.key}">${tab.label}</button>`).join("")}
+                </div>
+                <div class="explore-feed__list" aria-live="polite">${mixedFeedRows()}</div>
+              </section>
+              ${renderRoomDirectory()}
+            </div>
+          </div>
+        </main>`,
+        "public-page--explore public-page--mixed-feed",
+      ),
+  };
 }
 
 function liveRoomPostsForTab(tab: FeedTab): RoomPost[] {
@@ -2973,7 +3097,8 @@ async function saveRoomTipAddressFromRoot(root: ParentNode): Promise<void> {
 }
 
 function isRoomNotificationSurface(path = normalizePath(window.location.pathname)): boolean {
-  return path === "/room"
+  return path === "/room/feed"
+    || path === "/room"
     || path === "/room/orb"
     || path === "/room/hall"
     || path === "/room/profile"
@@ -2984,7 +3109,7 @@ function isRoomNotificationSurface(path = normalizePath(window.location.pathname
 }
 
 function isRoomPostSurface(path = normalizePath(window.location.pathname)): boolean {
-  return path === "/room" || Boolean(roomChannelSurfaceFromPath(path));
+  return path === "/room" || path === "/room/feed" || Boolean(roomChannelSurfaceFromPath(path));
 }
 
 function notificationStateSignature(value: AccountNotificationsResponse | undefined): string {
@@ -3152,6 +3277,10 @@ async function submitRoomPost(): Promise<void> {
     rememberNotificationKey(notificationCapability);
     roomPendingPostIds.add(response.post.id);
     roomPosts = [response.post, ...roomPosts.filter((post) => post.id !== response.post.id)];
+    if (mixedFeedLoadedAt) {
+      mixedFeedPosts = [response.post, ...mixedFeedPosts.filter((post) => post.id !== response.post.id)];
+      mixedFeedShuffled = [response.post, ...mixedFeedShuffled.filter((post) => post.id !== response.post.id)];
+    }
     roomLikeCounts.set(response.post.id, response.post.reactions);
     rememberDeviceSignalPost(response.post);
     roomLikedIds.delete(response.post.id);
@@ -3659,6 +3788,7 @@ function isProtectedRoomPath(path: string): boolean {
     || path === "/room/hall"
     || path === "/room/profile"
     || path === "/room/inbox"
+    || path === "/room/feed"
     || Boolean(roomChannelSurfaceFromPath(path))
     || Boolean(roomThreadIdFromPath(path));
 }
@@ -4165,7 +4295,7 @@ function renderMobileRoomIndex(): string {
     .join("");
 
   return publicFrame(
-    "/room",
+    "/room/rooms",
     `<main id="main-content" class="public-main room-mobile-index-main">
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
@@ -4234,6 +4364,7 @@ function renderExplore(path = "/room"): string {
           <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
+          ${renderKeyReminder(roomAccountRecoveryCode)}
           ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
         </header>
@@ -4653,7 +4784,7 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
     roomLoginError = "";
     persistAnonymousSession();
     if (recoveryCode) {
-      navigateIntoRoom("/room/main", { portal: true });
+      navigateIntoRoom(ROOM_HOME_PATH, { portal: true });
     } else {
       roomAccessMode = "ready";
       revealRoomRecoveryKeyTemporarily();
@@ -4744,7 +4875,71 @@ function hasRoomSession(): boolean {
   return !roomSessionIsExpired() && Boolean(roomAnonymousIdentity && roomAnonymousWitness);
 }
 
-function navigateIntoRoom(path = "/room", options: { portal?: boolean } = {}): void {
+/** The phone-style bar along the bottom of the reading pages. The museum
+ * pages keep their own walking controls there, so it stays off them. */
+function showsRoomBottomNav(path: string): boolean {
+  return hasRoomSession() && (
+    path === MIXED_FEED_PATH
+    || Boolean(roomChannelSurfaceFromPath(path))
+    || path === "/room/rooms"
+    || path === "/room/profile"
+    || path === "/room/inbox"
+    || path === "/room"
+    || path === "/room/main"
+    || path === "/room/library"
+    || path === "/room/orb"
+    || path.startsWith("/c/")
+  );
+}
+
+function isMuseumPath(path: string): boolean {
+  return path === "/room" || path === "/room/main" || path === "/room/library" || path === "/room/orb" || Boolean(roomChannelFromPath(path));
+}
+
+function renderRoomBottomNav(path: string): string {
+  const inboxUnread = linkInboxUnreadCount();
+  const meUnread = roomNotifications?.unreadCount ?? 0;
+  const badge = (count: number): string => (count > 0 ? `<b class="hidn-bottom-nav__badge" aria-label="${count} new">${count > 99 ? "99+" : count}</b>` : "");
+  const item = (href: string, label: string, active: boolean, extra = ""): string =>
+    `<a class="hidn-bottom-nav__item${active ? " hidn-bottom-nav__item--active" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}><span>${label}</span>${extra}</a>`;
+  return `<nav class="hidn-bottom-nav" aria-label="Room" data-bottom-nav>
+    ${item(MIXED_FEED_PATH, "FEED", path === MIXED_FEED_PATH || path.startsWith("/c/"))}
+    ${item("/room/rooms", "ROOMS", path === "/room/rooms" || Boolean(roomChannelFeedFromPath(path)))}
+    ${item("/room/main", "MUSEUM", isMuseumPath(path))}
+    ${item("/room/inbox", "INBOX", path === "/room/inbox", badge(inboxUnread))}
+    ${item("/room/profile", "ME", path === "/room/profile", badge(meUnread))}
+  </nav>`;
+}
+
+/** The bar slides out of the way while scrolling down through posts and
+ * comes back on the way up, so it never sits on top of what people read. */
+let bottomNavScrollWatched = false;
+let bottomNavLastY = 0;
+let bottomNavHidden = false;
+function watchBottomNavScroll(): void {
+  const apply = (): void => {
+    document.querySelector("[data-bottom-nav]")?.classList.toggle("hidn-bottom-nav--away", bottomNavHidden);
+  };
+  apply();
+  if (bottomNavScrollWatched) return;
+  bottomNavScrollWatched = true;
+  window.addEventListener("scroll", () => {
+    const y = window.scrollY;
+    const nearBottom = window.innerHeight + y >= document.documentElement.scrollHeight - 40;
+    const next = y > 120 && y > bottomNavLastY + 6 && !nearBottom ? true : y < bottomNavLastY - 6 || y <= 120 || nearBottom ? false : bottomNavHidden;
+    bottomNavLastY = y;
+    if (next !== bottomNavHidden) {
+      bottomNavHidden = next;
+      apply();
+    }
+  }, { passive: true });
+}
+
+/** Where members land: the feed, so reading and posting come first. The 3D
+ * museum is one tap away in the bottom bar and the channels menu. */
+const ROOM_HOME_PATH = "/room/feed";
+
+function navigateIntoRoom(path = ROOM_HOME_PATH, options: { portal?: boolean } = {}): void {
   sessionStorage.setItem("hidn:room:entered", "true");
   // After creating or recovering access, the visitor falls through a portal.
   if (options.portal) {
@@ -4865,12 +5060,12 @@ function renderRoomReady(): string {
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
     ? "You're in. One last thing before you enter: save your key."
-    : "Your nameless access is active. Enter the private room to post, reply and read.";
+    : "You're signed in. Head into the room to read, post and reply.";
   const keySaved = isKeySaved(roomAccountRecoveryCode);
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
-      ${signalMode ? TerminalLabel("HIDN / NAMELESS ACCESS") : ""}
+      ${signalMode ? TerminalLabel("HIDN / YOUR KEY") : ""}
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
         ${escapeHtml(titlePrefix)}<br />
         <em>${escapeHtml(titleSignal)}</em>
@@ -4889,16 +5084,16 @@ function renderRoomReady(): string {
 function renderProfileTipAddress(): string {
   if (!roomTipAddressLoaded) {
     return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title" aria-busy="true">
-      ${TerminalLabel("MAINNET / TIP DESTINATION")}
+      ${TerminalLabel("ZEC TIPS / OPTIONAL")}
       <h2 id="room-profile-tips-title">DIRECT SUPPORT</h2>
       <p class="room-profile-card__note">READING YOUR MAINNET DESTINATION...</p>
     </section>`;
   }
 
   return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title">
-    ${TerminalLabel("MAINNET / TIP DESTINATION")}
+    ${TerminalLabel("ZEC TIPS / OPTIONAL")}
     <h2 id="room-profile-tips-title">LET THE ROOM SUPPORT YOU.</h2>
-    <p class="room-profile-card__note">Add a shielded Zcash mainnet receiving address from your wallet. New room posts will show a direct TIP WITH ZEC action. HIDN stores only this public destination; it never stores a spending key or holds ZEC.</p>
+    <p class="room-profile-card__note">Want people to be able to tip your posts? Paste a private (shielded) Zcash address from your wallet. Your new posts get a TIP WITH ZEC button, and tips go straight to you. HIDN never holds any money.</p>
     <form class="room-tip-address-form" data-room-tip-address-form novalidate>
       <label class="ui-field" for="room-tip-address">
         <span class="ui-field__label">SHIELDED MAINNET ADDRESS / OPTIONAL</span>
@@ -5036,18 +5231,18 @@ function renderRoomProfile(): RenderedProductRoute {
         ${terminalWindow("hidn@room: ~/profile", `<div class="room-profile-page hidn-profile">
           <header class="hidn-access">
             <p class="hidn-access__code">/// PROFILE</p>
-            <h1>YOUR SIGNALS STAY WITH YOU.</h1>
-            <p class="hidn-access__line" data-hidn-type>&gt; This is a private, nameless access surface. Your recovery key stays on this device and is never used as a public name. Your signals are stored only in this browser and cannot move to another device.</p>
+            <h1>YOUR CORNER. NOBODY ELSE SEES IT.</h1>
+            <p class="hidn-access__line" data-hidn-type>&gt; Only you can see this page. Your key is your account, and nothing here is linked to your name. Your list of past posts is kept on this device only.</p>
           </header>
           <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
             <div class="room-profile-card__heading">
               <div>
-                ${TerminalLabel("ACCESS / ANONYMOUS CREDENTIAL")}
+                ${TerminalLabel("YOU / TODAY'S ANONYMOUS NAME")}
                 <h2 id="room-profile-status-title">${escapeHtml(profileLabel)}</h2>
               </div>
-              ${StatusIndicator("NAMELESS ACCESS", "online", true)}
+              ${StatusIndicator("SIGNED IN · NO NAME", "online", true)}
             </div>
-            <p class="room-profile-card__note">Nameless access includes posts, replies, reactions and private history. Posts and replies allow up to ${roomPostCharacterLimit()} characters. Zcash verification is coming. This history is saved only on this device. It is not synced, exported, or recoverable on another device.</p>
+            <p class="room-profile-card__note">This name changes every time you sign in, so nobody can follow you around. You can post, reply and like, up to ${roomPostCharacterLimit()} characters at a time. Your post history below lives on this device only.</p>
             <div class="room-profile-stats" aria-label="Private account totals">
               <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats.posts)}</strong></div>
               <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats.comments)}</strong></div>
@@ -5290,7 +5485,7 @@ function homeMuseumPosts(privateFoyer = false): MuseumPost[] {
 // look around and tap the floor to walk.
 function renderTerminalHomePage(): RenderedProductRoute {
   const signedIn = hasRoomSession();
-  const enterPath = signedIn ? "/room/main" : "/room/access";
+  const enterPath = signedIn ? ROOM_HOME_PATH : "/room/access";
   return {
     metadata: HOME_METADATA,
     html: publicFrame("/", `<main id="main-content" class="public-main home-main">
@@ -5353,7 +5548,7 @@ function renderHome(privateFoyer = false): RenderedProductRoute {
         ${privateFoyer ? "" : `<div class="museum-foyer__entry"><a href="${entryPath}" data-room-enter data-glitch-text="&gt; ${entryLabel} ↗" aria-label="${entryLabel}"><span aria-hidden="true">&gt;</span> ${entryLabel} <span aria-hidden="true">↗</span></a><p>WRITE FREELY / STAY UNKNOWN</p></div>`}
         ${privateFoyer ? `<button type="button" class="hidn-tv-prompt" data-tv-prompt>[ ▶ WATCH · ZCASH CHANNELS ]</button>` : ""}
         <p class="room-museum__hint museum-foyer__hint" data-museum-status>${privateFoyer ? "PRIVATE ROOM · WALK TO THE HALLWAY SIGN · TAP THE FLOOR TO WALK" : "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A FRAME TO READ"}</p>
-        <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>ZERO KNOWLEDGE</span></footer>
+        <footer class="museum-foyer__footer"><a href="/how-it-works">HOW IT WORKS</a><span>NOBODY KNOWS IT'S YOU</span></footer>
       </section>
     </main>`, "public-page--home public-page--home-museum"),
   };
@@ -5481,6 +5676,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room/inbox") {
     return renderRoomLinkInbox();
+  }
+
+  if (normalizedPath === MIXED_FEED_PATH) {
+    return renderMixedFeed();
   }
 
   const linkSlug = linkSlugFromPath(normalizedPath);
@@ -5614,8 +5813,10 @@ function navigateProductRoute(path: string): void {
   roomTipPostId = "";
   roomTipCopyFeedback = "";
   roomTipAddressCopyFeedback = "";
+  bottomNavHidden = false;
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("popstate"));
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
 }
 
 function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
@@ -6311,7 +6512,7 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
           return;
         }
         const returning = hasRoomSession();
-        beginEntry(() => navigateIntoRoom(returning ? "/room" : "/room/access"));
+        beginEntry(() => navigateIntoRoom(returning ? ROOM_HOME_PATH : "/room/access"));
       },
     });
     roomMuseumCleanup = () => {
@@ -6512,6 +6713,31 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindReadPage(root);
   bindKeySaveCard(root, roomAccountRecoveryCode);
   bindKeyReminder(root);
+  root.querySelectorAll<HTMLButtonElement>("[data-mixed-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeMixedTab = (button.dataset.mixedTab as MixedFeedTab) ?? "mixed";
+      if (activeMixedTab === "mixed") mixedFeedShuffled = shuffled(mixedFeedPosts);
+      rerenderProductRoute();
+    });
+  });
+  if (normalizePath(window.location.pathname) === MIXED_FEED_PATH) {
+    void refreshMixedFeed();
+  }
+  watchBottomNavScroll();
+  // The live "new confession" line runs on the reading pages only.
+  const pulsePath = normalizePath(window.location.pathname);
+  const memberReading = hasRoomSession() && (pulsePath === MIXED_FEED_PATH || pulsePath === "/room/rooms" || Boolean(roomChannelFeedFromPath(pulsePath)));
+  const publicReading = Boolean(readChannelFromPath(pulsePath));
+  setLivePulse(memberReading || publicReading ? {
+    channelLabel: (key) => roomChannelOption(key as RoomChannel).label,
+    isOwn: (id) => loadDeviceSignalHistory().posts.some((post) => post.id === id),
+    hrefFor: (id) => (memberReading ? `/c/${encodeURIComponent(id)}` : "/read"),
+    feedHref: memberReading ? MIXED_FEED_PATH : "/read",
+  } : null);
+  if (roomAnonymousIdentity && showsRoomBottomNav(normalizePath(window.location.pathname))) {
+    const secret = roomAnonymousIdentity.secret;
+    refreshLinkUnread(() => deriveLinkInboxKey(secret));
+  }
   // Enter in the key box signs in; the form exists so password managers
   // recognise it, never to post anywhere.
   root.querySelector<HTMLFormElement>("[data-room-login-form]")?.addEventListener("submit", (event) => {
@@ -6563,7 +6789,7 @@ export function bindProductRoute(root: ParentNode = document): void {
         foyerMuseum.dispatchEvent(new Event("museum-enter"));
         return;
       }
-      navigateIntoRoom(returning ? "/room" : "/room/access");
+      navigateIntoRoom(returning ? ROOM_HOME_PATH : "/room/access");
     });
   });
 
@@ -6925,13 +7151,13 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         }
         case "room-enter":
-          navigateIntoRoom("/room/main", { portal: true });
+          navigateIntoRoom(ROOM_HOME_PATH, { portal: true });
           break;
         case "room-refresh":
           void refreshActiveRoom();
           break;
         case "room-profile-back":
-          navigateProductRoute("/room");
+          navigateProductRoute(ROOM_HOME_PATH);
           break;
         case "room-copy-recovery-key":
           void copyRoomRecoveryKey(button);

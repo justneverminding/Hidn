@@ -17636,7 +17636,7 @@ html[data-perf="lite"] .room-tip-dialog--term .room-tip-dialog__panel { animatio
 /* Each post is a log entry: a prompt, the thought, bracketed commands. */
 .public-page.public-page--explore .transmission-row__meta,
 .public-page.public-page--explore .transmission-row__meta * { color: rgba(143, 217, 160, .8) !important; font-family: var(--hidn-font-mono) !important; letter-spacing: .08em; }
-.public-page.public-page--explore .transmission-row__meta span::before { color: #4dff6e; content: "[rx] "; }
+.public-page.public-page--explore .transmission-row__meta span::before { color: #4dff6e; content: "> "; }
 .public-page.public-page--explore .transmission-row__thought {
   color: #c4f7cc !important;
   font-family: var(--hidn-font-mono) !important;
@@ -18621,25 +18621,120 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 /* Until the key is saved, the room says so at the top. */
 .hidn-key-reminder {
   align-items: center;
-  background: rgba(20, 14, 2, .94);
-  border: 1px solid rgba(244, 200, 90, .55);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  background: rgba(244, 200, 90, .06);
+  border: 1px dashed rgba(244, 200, 90, .5);
+  box-sizing: border-box;
   color: #f4c85a;
   display: flex;
   flex-wrap: wrap;
   font: 11px var(--hidn-font-mono);
   gap: 8px 14px;
-  justify-content: center;
-  left: 50%;
   letter-spacing: .1em;
-  max-width: calc(100vw - 24px);
-  padding: 8px 36px 8px 14px;
-  position: fixed;
-  top: calc(env(safe-area-inset-top) + 64px);
-  transform: translateX(-50%);
-  width: max-content;
-  z-index: 80;
+  margin: 14px 0 0;
+  max-width: 100%;
+  padding: 9px 36px 9px 12px;
+  position: relative;
 }
 .hidn-key-reminder a { color: #4dff6e; text-decoration: none; }
 .hidn-key-reminder a:hover { text-decoration: underline; }
 .hidn-key-reminder button { background: none; border: 0; color: rgba(244, 200, 90, .8); cursor: pointer; font-size: 16px; padding: 4px 8px; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+
+/* The room's bottom bar: feed, rooms, write, inbox, you. */
+.hidn-bottom-nav {
+  align-items: stretch;
+  background: rgba(2, 6, 3, .96);
+  border: 1px solid rgba(77, 255, 110, .3);
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, .6);
+  box-sizing: border-box;
+  display: grid;
+  font-family: var(--hidn-font-mono);
+  grid-template-columns: repeat(5, 1fr);
+  left: 50%;
+  max-width: 560px;
+  position: fixed;
+  transform: translateX(-50%);
+  width: calc(100vw - 20px);
+  z-index: 70;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.hidn-bottom-nav__item {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: rgba(143, 217, 160, .8);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: 11px var(--hidn-font-mono);
+  gap: 2px;
+  justify-content: center;
+  letter-spacing: .12em;
+  min-height: 56px;
+  position: relative;
+  text-decoration: none;
+}
+.hidn-bottom-nav__item:hover, .hidn-bottom-nav__item:focus-visible { color: #4dff6e; outline: none; }
+.hidn-bottom-nav__item--active { color: #4dff6e; text-shadow: 0 0 8px rgba(77, 255, 110, .5); }
+.hidn-bottom-nav__item--active::before { background: #4dff6e; content: ""; height: 2px; left: 25%; position: absolute; right: 25%; top: 0; }
+.hidn-bottom-nav__badge {
+  background: #f4c85a;
+  border-radius: 9px;
+  color: #120c00;
+  font: 700 10px/16px var(--hidn-font-mono);
+  min-width: 16px;
+  padding: 0 4px;
+  position: absolute;
+  right: calc(50% - 26px);
+  text-align: center;
+  top: 7px;
+}
+/* Room for the bar under the last post. */
+.public-page:has(.hidn-bottom-nav) { padding-bottom: calc(env(safe-area-inset-bottom) + 84px); }
+@media (max-width: 560px) {
+  .hidn-key-reminder { font-size: 10px; }
+  .hidn-key-reminder__long { display: none; }
+}
+
+/* The bar steps aside while reading downwards. */
+.hidn-bottom-nav { transition: transform .28s ease, opacity .28s ease; }
+.hidn-bottom-nav--away { opacity: 0; pointer-events: none; transform: translate(-50%, calc(100% + 24px)); }
+/* On the museum, its walking controls sit above the bar. */
+.public-page:has(.hidn-bottom-nav) .room-museum__walk-controls { bottom: calc(env(safe-area-inset-bottom) + 96px) !important; }
+.public-page:has(.hidn-bottom-nav) .room-museum__hint { bottom: calc(env(safe-area-inset-bottom) + 76px) !important; }
+.public-page:has(.hidn-bottom-nav) .hidn-tv-prompt { bottom: calc(env(safe-area-inset-bottom) + 140px) !important; }
+.public-page:has(.hidn-bottom-nav):has(.room-museum) { padding-bottom: 0; }
+
+/* Live pulse: a new confession, announced briefly, then gone. */
+.hidn-pulse {
+  align-items: center;
+  background: rgba(2, 8, 4, .95);
+  border: 1px solid rgba(77, 255, 110, .4);
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .6);
+  box-sizing: border-box;
+  color: #b9f7c4;
+  display: flex;
+  font: 12px var(--hidn-font-mono);
+  gap: 8px;
+  left: 50%;
+  letter-spacing: .04em;
+  max-width: min(560px, calc(100vw - 20px));
+  opacity: 0;
+  padding: 10px 14px;
+  pointer-events: none;
+  position: fixed;
+  text-decoration: none;
+  transform: translate(-50%, 16px);
+  transition: opacity .35s ease, transform .35s ease, bottom .28s ease;
+  width: max-content;
+  z-index: 69;
+}
+.hidn-pulse b { color: #4dff6e; flex: none; font-weight: 500; }
+.hidn-pulse span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hidn-pulse i { color: #4dff6e; flex: none; font-style: normal; }
+.hidn-pulse--in { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.hidn-pulse--out { opacity: 0; transform: translate(-50%, 8px); }
+body:has(.hidn-bottom-nav:not(.hidn-bottom-nav--away)) .hidn-pulse { bottom: calc(env(safe-area-inset-bottom) + 80px); }
+@media (prefers-reduced-motion: reduce) { .hidn-pulse { transition: opacity .2s linear; transform: translate(-50%, 0); } }

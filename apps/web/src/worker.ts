@@ -2569,6 +2569,40 @@ async function listModerationVisibility(request: Request, env: HidnWorkerEnv): P
   });
 }
 
+// MARK: Live pulse
+
+/** New posts are only announced once they are at least this old, so a
+ * confession never pops up on screens the moment someone sends it. */
+const PULSE_MIN_AGE_MS = 2 * 60 * 1000;
+const PULSE_LOOKBACK_MS = 30 * 60 * 1000;
+
+/** Recent public posts for the live "new confession" line: room, a short
+ * opening and the id, nothing else. */
+async function listRoomPulse(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+  const now = Date.now();
+  const sinceParam = Date.parse(new URL(request.url).searchParams.get("since") ?? "");
+  const since = new Date(Math.max(Number.isNaN(sinceParam) ? 0 : sinceParam, now - PULSE_LOOKBACK_MS)).toISOString();
+  const until = new Date(now - PULSE_MIN_AGE_MS).toISOString();
+  const result = await env.ROOM_DB!.prepare(
+    `SELECT thread_id, channel, substr(content, 1, 90) AS opening, created_at
+     FROM hidn_threads
+     WHERE room_id = ? AND moderation_state = 'visible' AND created_at > ? AND created_at <= ?
+     ORDER BY created_at ASC
+     LIMIT 10`,
+  )
+    .bind(MAIN_ROOM_ID, since, until)
+    .all<{ thread_id: string; channel: string; opening: string; created_at: string }>();
+
+  return jsonResponse({
+    until,
+    posts: result.results.map((row) => ({ id: row.thread_id, channel: row.channel, opening: row.opening, createdAt: row.created_at })),
+  }, 200, "public, max-age=15");
+}
+
 // MARK: Personal confession links
 
 const LINK_MESSAGE_MAX_LENGTH = 500;
@@ -3044,6 +3078,17 @@ const worker = {
         return await listLiveActivity(request, env);
       } catch {
         return jsonResponse({ error: "Live room activity could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/pulse") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+      try {
+        return await listRoomPulse(request, env);
+      } catch {
+        return jsonResponse({ error: "The live pulse is unavailable." }, 500);
       }
     }
 

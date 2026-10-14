@@ -150,8 +150,8 @@ export function canReadSavedKey(): boolean {
 export function renderKeyReminder(recoveryCode: string): string {
   if (!recoveryCode || reminderDismissed || isKeySaved(recoveryCode)) return "";
   return `<div class="hidn-key-reminder" role="status">
-    <span>⚠ YOUR KEY ISN'T SAVED. LOSE IT AND YOU LOSE YOUR ACCOUNT.</span>
-    <a href="/room/profile#key">[ SAVE IT NOW ]</a>
+    <span>⚠ YOUR KEY ISN'T SAVED<span class="hidn-key-reminder__long">. LOSE IT AND YOU LOSE YOUR ACCOUNT.</span></span>
+    <a href="/room/profile#key">[ SAVE IT ]</a>
     <button type="button" data-key-reminder-close aria-label="Hide until next visit">×</button>
   </div>`;
 }
