@@ -18471,3 +18471,115 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
   .hidn-link__tip-grid { grid-template-columns: 1fr; justify-items: start; }
   .hidn-link__actions .hidn-link__btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* Homepage: a clear promise, two ways in, and real posts passing by. */
+.hidn-welcome__actions { display: flex; flex-wrap: wrap; gap: 12px; justify-self: center; justify-content: center; margin-top: 2.4em; pointer-events: auto; }
+.hidn-welcome__actions .hidn-welcome__enter { margin-top: 0; }
+.hidn-welcome__enter--ghost { border-color: rgba(77, 255, 110, .28); color: #b9f7c4; }
+.hidn-welcome__free { color: rgba(185, 247, 196, .55); font-size: 11px; justify-self: center; letter-spacing: .22em; margin-top: 1.2em !important; }
+.hidn-welcome__ticker {
+  margin: 18px auto 0;
+  max-width: min(620px, calc(100vw - 32px));
+  min-height: 4.6em;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  transition: opacity .6s ease;
+}
+.hidn-welcome__ticker--on { opacity: 1; }
+.hidn-welcome__ticker blockquote { color: #e2ffe8; font: 14px/1.6 var(--hidn-font-mono); letter-spacing: .02em; margin: 0; text-shadow: 0 0 8px rgba(0, 0, 0, .9), 0 0 2px #000; }
+.hidn-welcome__ticker figcaption { color: rgba(143, 217, 160, .75); font: 11px var(--hidn-font-mono); letter-spacing: .14em; margin-top: 6px; text-shadow: 0 0 6px #000; }
+
+/* /read: the room, read-only, before joining. */
+.hidn-term--read { max-width: 760px; }
+.hidn-read { color: #4dff6e; display: grid; font-family: var(--hidn-font-mono); gap: 14px; }
+.hidn-read__code { color: rgba(77, 255, 110, .6); font-size: 12px; letter-spacing: .2em; margin: 0; }
+.hidn-read__title { font: 600 clamp(22px, 4.4vw, 36px)/1.2 var(--hidn-font-mono); letter-spacing: .04em; margin: 0; }
+.hidn-read__line { color: #b9f7c4; font-size: 14px; line-height: 1.6; margin: 0; }
+.hidn-read__tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.hidn-read__tabs::-webkit-scrollbar { display: none; }
+.hidn-read__tab { border: 1px solid rgba(77, 255, 110, .22); color: #8fd9a0; flex: none; font-size: 12px; letter-spacing: .12em; padding: 9px 12px; text-decoration: none; }
+.hidn-read__tab--active { background: rgba(77, 255, 110, .1); border-color: #4dff6e; color: #4dff6e; }
+.hidn-read__list { display: grid; gap: 10px; }
+.hidn-read__post { background: rgba(77, 255, 110, .025); border-left: 2px solid rgba(77, 255, 110, .3); display: grid; gap: 8px; padding: 12px 14px; }
+.hidn-read__post header { color: rgba(143, 217, 160, .7); display: flex; font-size: 11px; justify-content: space-between; letter-spacing: .14em; }
+.hidn-read__post p { color: #e2ffe8; font-size: 15px; line-height: 1.65; margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.hidn-read__post footer { display: flex; gap: 16px; }
+.hidn-read__post footer button { background: none; border: 0; color: #8fd9a0; cursor: pointer; font: 12px var(--hidn-font-mono); letter-spacing: .1em; min-height: 36px; padding: 0; }
+.hidn-read__post footer button:hover { color: #4dff6e; }
+.hidn-read__status { color: #8fd9a0; font-size: 13px; margin: 8px 0; }
+.hidn-read__status a { color: #4dff6e; }
+.hidn-read__caret { animation: hidn-link-blink 1s steps(1) infinite; }
+.hidn-read__bar {
+  align-items: center;
+  background: rgba(2, 6, 3, .96);
+  border: 1px solid rgba(77, 255, 110, .35);
+  bottom: max(12px, env(safe-area-inset-bottom));
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, .6);
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  left: 50%;
+  padding: 10px 12px;
+  position: fixed;
+  transform: translateX(-50%);
+  width: min(728px, calc(100vw - 24px));
+  z-index: 40;
+}
+.hidn-read__list { padding-bottom: 96px; }
+.hidn-read__bar span { color: #b9f7c4; font-size: 12px; letter-spacing: .06em; }
+.hidn-read__btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(77, 255, 110, .4);
+  color: #4dff6e;
+  cursor: pointer;
+  display: inline-flex;
+  font: 13px var(--hidn-font-mono);
+  letter-spacing: .12em;
+  min-height: 44px;
+  padding: 10px 16px;
+  text-decoration: none;
+}
+.hidn-read__btn--primary { background: rgba(77, 255, 110, .12); border-color: #4dff6e; }
+.hidn-read__btn:hover, .hidn-read__btn:focus-visible { background: #4dff6e; color: #010201; outline: none; }
+.hidn-read__join { display: grid; inset: 0; place-items: center; position: fixed; z-index: 60; }
+.hidn-read__join-backdrop { background: rgba(0, 0, 0, .72); border: 0; inset: 0; position: absolute; }
+.hidn-read__join-panel {
+  background: #020502;
+  border: 1px solid rgba(77, 255, 110, .45);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .7);
+  display: grid;
+  gap: 12px;
+  margin: 16px;
+  max-width: 460px;
+  padding: 22px;
+  position: relative;
+}
+.hidn-read__join-log { color: #8fd9a0; font-size: 12px; margin: 0; }
+.hidn-read__join-panel h2 { color: #4dff6e; font: 600 20px/1.3 var(--hidn-font-mono); letter-spacing: .06em; margin: 0; }
+.hidn-read__join-panel p { color: #b9f7c4; font-size: 14px; line-height: 1.6; margin: 0; }
+.hidn-read__join-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 560px) {
+  .hidn-read__bar { justify-content: center; text-align: center; }
+  .hidn-read__bar .hidn-read__btn, .hidn-read__join-actions .hidn-read__btn { flex: 1 1 100%; justify-content: center; }
+}
+/* Keep the footer clear of the pinned read bar. */
+.public-page:has(.hidn-read__bar) .ui-footer-shell { padding-bottom: 120px; }
+/* Public reading pages sign off with the logo above the footer link. */
+.public-page--public-read .ui-footer-shell { align-items: center; flex-direction: column; gap: 14px; }
+.public-page--public-read .ui-footer-shell__identity { align-items: center; display: flex; flex-direction: column; gap: 6px; }
+.public-page--public-read .ui-footer-shell__identity p { color: rgba(143, 217, 160, .6); font: 11px var(--hidn-font-mono); letter-spacing: .2em; margin: 0; }
+.public-page--public-read .public-main { position: relative; z-index: 5; }
+/* The homepage confessions slide through: out to the left, in from the right. */
+.hidn-welcome__ticker blockquote,
+.hidn-welcome__ticker figcaption { transition: opacity .38s ease, transform .38s ease; }
+.hidn-welcome__ticker--out blockquote,
+.hidn-welcome__ticker--out figcaption { opacity: 0; transform: translateX(-40px); }
+.hidn-welcome__ticker--in blockquote,
+.hidn-welcome__ticker--in figcaption { opacity: 0; transform: translateX(40px); transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hidn-welcome__ticker blockquote, .hidn-welcome__ticker figcaption { transition: none; transform: none; }
+}

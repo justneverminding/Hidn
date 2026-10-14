@@ -432,7 +432,7 @@ export interface FooterShellOptions {
 
 export function FooterShell({
   links = [],
-  identity = "ANONYMOUS BY DESIGN.",
+  identity = "SHIELD YOUR THOUGHTS.",
 }: FooterShellOptions = {}): string {
   return `<footer class="ui-footer-shell" data-shell-region="footer">
     <div class="ui-footer-shell__identity">

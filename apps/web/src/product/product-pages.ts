@@ -67,6 +67,7 @@ import {
   renderLinkSendBody,
   resetLinkInbox,
 } from "./link-inbox";
+import { bindReadPage, mountHomeTicker, readChannelFromPath, renderReadBody } from "./public-feed";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -2553,7 +2554,9 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isHowItWorks = normalizedPath === "/how-it-works";
   const isAdminPage = normalizedPath === "/admin" || normalizedPath.startsWith("/admin/");
   const isRoomSurface = normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
-  const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage;
+  // Reading pages stay fully lit; the flashlight would hide the posts.
+  const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/");
+  const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage && !isPublicRead;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
     ? []
@@ -2566,12 +2569,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
           { label: "HOW IT WORKS", href: "/how-it-works" },
           { label: "LEAVE ROOM", href: "/" },
         ]
-    : [
-        { label: "THE ROOM", href: "/room" },
-        { label: "HOW IT WORKS", href: "/how-it-works" },
-        { label: "MANIFESTO", href: "/manifesto" },
-        { label: "PRIVACY", href: "/privacy" },
-      ];
+    : [{ label: "HOW IT WORKS", href: "/how-it-works" }];
 
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -2583,7 +2581,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${isRoomSurface ? renderSelectionTools() : ""}
     ${isRoomSurface || isAdminPage || pageClass.includes("public-page--home-museum") ? "" : FooterShell({
       links: footerLinks,
-      identity: isRoomCreation || isHowItWorks ? "" : "ANONYMOUS BY DESIGN.",
+      identity: isRoomCreation || isHowItWorks ? "" : "SHIELD YOUR THOUGHTS.",
     })}
   </div>`;
 }
@@ -5119,7 +5117,7 @@ function renderLinkSendRoute(path: string, slug: string): RenderedProductRoute {
       `<main id="main-content" class="public-main room-main hidn-term-main">
         ${terminalWindow(`hidn@room: ~/to/${slug}`, renderLinkSendBody(slug), "hidn-term--access hidn-term--link")}
       </main>`,
-      "public-page--room",
+      "public-page--room public-page--public-read",
     ),
   };
 }
@@ -5284,10 +5282,18 @@ function renderTerminalHomePage(): RenderedProductRoute {
         </aside>
         <div class="hidn-welcome"><div class="hidn-welcome__panel">
           <h1 id="hidn-welcome-title" data-text="WELCOME TO HIDN" data-hidn-type>WELCOME TO HIDN</h1>
-          <p class="hidn-welcome__sub" data-hidn-type>A ROOM WITHOUT NAMES.</p>
-          <p class="hidn-welcome__question" data-hidn-type>THE QUESTION IS: ARE YOU SURE YOU'RE IN THE RIGHT PLACE?</p>
-          <a class="hidn-welcome__enter" href="${enterPath}">[ ${signedIn ? "RETURN TO ROOM" : "ENTER ROOM"} ]</a>
-        </div></div>
+          <p class="hidn-welcome__sub" data-hidn-type>SAY THE THING YOU CAN'T SAY OUT LOUD.</p>
+          <p class="hidn-welcome__question" data-hidn-type>NOBODY WILL EVER KNOW IT WAS YOU.</p>
+          <div class="hidn-welcome__actions" data-hidn-type-reveal>
+            <a class="hidn-welcome__enter hidn-welcome__enter--ready" href="${enterPath}">[ ${signedIn ? "RETURN TO ROOM" : "ENTER ROOM"} ]</a>
+            <a class="hidn-welcome__enter hidn-welcome__enter--ready hidn-welcome__enter--ghost" href="/read">[ READ FIRST ]</a>
+          </div>
+          <p class="hidn-welcome__free">PRIVATE · NO NAME · NO USERNAME</p>
+        </div>
+        <figure class="hidn-welcome__ticker" data-home-ticker hidden aria-live="off">
+          <blockquote data-home-ticker-text></blockquote>
+          <figcaption data-home-ticker-meta></figcaption>
+        </figure></div>
         <p class="hidn-welcome__hint" data-museum-status>DRAG TO LOOK AROUND</p>
         ${renderWelcomeWatcher(enterPath)}
       </section>
@@ -5431,6 +5437,25 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room/profile") {
     return renderRoomProfile();
+  }
+
+  const readChannel = readChannelFromPath(normalizedPath);
+  if (readChannel) {
+    return {
+      metadata: {
+        ...HOME_METADATA,
+        title: "HIDN — Read first",
+        description: "Real anonymous posts from the room without names. Read before you join.",
+        canonicalPath: normalizedPath,
+      },
+      html: publicFrame(
+        normalizedPath,
+        `<main id="main-content" class="public-main room-main hidn-term-main">
+          ${terminalWindow("hidn@room: ~/read", renderReadBody(readChannel, hasRoomSession()), "hidn-term--access hidn-term--read")}
+        </main>`,
+        "public-page--room public-page--public-read",
+      ),
+    };
   }
 
   if (normalizedPath === "/room/inbox") {
@@ -6454,12 +6479,16 @@ function bindRoomHallInteractions(root: ParentNode): void {
 }
 
 let welcomeCleanup: (() => void) | undefined;
+let homeTickerCleanup: (() => void) | undefined;
 
 let terminalFeedCleanup: (() => void) | undefined;
 
 export function bindProductRoute(root: ParentNode = document): void {
   welcomeCleanup?.();
   welcomeCleanup = mountWelcome(root);
+  homeTickerCleanup?.();
+  homeTickerCleanup = mountHomeTicker(root);
+  bindReadPage(root);
   terminalFeedCleanup?.();
   terminalFeedCleanup = mountTerminalFeed(root);
   bindComponentInteractions(root);
