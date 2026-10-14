@@ -18743,3 +18743,10 @@ body:has(.hidn-bottom-nav:not(.hidn-bottom-nav--away)) .hidn-pulse { bottom: cal
 .hidn-feed-more { display: flex; justify-content: center; padding: 18px 0 8px; }
 .hidn-feed-more__btn { min-height: 48px; min-width: 220px; justify-content: center; }
 .hidn-feed-end { color: rgba(143, 217, 160, .6); font: 12px var(--hidn-font-mono); letter-spacing: .08em; margin: 18px 0 8px; text-align: center; }
+
+/* Homepage: dragging anywhere turns the room; it never selects the text,
+   and only the buttons themselves catch the pointer. */
+.hidn-welcome,
+.hidn-welcome * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.hidn-welcome__actions { pointer-events: none; }
+.hidn-welcome__actions .hidn-welcome__enter { pointer-events: auto; }
