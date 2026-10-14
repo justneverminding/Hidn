@@ -129,7 +129,8 @@ currently end-to-end encrypted.
 The committed proving key (`public/anonymous-zk/depth20/`) is public browser
 material. The trusted setup for the depth-20 circuit: phase 1 is the public Hermez
 Powers of Tau (`powersOfTau28_hez_final_15.ptau`, BLAKE2b checked against the
-value published in the snarkjs README). Phase 2
+value published in the snarkjs README, and its contribution chain verified
+with `snarkjs powersoftau verify`). Phase 2
 has one HIDN contribution made with random entropy that was not kept, followed
 by a public beacon from Zcash mainnet block 3,515,842
 (`000000000033ba47…6da69e8`); `snarkjs zkey verify` passes against the circuit
@@ -208,5 +209,6 @@ read the relevant documents in `docs/`:
 - [`HIDN-PAYMENTS.md`](docs/HIDN-PAYMENTS.md)
 - [`HIDN-ROADMAP.md`](docs/HIDN-ROADMAP.md)
 
-The supplied brand references and canonical eye asset are preserved in
-[`public/brand/`](public/brand/).
+The HIDN logo is the prompt mark `>hidn▌`; its files live in
+[`public/brand/`](public/brand/), and the original reference artwork is kept
+unchanged in `public/brand/references/`.

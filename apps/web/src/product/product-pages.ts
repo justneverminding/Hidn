@@ -5,7 +5,7 @@ import {
   ErrorState,
   FooterShell,
   GhostButton,
-  HidnDoorLogo,
+  HidnPromptLogo,
   ManifestoStatement,
   NavigationShell,
   PrimaryButton,
@@ -2501,7 +2501,7 @@ function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus 
   }
 
   return `<div class="public-page__signal-bar">
-      <span class="public-page__signal-brand">${HidnDoorLogo({ className: "public-page__signal-logo", label: "HIDN home" })}</span>
+      <span class="public-page__signal-brand">${HidnPromptLogo({ className: "public-page__signal-logo", label: "HIDN home" })}</span>
       ${normalizedPath.startsWith("/room") || normalizedPath.startsWith("/c/") ? "" : `<span class="public-page__signal-title" aria-label="HIDN ${publicWindowTitle(path)}">HIDN</span>`}
       <div class="public-page__signal-actions">
         ${showZcashStatus ? `<span class="public-page__signal-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}

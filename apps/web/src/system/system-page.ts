@@ -224,7 +224,7 @@ export function renderSystemPage(): string {
       </section>
 
       <section id="references" class="system-section hidn-container--wide" aria-label="References">
-        ${SectionHeader("06 / REFERENCES", "Approved direction, unchanged.", "These images remain canonical source material. They are displayed at natural aspect ratio and are not edited by the system preview.")}
+        ${SectionHeader("06 / REFERENCES", "Original mood references, unchanged.", "The original supplied artwork, kept for mood and texture. The eye logo in it is retired; the HIDN logo is the >hidn▌ prompt mark.")}
         <div class="system-reference-grid">
           <figure class="system-reference">
             <img src="/brand/references/hidn-brand-reference-01.png" alt="Approved HIDN eye artwork reference" />

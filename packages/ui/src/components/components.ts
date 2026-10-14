@@ -16,28 +16,22 @@ export function HidnWordmark({
 }: HidnWordmarkOptions = {}): string {
   return `<a class="${classNames("ui-wordmark", className)}" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">
     <picture class="ui-wordmark__picture">
-      <source media="(max-width: 430px)" srcset="/brand/hidn-symbol.png" />
-      <img class="ui-wordmark__image" src="/brand/hidn-logo.png" width="390" height="124" alt="" />
+      <source media="(max-width: 430px)" srcset="/brand/hidn-icon-192.png" />
+      <img class="ui-wordmark__image" src="/brand/hidn-wordmark.png" width="390" height="124" alt="" />
     </picture>
   </a>`;
 }
 
-export interface HidnDoorLogoOptions {
+export interface HidnPromptLogoOptions {
   className?: string;
   label?: string;
 }
 
-export function HidnDoorLogo({ className, label = "HIDN" }: HidnDoorLogoOptions = {}): string {
-  return `<svg class="${classNames("ui-door-logo", className)}" viewBox="0 0 112 36" role="img" aria-label="${escapeHtml(label)}" focusable="false">
-    <text class="ui-door-logo__letter" x="0" y="29">H</text>
-    <text class="ui-door-logo__letter" x="27" y="29">I</text>
-    <g class="ui-door-logo__door" transform="translate(42 5) scale(0.64 0.82)" aria-hidden="true">
-      <path class="ui-door-logo__door-frame" d="M0 0h13c11 0 19 6 19 14S24 28 13 28H0z" />
-      <path class="ui-door-logo__door-panel" d="M6 4v20h7c7 0 12-4 12-10S20 4 13 4H6z" />
-      <circle class="ui-door-logo__door-handle" cx="12" cy="14" r="2.3" />
-    </g>
-    <text class="ui-door-logo__letter" x="68" y="29">N</text>
-  </svg>`;
+/** The HIDN logo, >hidn▌, set as live type so it stays sharp at any size:
+ * a pale prompt, the name in phosphor green, a block cursor, and a slight
+ * red/blue glitch split. */
+export function HidnPromptLogo({ className, label = "HIDN" }: HidnPromptLogoOptions = {}): string {
+  return `<span class="${classNames("ui-prompt-logo", className)}" role="img" aria-label="${escapeHtml(label)}"><span class="ui-prompt-logo__prompt" aria-hidden="true">&gt;</span><span class="ui-prompt-logo__name" aria-hidden="true" data-text="hidn">hidn</span><span class="ui-prompt-logo__cursor" aria-hidden="true"></span></span>`;
 }
 
 export function TerminalLabel(label: string, className?: string): string {

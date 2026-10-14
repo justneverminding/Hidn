@@ -14,3 +14,6 @@ dist/
 .vscode/
 coverage/
 packages/anonymous-zk/build/
+
+# Rendered ad videos are large; regenerate with marketing/tools/render-ad-video.swift
+marketing/video/*.mp4

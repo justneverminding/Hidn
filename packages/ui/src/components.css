@@ -20,41 +20,31 @@
   width: auto;
 }
 
-.ui-door-logo {
-  color: currentColor;
-  display: block;
-  height: 1.55rem;
-  overflow: visible;
-  width: 4.85rem;
+.ui-prompt-logo {
+  align-items: center;
+  color: #4dff6e;
+  display: inline-flex;
+  font-family: var(--hidn-font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  gap: 0.02em;
+  letter-spacing: 0;
+  line-height: 1;
+  text-shadow: -0.06em 0 rgba(255, 60, 90, 0.5), 0.06em 0 rgba(60, 200, 255, 0.5), 0 0 0.45em rgba(77, 255, 110, 0.55);
+  white-space: nowrap;
 }
 
-.ui-door-logo__letter {
-  fill: currentColor;
-  font-family: var(--hidn-font-display);
-  font-size: 31px;
-  font-weight: 700;
-  letter-spacing: -1.5px;
+.ui-prompt-logo__prompt {
+  color: #c4f7cc;
 }
 
-.ui-door-logo__door-frame {
-  fill: none;
-  stroke: currentColor;
-  stroke-linejoin: round;
-  stroke-width: 3;
-}
-
-.ui-door-logo__door-panel {
-  fill: currentColor;
-  fill-opacity: 0.16;
-  stroke: currentColor;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-.ui-door-logo__door-handle {
-  fill: var(--hidn-zcash);
-  stroke: var(--hidn-zcash);
-  stroke-width: 0.6;
+.ui-prompt-logo__cursor {
+  background: #4dff6e;
+  box-shadow: 0 0 0.45em rgba(77, 255, 110, 0.55);
+  display: inline-block;
+  height: 1.05em;
+  margin-left: 0.08em;
+  width: 0.5em;
 }
 
 .ui-terminal-label {

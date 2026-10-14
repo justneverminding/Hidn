@@ -9814,9 +9814,7 @@
 }
 
 .public-page__signal-logo {
-  display: block;
-  height: 1.15rem;
-  width: 3.6rem;
+  font-size: 1rem;
 }
 
 .public-page__signal-title {

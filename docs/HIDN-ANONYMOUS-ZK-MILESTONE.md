@@ -54,7 +54,8 @@ npm --workspace @hidn/anonymous-zk run build:circuit
 
 The circuit is depth 20 (1,048,576 members). The trusted setup for the depth-20 circuit: phase 1 is the public Hermez
 Powers of Tau (`powersOfTau28_hez_final_15.ptau`, BLAKE2b checked against the
-value published in the snarkjs README). Phase 2
+value published in the snarkjs README, and its contribution chain verified
+with `snarkjs powersoftau verify`). Phase 2
 has one HIDN contribution made with random entropy that was not kept, followed
 by a public beacon from Zcash mainnet block 3,515,842
 (`000000000033ba47…6da69e8`); `snarkjs zkey verify` passes against the circuit

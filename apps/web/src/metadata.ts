@@ -39,7 +39,7 @@ const HOME_STRUCTURED_DATA: Record<string, unknown> = {
       name: "HIDN",
       alternateName: "HIDN — A room without names",
       url: `${PUBLIC_SITE_ORIGIN}/`,
-      logo: `${PUBLIC_SITE_ORIGIN}/brand/hidn-browser-icon.png`,
+      logo: `${PUBLIC_SITE_ORIGIN}/brand/hidn-mark.png`,
     },
   ],
 };
