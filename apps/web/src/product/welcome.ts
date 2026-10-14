@@ -44,8 +44,7 @@ export function mountWelcome(root: ParentNode): () => void {
   const lines = [...panel.querySelectorAll<HTMLElement>("[data-hidn-type]")];
   const enter = panel.querySelector<HTMLElement>(".hidn-welcome__enter, [data-hidn-type-reveal]");
   // On the access screens people came to act, so the buttons do not wait.
-  const actNow = panel.hasAttribute("data-hidn-type-panel");
-  if (actNow) enter?.classList.add("hidn-welcome__enter--ready");
+  enter?.classList.add("hidn-welcome__enter--ready");
   if (!reduced && lines.length) {
     const texts = lines.map((line) => line.textContent ?? "");
     panel.classList.add("hidn-welcome__panel--typing");
