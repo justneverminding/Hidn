@@ -1139,7 +1139,13 @@ function setZcashStatusMetric(
 
     const statusLabel = status.querySelector<HTMLElement>("[data-zcash-status-label]");
     if (statusLabel) {
-      statusLabel.textContent = label;
+      if (statusLabel.textContent !== label) {
+        statusLabel.textContent = label;
+        // Restart the slide-in for the new figure.
+        statusLabel.classList.remove("zcash-status-slide");
+        void statusLabel.offsetWidth;
+        statusLabel.classList.add("zcash-status-slide");
+      }
     } else {
       status.textContent = label;
     }
@@ -2166,6 +2172,9 @@ function publicNavigation(path: string): string {
     showIdentity: normalizedPath !== "/room/access",
     showStatus: normalizedPath !== "/room/access",
     status: normalizedPath === "/" ? "PRIVATE ROOM" : "BUILT ON ZCASH",
+    // Wherever the header says BUILT ON ZCASH, it shows live ShieldedScan
+    // figures too (the museum has its own header and stays as it is).
+    liveZcashStatus: normalizedPath !== "/",
     links,
   });
 }
@@ -2173,27 +2182,18 @@ function publicNavigation(path: string): string {
 function renderRoomMenu(): string {
   const profileName = roomAnonymousIdentity?.alias || "ANONYMOUS";
   return `<div class="room-menu" data-room-menu>
-    <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open private room menu">
+    <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open menu">
       <span class="room-menu__icon" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span class="room-menu__label">CHANNELS</span>
+      <span class="room-menu__label">MENU</span>
     </button>
     <div class="room-menu__panel room-menu__panel--term" id="room-channel-menu" hidden>
       <div class="room-menu__bar" aria-hidden="true"><i></i><i></i><i></i><span>hidn@room: ~/menu</span></div>
       <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ whoami</p>
-      <a class="room-menu__profile" href="/room/profile" aria-label="Open private profile">
-        <span class="room-menu__profile-copy"><strong>&gt; PROFILE</strong><small>${escapeHtml(profileName)} · NAMELESS</small></span>
-        <b aria-hidden="true">↗</b>
-      </a>
-      <a class="room-menu__profile" href="/room/inbox" aria-label="Open your anonymous link inbox">
-        <span class="room-menu__profile-copy"><strong>&gt; MY LINK / INBOX</strong><small>ANONYMOUS MESSAGES TO YOU</small></span>
-        <b aria-hidden="true">↗</b>
-      </a>
+      <p class="room-menu__whoami">&gt; ${escapeHtml(profileName)} · <span>today's name, changes every visit</span></p>
       <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ ls</p>
-      <nav aria-label="Private room channels">
-        <a href="/room/rooms"><span>[1]</span> ROOMS <b aria-hidden="true">↗</b></a>
-        <a href="/room/main"><span>[2]</span> 3D MUSEUM <b aria-hidden="true">↗</b></a>
-        <a href="/how-it-works"><span>[3]</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
-        <a href="/"><span>[4]</span> HOME <b aria-hidden="true">↗</b></a>
+      <nav aria-label="More">
+        <a href="/how-it-works"><span>[1]</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
+        <a href="/"><span>[2]</span> HOME <b aria-hidden="true">↗</b></a>
       </nav>
       <a class="room-menu__leave" href="/" data-room-logout><span aria-hidden="true">$ exit</span> LEAVE ROOM</a>
     </div>

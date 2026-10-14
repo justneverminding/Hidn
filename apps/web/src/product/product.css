@@ -18830,3 +18830,16 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 .hidn-link__seg:hover, .hidn-link__seg:focus-visible { background: rgba(77, 255, 110, .1); color: #4dff6e; outline: none; }
 .hidn-link__seg--danger, .hidn-link__seg--danger span { color: rgba(255, 107, 129, .75); }
 .hidn-link__seg--danger:hover, .hidn-link__seg--danger:focus-visible { background: rgba(255, 107, 129, .1); color: #ff6b81; }
+/* The menu opens above the pinned room tabs, never underneath them. */
+.public-page .public-page__window-chrome:has(.room-menu--open) { z-index: 90 !important; }
+.room-menu__whoami { color: #b9f7c4; font: 13px var(--hidn-font-mono); letter-spacing: .08em; margin: 0 0 6px; padding: 0 16px; }
+.room-menu__whoami span { color: rgba(143, 217, 160, .65); font-size: 11px; letter-spacing: .04em; }
+
+/* Live Zcash figures slide in one after another. */
+.zcash-status-slide { animation: zcash-status-slide .55s cubic-bezier(.2, .8, .2, 1) both; display: inline-block; }
+@keyframes zcash-status-slide {
+  from { clip-path: inset(0 100% 0 0); opacity: .2; transform: translateY(4px); }
+  to { clip-path: inset(0 0 0 0); opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .zcash-status-slide { animation: none; } }
+.ui-nav-shell__status[data-zcash-status] { white-space: nowrap; }

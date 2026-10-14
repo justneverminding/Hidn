@@ -393,6 +393,8 @@ export interface NavigationShellOptions {
   showIdentity?: boolean;
   showStatus?: boolean;
   status?: string;
+  /** Let the page cycle live Zcash network figures through the status. */
+  liveZcashStatus?: boolean;
   href?: string;
 }
 
@@ -403,6 +405,7 @@ export function NavigationShell({
   showIdentity = true,
   showStatus = true,
   status = "BUILT ON ZCASH",
+  liveZcashStatus = false,
   href = "/",
 }: NavigationShellOptions = {}): string {
   return `<header class="ui-nav-shell" data-shell-region="navigation">
@@ -421,7 +424,11 @@ export function NavigationShell({
         .join("")}
       </ul>
     </nav>
-    ${showStatus ? `<span class="ui-nav-shell__status">${escapeHtml(status)}</span>` : ""}
+    ${showStatus
+      ? liveZcashStatus
+        ? `<span class="ui-nav-shell__status zcash-status-carousel" data-zcash-status><span data-zcash-status-label>${escapeHtml(status)}</span></span>`
+        : `<span class="ui-nav-shell__status">${escapeHtml(status)}</span>`
+      : ""}
   </header>`;
 }
 
