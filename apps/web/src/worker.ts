@@ -8,6 +8,7 @@ import {
   parseField,
 } from "@hidn/anonymous-zk";
 import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
+import { roomLinkBySlug } from "./product/room-links";
 import anonymousVerifierWasm from "../../../packages/anonymous-zk/wasm/bn128.wasm";
 
 // Keep the edge verifier bundle fresh when its shared anonymous-zk runtime changes.
@@ -45,7 +46,7 @@ const AMBIENT_ROOM_THREAD_IDS = new Set([
   "00408",
 ]);
 
-type RoomChannel = "general" | "love" | "redacted" | "blackbox" | "night-shift" | "underground";
+type RoomChannel = "general" | "love" | "ragebait" | "underground" | "wildest" | "students" | "crypto";
 type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED" | "JUST REPLIED";
 type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT" | "A THREAD";
 type NotificationEventType = "reaction" | "reply";
@@ -254,7 +255,7 @@ const REPORT_REASONS: readonly ReportReason[] = [
   "self_harm",
   "other",
 ];
-const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "redacted", "blackbox", "night-shift", "underground"];
+const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "ragebait", "underground", "wildest", "students", "crypto"];
 const ROOM_POST_CATEGORIES = new Set([
   "REGRET",
   "CAREER",
@@ -542,6 +543,22 @@ function isValidMainnetTipAddress(address: string): boolean {
   return address.length >= 20
     && address.length <= 500
     && /^(?:u1|zs1)[0-9a-z]+$/.test(address);
+}
+
+/** HIDN carries words, not links: no web addresses in posts, replies or
+ * link messages, which keeps out shilling, phishing and spam. */
+const LINK_PATTERN = new RegExp(
+  [
+    String.raw`(?:https?|hxxps?):\/\/\S+`,
+    String.raw`\bwww\.\S+`,
+    String.raw`\bt\.me\/\S+`,
+    String.raw`\b[a-z0-9][a-z0-9-]{0,62}\.(?:com|net|org|io|xyz|app|co|me|ly|gg|link|finance|exchange|dev|ai|info|biz|tv|to|sh|so|fi|money|eth|crypto|site|online|store|shop|live|club|top|vip|pro|bio|page|art|nft|dao|cc|us|uk|ng|in|ru|cn|de)\b`,
+  ].join("|"),
+  "i",
+);
+const LINK_BLOCKED_ERROR = "Links aren't allowed on HIDN. Say it in words.";
+function containsLink(text: string): boolean {
+  return LINK_PATTERN.test(text);
 }
 
 function isRoomChannel(value: string): value is RoomChannel {
@@ -1273,6 +1290,9 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   if (content.length > ROOM_FREE_POST_MAX_LENGTH) {
     return jsonResponse({ error: `Anonymous posts must be ${ROOM_FREE_POST_MAX_LENGTH} characters or fewer.` }, 400);
   }
+  if (containsLink(content)) {
+    return jsonResponse({ error: LINK_BLOCKED_ERROR, code: "LINKS_NOT_ALLOWED" }, 400);
+  }
   if (!notificationCapability) {
     return jsonResponse({ error: "This post is missing its notification key." }, 400);
   }
@@ -1380,6 +1400,9 @@ async function createAnonymousReply(request: Request, env: HidnWorkerEnv): Promi
   }
   if (content.length > ROOM_FREE_REPLY_MAX_LENGTH) {
     return jsonResponse({ error: `Anonymous replies must be ${ROOM_FREE_REPLY_MAX_LENGTH} characters or fewer.` }, 400);
+  }
+  if (containsLink(content)) {
+    return jsonResponse({ error: LINK_BLOCKED_ERROR, code: "LINKS_NOT_ALLOWED" }, 400);
   }
   if (!notificationCapability) {
     return jsonResponse({ error: "This reply is missing its notification key." }, 400);
@@ -2785,6 +2808,9 @@ async function updateMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<
     if (prompt.length > LINK_PROMPT_MAX_LENGTH) {
       return jsonResponse({ error: `Keep the prompt under ${LINK_PROMPT_MAX_LENGTH} characters.` }, 400);
     }
+    if (containsLink(prompt)) {
+      return jsonResponse({ error: LINK_BLOCKED_ERROR, code: "LINKS_NOT_ALLOWED" }, 400);
+    }
     next.prompt = prompt;
   }
   if (typeof body.tipAddress === "string") {
@@ -2880,6 +2906,9 @@ async function sendLinkMessage(slug: string, request: Request, env: HidnWorkerEn
   if (content.length > LINK_MESSAGE_MAX_LENGTH) {
     return jsonResponse({ error: `Messages must be ${LINK_MESSAGE_MAX_LENGTH} characters or fewer.` }, 400);
   }
+  if (containsLink(content)) {
+    return jsonResponse({ error: LINK_BLOCKED_ERROR, code: "LINKS_NOT_ALLOWED" }, 400);
+  }
   if (tipCode && !/^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(tipCode)) {
     return jsonResponse({ error: "That tip code is not valid." }, 400);
   }
@@ -2966,6 +2995,59 @@ async function routeLinkApi(url: URL, request: Request, env: HidnWorkerEnv): Pro
   } catch {
     return jsonResponse({ error: "The link service is unavailable right now." }, 500);
   }
+}
+
+// MARK: Link previews for shared rooms and personal links
+
+interface SharePreview { title: string; description: string; image: string; imageAlt: string }
+
+/** Chat apps and social sites read a link's preview from the HTML without
+ * running the page, so shared rooms and personal links get theirs here. */
+function sharePreviewFor(pathname: string): SharePreview | null {
+  const room = pathname.match(/^\/r\/([a-z0-9-]+)\/?$/);
+  if (room) {
+    const link = roomLinkBySlug(room[1]);
+    if (!link) return null;
+    return {
+      title: `${link.title} · HIDN`,
+      description: `${link.description}. No names, ever.`,
+      image: `/brand/rooms/${link.slug}.png`,
+      imageAlt: `${link.title} on HIDN: ${link.description}.`,
+    };
+  }
+  if (/^\/to\/[a-z2-9]{8}\/?$/.test(pathname)) {
+    return {
+      title: "Someone opened a room for you · HIDN",
+      description: "Say what you never said to them. No account, no name. They'll never know it was you.",
+      image: "/brand/rooms/personal-link.png",
+      imageAlt: "HIDN: say it. no names.",
+    };
+  }
+  return null;
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function withSharePreview(html: string, preview: SharePreview, url: URL): string {
+  const absoluteUrl = `${url.origin}${url.pathname}`;
+  const image = `${url.origin}${preview.image}?v=1`;
+  const set = (text: string, pattern: RegExp, value: string): string =>
+    text.replace(pattern, (_match, before: string, after: string) => `${before}${escapeAttribute(value)}${after}`);
+  let out = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeAttribute(preview.title)}</title>`);
+  out = set(out, /(<meta\s+name="description"\s+content=")[^"]*(")/, preview.description);
+  out = set(out, /(<link rel="canonical" href=")[^"]*(")/, absoluteUrl);
+  out = set(out, /(<meta property="og:title" content=")[^"]*(")/, preview.title);
+  out = set(out, /(<meta\s+property="og:description"\s+content=")[^"]*(")/, preview.description);
+  out = set(out, /(<meta property="og:url" content=")[^"]*(")/, absoluteUrl);
+  out = set(out, /(<meta property="og:image" content=")[^"]*(")/, image);
+  out = set(out, /(<meta property="og:image:alt" content=")[^"]*(")/, preview.imageAlt);
+  out = set(out, /(<meta name="twitter:title" content=")[^"]*(")/, preview.title);
+  out = set(out, /(<meta name="twitter:description" content=")[^"]*(")/, preview.description);
+  out = set(out, /(<meta name="twitter:image" content=")[^"]*(")/, image);
+  out = set(out, /(<meta name="twitter:image:alt" content=")[^"]*(")/, preview.imageAlt);
+  return out;
 }
 
 const INDEXABLE_PUBLIC_PATHS = new Set(["/", "/how-it-works", "/manifesto", "/privacy"]);
@@ -3309,6 +3391,16 @@ const worker = {
       headers.set(name, value);
     }
     headers.set("X-Robots-Tag", crawlerPolicyForHtmlPath(url.pathname));
+    const preview = sharePreviewFor(url.pathname);
+    if (preview && assetResponse.ok) {
+      headers.delete("Content-Length");
+      headers.delete("ETag");
+      return new Response(withSharePreview(await assetResponse.text(), preview, url), {
+        headers,
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+      });
+    }
     return new Response(assetResponse.body, {
       headers,
       status: assetResponse.status,

@@ -70,7 +70,19 @@ import {
   resetLinkInbox,
 } from "./link-inbox";
 import { setLivePulse } from "./live-pulse";
-import { bindReadPage, mountHomeTicker, readChannelFromPath, renderReadBody, timeAgo } from "./public-feed";
+import {
+  bindReadPage,
+  bindRoomShareButtons,
+  mountHomeTicker,
+  readChannelFromPath,
+  rememberRoomIntent,
+  renderReadBody,
+  renderRoomLinkBody,
+  roomLinkFromPath,
+  takeRoomIntent,
+  timeAgo,
+} from "./public-feed";
+import { roomLinkByKey } from "./room-links";
 import {
   KEY_CREDENTIAL_NAME,
   bindKeyReminder,
@@ -130,7 +142,7 @@ export interface RenderedProductRoute {
 
 type FeedTab = "latest" | "random" | "felt";
 type HidnTheme = "quiet" | "signal";
-type RoomChannel = "general" | "love" | "redacted" | "blackbox" | "night-shift" | "underground";
+type RoomChannel = "general" | "love" | "ragebait" | "underground" | "wildest" | "students" | "crypto";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
@@ -314,11 +326,12 @@ const roomChannelOptions: Array<{
   categories?: MockCategory[];
 }> = [
   { key: "general", label: "GENERAL", description: "everything people are saying" },
-  { key: "love", label: "LETTING GO", description: "what remains after goodbye", categories: ["RELATIONSHIPS", "REGRET", "LONELINESS"] },
-  { key: "blackbox", label: "BLACKBOX", description: "strange ideas, no explanations", categories: ["UNCERTAINTY", "IDENTITY", "FEAR"] },
-  { key: "redacted", label: "REDACTED", description: "what you won’t say publicly", categories: ["IDENTITY", "UNCERTAINTY"] },
-  { key: "night-shift", label: "NIGHT SHIFT", description: "posts made after midnight", categories: ["LONELINESS", "FEAR", "IDENTITY"] },
-  { key: "underground", label: "THE UNDERGROUND", description: "what stays unsaid", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
+  { key: "underground", label: "THINGS I'VE NEVER TOLD ANYONE", description: "say it here first", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
+  { key: "love", label: "TALK ABOUT YOUR EX", description: "women and men spill", categories: ["RELATIONSHIPS", "REGRET", "LONELINESS"] },
+  { key: "ragebait", label: "RAGEBAIT ME", description: "say the take that starts a fight", categories: ["IDENTITY", "UNCERTAINTY", "JOY"] },
+  { key: "wildest", label: "THE WILDEST THING YOU'VE DONE", description: "no names. no judgment. just tell it", categories: ["JOY", "IDENTITY", "UNCERTAINTY"] },
+  { key: "students", label: "STUDENT SECRETS", description: "school, uni, everything in between", categories: ["IDENTITY", "FEAR", "UNCERTAINTY"] },
+  { key: "crypto", label: "CRYPTO CONFESSIONS", description: "wins, losses, things you'd never tweet", categories: ["REGRET", "JOY", "UNCERTAINTY"] },
 ];
 
 const ROOM_CHANNEL_KEYS: RoomChannel[] = roomChannelOptions.map((channel) => channel.key);
@@ -326,10 +339,11 @@ const ROOM_CHANNEL_KEYS: RoomChannel[] = roomChannelOptions.map((channel) => cha
 const museumThemeByChannel: Record<RoomChannel, MuseumTheme> = {
   general: { accent: "#a9e6b4", glow: "#74c88b", trim: "#3d6b4a", wall: "#14241c", floor: "#202b24" },
   love: { accent: "#e6b0a9", glow: "#c77b72", trim: "#704946", wall: "#241817", floor: "#2d2321" },
-  blackbox: { accent: "#bec5d6", glow: "#7d8faa", trim: "#465266", wall: "#171b24", floor: "#242936" },
-  redacted: { accent: "#c6b4df", glow: "#9a7dc2", trim: "#58476f", wall: "#1d1725", floor: "#27202e" },
-  "night-shift": { accent: "#e8d29b", glow: "#c8a55b", trim: "#725e38", wall: "#241e13", floor: "#2c271c" },
+  ragebait: { accent: "#f0a39a", glow: "#e0574a", trim: "#7a3029", wall: "#251210", floor: "#2e1a17" },
   underground: { accent: "#a5d1d0", glow: "#66a5a1", trim: "#3c6664", wall: "#132021", floor: "#202c2d" },
+  wildest: { accent: "#ecc29b", glow: "#d9874a", trim: "#714a31", wall: "#241811", floor: "#2d211a" },
+  students: { accent: "#a9c4ec", glow: "#6f95d1", trim: "#3d5274", wall: "#141b26", floor: "#1f2633" },
+  crypto: { accent: "#f4d38a", glow: "#d9a63a", trim: "#6e5626", wall: "#211c10", floor: "#2a2416" },
 };
 
 interface HomeAmbientAudioSession {
@@ -2285,7 +2299,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isAdminPage = normalizedPath === "/admin" || normalizedPath.startsWith("/admin/");
   const isRoomSurface = normalizedPath === "/room/feed" || normalizedPath === "/room/inbox" || normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   // Reading pages stay fully lit; the flashlight would hide the posts.
-  const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/");
+  const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/") || normalizedPath.startsWith("/r/");
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage && !isPublicRead;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
@@ -3244,7 +3258,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     </div>
     <h2 class="hidn-glitch-title" data-text="CHOOSE A R&nbsp;&nbsp;M.">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
-    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`}
+    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -3964,6 +3978,14 @@ function renderRoomNotifications(): string {
 // The composer names the room a post goes to. Inside a room's own feed the
 // room is fixed; elsewhere the visitor picks it, so a thought never lands in
 // whichever room happened to be open last.
+/** SHARE THIS ROOM, shown beside SAY IT HERE when inside one room. */
+function renderRoomShareControl(): string {
+  const key = roomChannelSurfaceFromPath(window.location.pathname);
+  return key && roomLinkByKey(key)
+    ? `<button class="room-channel-share" type="button" data-room-share="${key}" aria-label="Share this room">↗ SHARE</button>`
+    : "";
+}
+
 function renderRoomPostChannelPicker(): string {
   const fixed = roomChannelSurfaceFromPath(window.location.pathname);
   if (fixed) {
@@ -3995,7 +4017,7 @@ function renderMobilePostSurface(): string {
           ${SecondaryButton({ label: roomPostSubmitting ? "[ TRANSMITTING… ]" : "[ TRANSMIT ]", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
         </div>
       </form>`
-    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}</div>`;
+    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
 
   return `<div class="room-mobile-index__create">
     ${content}
@@ -4155,10 +4177,9 @@ function renderExplore(path = "/room"): string {
     ? (isChannelRoute ? `${channel.label} / PRIVATE CHANNEL` : "PRIVATE ROOM / OPEN THREADS")
     : (isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS");
   const headerTitle = isChannelRoute ? channel.label : "THE ROOM";
+  // Inside a room: just its own line. Everyone already knows there are no names.
   const headerCopy = isChannelRoute
-    ? signalMode
-      ? `${channel.description}. Anonymous thoughts and replies stay inside this room.`
-      : `${channel.description}. Thoughts and replies stay inside this room, without public names.`
+    ? channel.description
     : "Thoughts move through the room without names. Follow one thread or leave one behind.";
 
   if (!hasRoomSession()) {
@@ -4175,10 +4196,11 @@ function renderExplore(path = "/room"): string {
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
           ${isChannelRoute ? `<a class="room-channel-back" href="/room/rooms">← BACK TO ROOMS</a>` : ""}
-          ${TerminalLabel(headerLabel)}
+          ${isChannelRoute ? "" : TerminalLabel(headerLabel)}
           <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
-          <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
+          <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(roomLinkByKey(channel.key)?.slug ?? channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
+          ${channelKey && roomLinkByKey(channelKey)?.note ? `<p class="room-channel-care">${escapeHtml(roomLinkByKey(channelKey)!.note!)}</p>` : ""}
           ${renderKeyReminder(roomAccountRecoveryCode)}
           ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
@@ -4732,8 +4754,31 @@ function renderRoomTabs(path: string): string {
  * museum is one tap away in the bottom bar and the channels menu. */
 const ROOM_HOME_PATH = "/room/feed";
 
+/** Set when someone arrives from a shared room link: open its composer. */
+let openComposerOnArrival = false;
+
+/** Opens a room's composer, going to the room first if needed. */
+function openComposerIn(key: string): void {
+  const target = `/room/channel/${key}/feed`;
+  if (normalizePath(window.location.pathname) !== target) navigateProductRoute(target);
+  document.querySelector<HTMLButtonElement>('[data-action="room-create-post"]')?.click();
+  window.setTimeout(() => {
+    const composer = document.querySelector<HTMLElement>("[data-room-post-composer]");
+    composer?.scrollIntoView({ behavior: "smooth", block: "center" });
+    composer?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+  }, 80);
+}
+
 function navigateIntoRoom(path = ROOM_HOME_PATH, options: { portal?: boolean } = {}): void {
   sessionStorage.setItem("hidn:room:entered", "true");
+  // Arriving from a shared room link: go to that room and start writing.
+  if (path === ROOM_HOME_PATH) {
+    const intent = takeRoomIntent();
+    if (intent) {
+      path = `/room/channel/${intent}/feed`;
+      openComposerOnArrival = true;
+    }
+  }
   // After creating or recovering access, the visitor falls through a portal.
   if (options.portal) {
     void playPortal().then(() => navigateProductRoute(path));
@@ -5438,6 +5483,29 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderRoomProfile();
   }
 
+  if (normalizedPath.startsWith("/r/")) {
+    const room = roomLinkFromPath(normalizedPath);
+    if (!room) {
+      window.history.replaceState({}, "", "/read");
+      return renderProductRoute("/read");
+    }
+    return {
+      metadata: {
+        ...HOME_METADATA,
+        title: `${room.title} · HIDN`,
+        description: `${room.description}. No names, ever.`,
+        canonicalPath: normalizedPath,
+      },
+      html: publicFrame(
+        normalizedPath,
+        `<main id="main-content" class="public-main room-main hidn-term-main">
+          ${terminalWindow(`hidn@room: ~/r/${room.slug}`, renderRoomLinkBody(room, hasRoomSession()), "hidn-term--access hidn-term--read")}
+        </main>`,
+        "public-page--room public-page--public-read",
+      ),
+    };
+  }
+
   const readChannel = readChannelFromPath(normalizedPath);
   if (readChannel) {
     return {
@@ -5495,7 +5563,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     if (normalizedPath === "/explore") window.history.replaceState({}, "", "/room/rooms");
     return {
       metadata: { ...EXPLORE_METADATA, title: "HIDN — Rooms", canonicalPath: "/room/rooms" },
-      html: isRoomMobileViewport() ? renderMobileRoomIndex() : renderExplore("/room/rooms"),
+      html: renderMobileRoomIndex(),
     };
   }
 
@@ -5719,20 +5787,11 @@ function bindRoomChannelInteractions(root: ParentNode): void {
         return;
       }
 
-      if (isRoomMobileViewport()) {
-        navigateProductRoute(`/room/channel/${key}/feed`);
-        return;
-      }
-
-      activeRoomChannel = key;
-      roomChannelNotice = "";
+      // Rooms are places: tapping one opens it, on phones and desktops alike.
       roomPostComposerOpen = false;
       roomPostText = "";
-      roomPostTipsEnabled = false;
-      roomPostTipAddressDraft = "";
-      roomPostTipAddressEdited = false;
       roomPostError = "";
-      rerenderProductRoute();
+      navigateProductRoute(`/room/channel/${key}/feed`);
     });
   });
 }
@@ -6496,6 +6555,33 @@ export function bindProductRoute(root: ParentNode = document): void {
   homeTickerCleanup?.();
   homeTickerCleanup = mountHomeTicker(root);
   bindReadPage(root);
+  bindRoomShareButtons(root);
+  root.querySelectorAll<HTMLButtonElement>("[data-room-say]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.roomSay ?? "general";
+      if (hasRoomSession()) {
+        openComposerIn(key);
+        return;
+      }
+      rememberRoomIntent(key);
+      navigateProductRoute("/room/access");
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-room-open]").forEach((button) => {
+    button.addEventListener("click", () => navigateProductRoute(`/c/${encodeURIComponent(button.dataset.roomOpen ?? "")}`));
+  });
+  // Getting a key from a shared room's prompt lands in that room too.
+  const sharedRoom = roomLinkFromPath(normalizePath(window.location.pathname));
+  if (sharedRoom) {
+    root.querySelectorAll<HTMLAnchorElement>('a[href="/room/access"]').forEach((link) => {
+      link.addEventListener("click", () => rememberRoomIntent(sharedRoom.key));
+    });
+  }
+  if (openComposerOnArrival && roomChannelFeedFromPath(normalizePath(window.location.pathname))) {
+    openComposerOnArrival = false;
+    const key = roomChannelFeedFromPath(normalizePath(window.location.pathname))!;
+    window.setTimeout(() => openComposerIn(key), 120);
+  }
   bindKeySaveCard(root, roomAccountRecoveryCode);
   bindKeyReminder(root);
   root.querySelectorAll<HTMLButtonElement>("[data-mixed-tab]").forEach((button) => {

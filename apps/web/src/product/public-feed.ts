@@ -1,5 +1,6 @@
 import { escapeHtml } from "@hidn/ui";
 import { fetchAnonymousPosts, type RoomPost } from "./room-api";
+import { roomLinkByKey, roomLinkBySlug, roomLinkPath, type RoomLink } from "./room-links";
 
 // Read before joining: a public, read-only window into the room at /read,
 // and a live ticker of real posts on the homepage. Anything that writes
@@ -7,11 +8,12 @@ import { fetchAnonymousPosts, type RoomPost } from "./room-api";
 
 const READ_CHANNELS: Array<{ key: string; label: string }> = [
   { key: "general", label: "GENERAL" },
-  { key: "love", label: "LETTING GO" },
-  { key: "night-shift", label: "NIGHT SHIFT" },
-  { key: "blackbox", label: "BLACKBOX" },
-  { key: "redacted", label: "REDACTED" },
-  { key: "underground", label: "UNDERGROUND" },
+  { key: "underground", label: "THINGS I'VE NEVER TOLD ANYONE" },
+  { key: "love", label: "TALK ABOUT YOUR EX" },
+  { key: "ragebait", label: "RAGEBAIT ME" },
+  { key: "wildest", label: "WILDEST THING YOU'VE DONE" },
+  { key: "students", label: "STUDENT SECRETS" },
+  { key: "crypto", label: "CRYPTO CONFESSIONS" },
 ];
 
 function rerender(): void {
@@ -207,4 +209,100 @@ export function mountHomeTicker(root: ParentNode): () => void {
     stopped = true;
     timers.forEach((timer) => window.clearTimeout(timer));
   };
+}
+
+// MARK: /r/<room>: one room, shared as a link
+
+/** Set when a visitor taps SAY IT in a shared room, so that after getting a
+ * key they land straight in that room's composer. */
+export const ROOM_INTENT_STORAGE = "hidn:room-intent";
+let roomShareFeedback = "";
+
+export function roomLinkFromPath(path: string): RoomLink | null {
+  const match = path.match(/^\/r\/([a-z0-9-]+)$/);
+  return match ? roomLinkBySlug(match[1]) ?? null : null;
+}
+
+export function rememberRoomIntent(key: string): void {
+  try { window.sessionStorage.setItem(ROOM_INTENT_STORAGE, key); } catch { /* the room still opens, just not pre-selected */ }
+}
+
+/** Reads and clears the room a visitor was heading for before getting a key. */
+export function takeRoomIntent(): string | null {
+  try {
+    const key = window.sessionStorage.getItem(ROOM_INTENT_STORAGE);
+    window.sessionStorage.removeItem(ROOM_INTENT_STORAGE);
+    return key && roomLinkByKey(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Shares a room's link through the phone's share sheet, or copies it. */
+export async function shareRoomLink(key: string): Promise<string> {
+  const room = roomLinkByKey(key);
+  if (!room) return "";
+  const url = `${window.location.origin}${roomLinkPath(key)}`;
+  const text = `${room.title.toLowerCase()}. say it. no names.`;
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title: `${room.title} · HIDN`, text, url });
+      return "";
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return "";
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return "LINK COPIED";
+  } catch {
+    return url;
+  }
+}
+
+export function renderRoomLinkBody(room: RoomLink, signedIn: boolean): string {
+  const feed = feedFor(room.key);
+  const list = feed.status === "loading"
+    ? `<p class="hidn-read__status">&gt; tuning in...<span class="hidn-read__caret">▌</span></p>`
+    : feed.status === "error"
+      ? `<p class="hidn-read__status">&gt; the signal dropped. <a href="/r/${room.slug}">try again</a></p>`
+      : feed.posts.length
+        ? feed.posts.map((post) => signedIn
+          ? renderReadPost(post).replace('data-read-join="like"', `data-room-open="${escapeHtml(post.id)}"`).replace('data-read-join="reply"', `data-room-open="${escapeHtml(post.id)}"`)
+          : renderReadPost(post)).join("")
+        : `<p class="hidn-read__status">&gt; nothing here yet. be the first voice in this room.<span class="hidn-read__caret">▌</span></p>`;
+  return `<div class="hidn-read hidn-room-link">
+    <p class="hidn-read__code">/// ROOM</p>
+    <h1 class="hidn-read__title" data-text="${escapeHtml(room.title)}">${escapeHtml(room.title)}</h1>
+    <p class="hidn-read__line">&gt; ${escapeHtml(room.description)}. No names, ever.</p>
+    ${room.note ? `<p class="room-channel-care">${escapeHtml(room.note)}</p>` : ""}
+    <div class="hidn-room-link__actions">
+      <button class="hidn-read__btn hidn-read__btn--primary" type="button" data-room-say="${room.key}">[ ✎ SAY IT IN THIS ROOM ]</button>
+      <button class="hidn-read__btn" type="button" data-room-share="${room.key}">[ ↗ SHARE THIS ROOM ]</button>
+    </div>
+    ${roomShareFeedback ? `<p class="hidn-room-link__feedback" role="status">&gt; ${escapeHtml(roomShareFeedback)}</p>` : ""}
+    <div class="hidn-read__list">${list}</div>
+    <div class="hidn-read__bar">
+      <span>&gt; ${signedIn ? "your key is active." : "free. no email. no name."}</span>
+      <button class="hidn-read__btn hidn-read__btn--primary" type="button" data-room-say="${room.key}">[ ✎ SAY IT IN THIS ROOM ]</button>
+    </div>
+    ${renderJoinPrompt()}
+  </div>`;
+}
+
+/** Binds the share buttons on any page (room links and member room pages). */
+export function bindRoomShareButtons(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-room-share]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      roomShareFeedback = await shareRoomLink(button.dataset.roomShare ?? "");
+      rerender();
+      if (roomShareFeedback) {
+        window.setTimeout(() => { roomShareFeedback = ""; rerender(); }, 2500);
+      }
+    });
+  });
+}
+
+export function roomShareStatus(): string {
+  return roomShareFeedback;
 }

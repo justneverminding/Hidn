@@ -18868,3 +18868,48 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 .hidn-me__countdown i { animation: hidn-me-countdown 20s linear forwards; background: #4dff6e; display: block; height: 100%; }
 @keyframes hidn-me-countdown { from { width: 100%; } to { width: 0; } }
 .hidn-profile .room-profile-card--tips { margin-bottom: 14px; }
+
+/* A quiet note at the top of the heaviest room. */
+.room-channel-care {
+  border-left: 2px solid rgba(244, 200, 90, .6);
+  color: #d9e6dc;
+  font: 13px/1.6 var(--hidn-font-mono);
+  letter-spacing: .02em;
+  margin: 12px 0 0;
+  max-width: 60ch;
+  padding: 4px 0 4px 12px;
+  text-transform: none;
+}
+
+/* Shared room pages: say it, or pass the room on. */
+.hidn-room-link__actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 4px; }
+.hidn-room-link__actions .hidn-read__btn { flex: 1 1 200px; justify-content: center; }
+.hidn-room-link__feedback { color: #4dff6e; font: 12px var(--hidn-font-mono); letter-spacing: .1em; margin: 0; }
+.room-channel-share {
+  align-self: stretch;
+  background: transparent;
+  border: 1px solid rgba(77, 255, 110, .4);
+  color: #4dff6e;
+  cursor: pointer;
+  font: 12px var(--hidn-font-mono);
+  letter-spacing: .12em;
+  min-height: 48px;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+.room-channel-share:hover, .room-channel-share:focus-visible { background: #4dff6e; color: #010201; outline: none; }
+
+/* The room's note reads as a sentence, not a shout. */
+.public-page .explore-header .room-channel-care,
+.room-channel-care {
+  color: #d9e6dc !important;
+  font: 13px/1.6 var(--hidn-font-mono) !important;
+  letter-spacing: .02em !important;
+  text-transform: none !important;
+}
+/* Inside a room on a phone: title, one line, the note, then the posts. */
+@media (max-width: 760px) {
+  .public-page--room-channel .hidn-feed-log { display: none; }
+}
+/* ROOMS on desktop: the same clear list of rooms, centred. */
+.public-page--room-index .room-mobile-index { margin-inline: auto; width: 100%; }

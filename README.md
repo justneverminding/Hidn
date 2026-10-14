@@ -25,8 +25,10 @@ The current build includes:
   accounts, usernames, emails or passwords.
 - A private profile with a rotating `ANON-…` name, a time-limited recovery-key
   reveal, a local tip address and on-device history.
-- Six rooms (General, Letting Go, Blackbox, Redacted, Night Shift and The
-  Underground) as a live terminal feed, plus a 3D museum: a private main room,
+- Seven rooms (General, Talk About Your Ex, Ragebait Me, Crypto Confessions,
+  Things I've Never Told Anyone, The Wildest Thing You've Done and Student
+  Secrets) as a live
+  terminal feed, plus a 3D museum: a private main room,
   a hallway, themed rooms that hang real posts, and a library with ZecHub
   lessons, a wallet kiosk and an in-room learning TV.
 - Anonymous posts, replies, likes and reports backed by the Groth16 protocol
@@ -77,11 +79,12 @@ The Vite server uses the Cloudflare Worker origin configured in
 | `/room/access` | Create anonymous access, return with a recovery key, or enter the account flow |
 | `/room` | Private room index after access |
 | `/room/channel/general` | General room |
-| `/room/channel/love` | Letting Go room |
-| `/room/channel/blackbox` | Blackbox room |
-| `/room/channel/redacted` | Redacted room |
-| `/room/channel/night-shift` | Night Shift room |
-| `/room/channel/underground` | The Underground room |
+| `/room/channel/love` | Talk About Your Ex room |
+| `/room/channel/crypto` | Crypto Confessions room |
+| `/room/channel/ragebait` | Ragebait Me room |
+| `/room/channel/underground` | Things I've Never Told Anyone room |
+| `/room/channel/wildest` | The Wildest Thing You've Done room |
+| `/room/channel/students` | Student Secrets room |
 | `/room/profile` | Local profile, recovery-key controls, activity, and optional Zcash verification |
 | `/how-it-works` | Access and privacy explanation |
 | `/manifesto` | HIDN product principles |
