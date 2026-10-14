@@ -68,6 +68,18 @@ import {
   resetLinkInbox,
 } from "./link-inbox";
 import { bindReadPage, mountHomeTicker, readChannelFromPath, renderReadBody } from "./public-feed";
+import {
+  KEY_CREDENTIAL_NAME,
+  bindKeyReminder,
+  bindKeySaveCard,
+  canReadSavedKey,
+  isKeySaved,
+  keyJustSaved,
+  readSavedKey,
+  renderKeyReminder,
+  renderKeySaveCard,
+  resetKeyKeeper,
+} from "./key-keeper";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -2577,6 +2589,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
     ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
     ${main}
+    ${isRoomSurface && hasRoomSession() ? renderKeyReminder(roomAccountRecoveryCode) : ""}
     ${isRoomSurface ? renderRoomTipDialog() : ""}
     ${isRoomSurface ? renderSelectionTools() : ""}
     ${isRoomSurface || isAdminPage || pageClass.includes("public-page--home-museum") ? "" : FooterShell({
@@ -4660,6 +4673,7 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
   resetLinkInbox();
+  resetKeyKeeper();
   stopRoomNotificationPolling();
   sessionStorage.removeItem("hidn:room:entered");
   sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
@@ -4744,11 +4758,12 @@ function renderRoomAccessChooser(): string {
   return `<div class="hidn-access" data-hidn-type-panel>
     <p class="hidn-access__code" data-hidn-type>/// ACCESS</p>
     <h1 data-hidn-type data-text="CROSS THE THRESHOLD.">CROSS THE THRESHOLD.</h1>
-    <p class="hidn-access__line" data-hidn-type>&gt; ENTER WITHOUT A NAME. A PRIVATE RECOVERY KEY IS CREATED.</p>
-    <p class="hidn-access__line" data-hidn-type>&gt; OR RETURN WITH THE KEY YOU KEPT. IT IS THE ONLY WAY BACK IN.</p>
+    <p class="hidn-access__line" data-hidn-type>&gt; NO EMAIL. NO USERNAME. ONE TAP AND YOU GET A PRIVATE KEY.</p>
+    <p class="hidn-access__line" data-hidn-type>&gt; THAT KEY IS YOUR ACCOUNT. SAVE IT AND YOU CAN ALWAYS COME BACK.</p>
+    ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
     <div class="hidn-access__actions" data-hidn-type-reveal>
-      ${SecondaryButton({ label: "[ CREATE PRIVATE ACCESS ]", dataAction: "room-create" })}
-      ${SecondaryButton({ label: "[ USE RECOVERY KEY ]", dataAction: "room-login" })}
+      ${SecondaryButton({ label: roomAnonymousSubmitting ? "[ MAKING YOUR KEY... ]" : "[ GET MY KEY ]", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
+      ${SecondaryButton({ label: "[ I HAVE A KEY ]", dataAction: "room-login" })}
     </div>
   </div>`;
 }
@@ -4772,14 +4787,16 @@ function renderRoomLogin(): string {
   return `<div class="hidn-access" data-hidn-type-panel>
     <p class="hidn-access__code" data-hidn-type>/// ACCESS / RECOVER</p>
     <h1 data-hidn-type data-text="RETURN TO THE ROOM.">RETURN TO THE ROOM.</h1>
-    <p class="hidn-access__line" data-hidn-type>&gt; PASTE THE RECOVERY KEY YOU SAVED. IT NEVER LEAVES THIS BROWSER.</p>
+    <p class="hidn-access__line" data-hidn-type>&gt; TAP THE BOX: IF YOU SAVED YOUR KEY TO PASSWORDS, IT FILLS ITSELF IN. OR PASTE IT.</p>
     ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
-    <form class="room-login-card hidn-access__form" novalidate>
+    <form class="room-login-card hidn-access__form" data-room-login-form action="/room/access" method="post" autocomplete="on" novalidate>
+      <input class="hidn-key__sr" type="text" name="username" autocomplete="username" value="${KEY_CREDENTIAL_NAME}" readonly tabindex="-1" aria-hidden="true" />
       <label class="hidn-access__prompt" for="room-login-recovery-code">
         <span aria-hidden="true">hidn@room:~$</span>
-        <span class="hidn-term__sr">Private recovery key</span>
-        <input id="room-login-recovery-code" type="text" placeholder="HIDN-ANON-XXXX-..." autocomplete="one-time-code" spellcheck="false" />
+        <span class="hidn-term__sr">Your HIDN key</span>
+        <input id="room-login-recovery-code" name="password" type="password" placeholder="HIDN-ANON-XXXX-..." autocomplete="current-password" spellcheck="false" autocapitalize="characters" />
       </label>
+      ${canReadSavedKey() ? `<button class="hidn-key__btn" type="button" data-action="room-login-saved">[ USE MY SAVED KEY ]</button>` : ""}
       <div class="hidn-access__actions" data-hidn-type-reveal>
         ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
         ${SecondaryButton({ label: roomLoginSubmitting || roomAnonymousSubmitting ? "[ VERIFYING KEY... ]" : "[ ENTER WITH KEY ]", disabled: roomLoginSubmitting || roomAnonymousSubmitting, dataAction: "room-submit-login" })}
@@ -4847,21 +4864,24 @@ function renderRoomReady(): string {
   const titlePrefix = isNewAccount ? "SAVE YOUR" : "THE ROOM IS";
   const titleSignal = isNewAccount ? "KEY." : "OPEN.";
   const accountCopy = isNewAccount
-    ? "Your nameless access is ready. Save the recovery key below, then enter the room."
+    ? "You're in. One last thing before you enter: save your key."
     : "Your nameless access is active. Enter the private room to post, reply and read.";
+  const keySaved = isKeySaved(roomAccountRecoveryCode);
 
   return `<div class="room-access-page room-access-page--ready">
     <header class="room-access-header room-access-header--compact">
       ${signalMode ? TerminalLabel("HIDN / NAMELESS ACCESS") : ""}
       <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
-        ${escapeHtml(signalMode ? "THE ROOM IS" : titlePrefix)}<br />
+        ${escapeHtml(titlePrefix)}<br />
         <em>${escapeHtml(titleSignal)}</em>
       </h1>
       <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
     </header>
-    ${roomAnonymousIdentity ? renderRoomRecoveryPanel() : ""}
+    ${roomAnonymousIdentity && isNewAccount && roomAccountRecoveryCode ? renderKeySaveCard(roomAccountRecoveryCode, { heading: "THIS KEY IS YOUR WAY BACK IN." }) : roomAnonymousIdentity ? renderRoomRecoveryPanel() : ""}
     <div class="room-access-actions">
-      ${SecondaryButton({ label: isNewAccount ? "ENTER THE ROOM →" : "GO BACK TO ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
+      ${isNewAccount && !keySaved
+        ? GhostButton({ label: "[ ENTER WITHOUT SAVING ]", className: "room-ready-enter", dataAction: "room-enter" })
+        : SecondaryButton({ label: isNewAccount ? "ENTER THE ROOM →" : "GO BACK TO ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
     </div>
   </div>`;
 }
@@ -5047,6 +5067,7 @@ function renderRoomProfile(): RenderedProductRoute {
             </div>
           </section>
           ${renderProfileTipAddress()}
+          ${roomAccountRecoveryCode && (!isKeySaved(roomAccountRecoveryCode) || keyJustSaved()) ? `<div id="key" class="room-profile-card room-profile-card--save-key">${renderKeySaveCard(roomAccountRecoveryCode)}</div>` : ""}
           ${renderProfileRecoveryKey()}
           <div class="room-profile-history-grid">
             <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-posts-title">
@@ -6489,6 +6510,14 @@ export function bindProductRoute(root: ParentNode = document): void {
   homeTickerCleanup?.();
   homeTickerCleanup = mountHomeTicker(root);
   bindReadPage(root);
+  bindKeySaveCard(root, roomAccountRecoveryCode);
+  bindKeyReminder(root);
+  // Enter in the key box signs in; the form exists so password managers
+  // recognise it, never to post anywhere.
+  root.querySelector<HTMLFormElement>("[data-room-login-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    root.querySelector<HTMLButtonElement>('[data-action="room-submit-login"]')?.click();
+  });
   terminalFeedCleanup?.();
   terminalFeedCleanup = mountTerminalFeed(root);
   bindComponentInteractions(root);
@@ -6860,6 +6889,19 @@ export function bindProductRoute(root: ParentNode = document): void {
           roomLoginError = "";
           rerenderProductRoute();
           void registerAnonymousRoomAccess();
+          break;
+        }
+        case "room-login-saved": {
+          void readSavedKey().then((key) => {
+            const input = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
+            if (!key || !input) {
+              roomLoginError = "No saved key found in this browser. Paste the key you kept instead.";
+              rerenderProductRoute();
+              return;
+            }
+            input.value = key;
+            root.querySelector<HTMLButtonElement>('[data-action="room-submit-login"]')?.click();
+          });
           break;
         }
         case "room-submit-login": {

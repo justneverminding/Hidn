@@ -18583,3 +18583,63 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 @media (prefers-reduced-motion: reduce) {
   .hidn-welcome__ticker blockquote, .hidn-welcome__ticker figcaption { transition: none; transform: none; }
 }
+
+/* Saving the key: it is the whole account, so it gets its own clear step. */
+.hidn-key { border: 1px dashed rgba(244, 200, 90, .55); background: rgba(244, 200, 90, .04); display: grid; font-family: var(--hidn-font-mono); gap: 12px; padding: 18px; text-align: left; }
+.hidn-key--saved { border-color: rgba(77, 255, 110, .35); background: rgba(77, 255, 110, .03); }
+.hidn-key__label { color: #f4c85a; font-size: 12px; letter-spacing: .16em; margin: 0; }
+.hidn-key--saved .hidn-key__label { color: #4dff6e; }
+.hidn-key__title { color: #e2ffe8; font: 600 clamp(18px, 3vw, 24px)/1.3 var(--hidn-font-mono); letter-spacing: .05em; margin: 0; }
+.hidn-key__why, .hidn-key__tip { color: #b9f7c4; font-size: 13px; line-height: 1.65; margin: 0; }
+.hidn-key__why b { color: #f4c85a; }
+.hidn-key__tip { color: rgba(143, 217, 160, .75); font-size: 12px; }
+.hidn-key__form { display: grid; gap: 12px; margin: 0; }
+.hidn-key__sr { border: 0; clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+.hidn-key__code { background: #010301; border: 1px solid rgba(77, 255, 110, .3); color: #4dff6e; font-size: clamp(12px, 2.4vw, 15px); letter-spacing: .06em; line-height: 1.7; overflow-wrap: anywhere; padding: 12px 14px; user-select: all; }
+.hidn-key__actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.hidn-key__btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(77, 255, 110, .4);
+  border-radius: 0;
+  color: #4dff6e;
+  cursor: pointer;
+  display: inline-flex;
+  font: 13px var(--hidn-font-mono);
+  justify-content: center;
+  letter-spacing: .12em;
+  min-height: 44px;
+  padding: 10px 16px;
+}
+.hidn-key__btn--primary { background: rgba(77, 255, 110, .12); border-color: #4dff6e; }
+.hidn-key__btn:hover, .hidn-key__btn:focus-visible { background: #4dff6e; color: #010201; outline: none; }
+.hidn-key__feedback { color: #4dff6e; font-size: 12px; letter-spacing: .08em; margin: 0; }
+.room-profile-card--save-key { margin-bottom: 1rem; padding: 0; }
+.room-profile-card--save-key .hidn-key { border: 0; }
+@media (max-width: 560px) { .hidn-key__actions .hidn-key__btn { flex: 1 1 100%; } }
+
+/* Until the key is saved, the room says so at the top. */
+.hidn-key-reminder {
+  align-items: center;
+  background: rgba(20, 14, 2, .94);
+  border: 1px solid rgba(244, 200, 90, .55);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  color: #f4c85a;
+  display: flex;
+  flex-wrap: wrap;
+  font: 11px var(--hidn-font-mono);
+  gap: 8px 14px;
+  justify-content: center;
+  left: 50%;
+  letter-spacing: .1em;
+  max-width: calc(100vw - 24px);
+  padding: 8px 36px 8px 14px;
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 64px);
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 80;
+}
+.hidn-key-reminder a { color: #4dff6e; text-decoration: none; }
+.hidn-key-reminder a:hover { text-decoration: underline; }
+.hidn-key-reminder button { background: none; border: 0; color: rgba(244, 200, 90, .8); cursor: pointer; font-size: 16px; padding: 4px 8px; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
