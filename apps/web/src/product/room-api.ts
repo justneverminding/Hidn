@@ -470,3 +470,81 @@ export async function fetchModerationVisibility(): Promise<ModerationVisibilityR
   return (await response.json()) as ModerationVisibilityResponse;
 }
 
+
+// MARK: Personal confession links
+
+export interface LinkInbox {
+  slug: string;
+  prompt: string;
+  tipAddress: string | null;
+  status: "open" | "closed";
+  createdAt?: string;
+}
+
+export interface LinkMessage {
+  id: string;
+  text: string;
+  tipCode: string | null;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface LinkInboxResponse {
+  link: LinkInbox | null;
+  messages: LinkMessage[];
+  unreadCount: number;
+}
+
+async function linkRequest<T>(path: string, init: RequestInit = {}, inboxKey = ""): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (inboxKey) {
+    headers.set("X-HIDN-Link-Key", inboxKey);
+  }
+  const response = await fetch(path, { ...init, headers, credentials: "omit", cache: "no-store" });
+  const payload = (await response.json().catch(() => null)) as (T & { error?: unknown }) | null;
+  if (!response.ok || !payload) {
+    throw new Error(typeof payload?.error === "string" ? payload.error : `Link service returned HTTP ${response.status}.`);
+  }
+  return payload;
+}
+
+export function fetchMyLinkInbox(inboxKey: string): Promise<LinkInboxResponse> {
+  return linkRequest<LinkInboxResponse>("/api/links/mine", {}, inboxKey);
+}
+
+export function createMyLinkInbox(inboxKey: string, input: { proof: AnonymousProofEnvelope; scope: string }): Promise<{ link: LinkInbox }> {
+  return linkRequest<{ link: LinkInbox }>("/api/links/mine", {
+    method: "POST",
+    body: JSON.stringify({ ...input.proof, scope: input.scope }),
+  }, inboxKey);
+}
+
+export function updateMyLinkInbox(
+  inboxKey: string,
+  input: { prompt?: string; tipAddress?: string; status?: "open" | "closed"; rotate?: boolean },
+): Promise<{ link: LinkInbox }> {
+  return linkRequest<{ link: LinkInbox }>("/api/links/mine", { method: "PATCH", body: JSON.stringify(input) }, inboxKey);
+}
+
+export function markMyLinkMessagesRead(inboxKey: string): Promise<{ status: "read" }> {
+  return linkRequest<{ status: "read" }>("/api/links/mine/read", { method: "POST", body: "{}" }, inboxKey);
+}
+
+export function deleteMyLinkMessage(inboxKey: string, messageId: string): Promise<{ status: "deleted" }> {
+  return linkRequest<{ status: "deleted" }>(`/api/links/mine/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }, inboxKey);
+}
+
+export function fetchPublicLink(slug: string): Promise<{ link: LinkInbox }> {
+  return linkRequest<{ link: LinkInbox }>(`/api/links/${encodeURIComponent(slug)}`);
+}
+
+export function sendLinkMessage(slug: string, input: { content: string; tipCode?: string }): Promise<{ status: "sent"; createdAt: string }> {
+  return linkRequest<{ status: "sent"; createdAt: string }>(`/api/links/${encodeURIComponent(slug)}/messages`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

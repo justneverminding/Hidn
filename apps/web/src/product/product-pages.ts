@@ -45,6 +45,7 @@ import {
   createAnonymousScope,
   anonymousTargetScope,
   createNotificationCapability,
+  deriveLinkInboxKey,
   ANONYMOUS_TREE_DEPTH,
   type AnonymousAction,
   type AnonymousCircuitInput,
@@ -58,6 +59,14 @@ import { mountWelcome, renderWelcomeWatcher } from "./welcome";
 import { playPortal } from "./portal";
 import { openLearningTv } from "./learning-tv";
 import { mountTerminalFeed } from "./terminal-feed";
+import {
+  bindLinkInbox,
+  bindLinkSendPage,
+  linkSlugFromPath,
+  renderLinkInboxBody,
+  renderLinkSendBody,
+  resetLinkInbox,
+} from "./link-inbox";
 import type { MuseumGallery, MuseumPost } from "./room-museum";
 import type { MuseumTheme } from "./museum-layout";
 import {
@@ -2444,6 +2453,10 @@ function renderRoomMenu(): string {
         <span class="room-menu__profile-copy"><strong>&gt; PROFILE</strong><small>${escapeHtml(profileName)} · NAMELESS</small></span>
         <b aria-hidden="true">↗</b>
       </a>
+      <a class="room-menu__profile" href="/room/inbox" aria-label="Open your anonymous link inbox">
+        <span class="room-menu__profile-copy"><strong>&gt; MY LINK / INBOX</strong><small>ANONYMOUS MESSAGES TO YOU</small></span>
+        <b aria-hidden="true">↗</b>
+      </a>
       <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ ls</p>
       <nav aria-label="Private room channels">
         <a href="/room/rooms"><span>[1]</span> ROOMS <b aria-hidden="true">↗</b></a>
@@ -3634,6 +3647,7 @@ function isProtectedRoomPath(path: string): boolean {
     || path === "/room/orb"
     || path === "/room/hall"
     || path === "/room/profile"
+    || path === "/room/inbox"
     || Boolean(roomChannelSurfaceFromPath(path))
     || Boolean(roomThreadIdFromPath(path));
 }
@@ -4647,6 +4661,7 @@ async function registerAnonymousRoomAccess(recoveryCode = ""): Promise<void> {
 
 function clearRoomSession(): void {
   resetRoomRecoveryReveal();
+  resetLinkInbox();
   stopRoomNotificationPolling();
   sessionStorage.removeItem("hidn:room:entered");
   sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
@@ -5025,6 +5040,14 @@ function renderRoomProfile(): RenderedProductRoute {
               ${GhostButton({ label: "[ CONTINUE ]", dataAction: "room-profile-back" })}
             </div>
           </section>
+          <section class="room-profile-card room-profile-card--link" aria-labelledby="room-profile-link-title">
+            ${TerminalLabel("LINK / ANONYMOUS INBOX")}
+            <h2 id="room-profile-link-title">LET THEM SAY IT. NO NAMES.</h2>
+            <p class="room-profile-card__note">Get one link to share anywhere. Anyone can leave you a message through it without a name, with an optional ZEC tip. Your link never shows your alias or your posts.</p>
+            <div class="room-profile-card__actions">
+              <a class="ui-button ui-button--secondary" href="/room/inbox">[ OPEN MY LINK / INBOX → ]</a>
+            </div>
+          </section>
           ${renderProfileTipAddress()}
           ${renderProfileRecoveryKey()}
           <div class="room-profile-history-grid">
@@ -5060,6 +5083,43 @@ function renderRoomProfile(): RenderedProductRoute {
         ${renderZecVerificationNotice()}
       </main>`,
       "public-page--room public-page--room-profile",
+    ),
+  };
+}
+
+function renderRoomLinkInbox(): RenderedProductRoute {
+  return {
+    metadata: {
+      ...ROOM_METADATA,
+      title: "HIDN — Your link",
+      description: "Your anonymous HIDN link and the messages left through it.",
+      canonicalPath: "/room/inbox",
+    },
+    html: publicFrame(
+      "/room/inbox",
+      `<main id="main-content" class="public-main room-main hidn-term-main">
+        ${terminalWindow("hidn@room: ~/inbox", renderLinkInboxBody(), "hidn-term--access hidn-term--link")}
+      </main>`,
+      "public-page--room public-page--room-profile",
+    ),
+  };
+}
+
+/** The public page behind a member's link: anyone can write, no session. */
+function renderLinkSendRoute(path: string, slug: string): RenderedProductRoute {
+  return {
+    metadata: {
+      ...HOME_METADATA,
+      title: "HIDN — Say it. No names.",
+      description: "Someone opened a room for you. Leave them a message without a name.",
+      canonicalPath: path,
+    },
+    html: publicFrame(
+      path,
+      `<main id="main-content" class="public-main room-main hidn-term-main">
+        ${terminalWindow(`hidn@room: ~/to/${slug}`, renderLinkSendBody(slug), "hidn-term--access hidn-term--link")}
+      </main>`,
+      "public-page--room",
     ),
   };
 }
@@ -5371,6 +5431,15 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room/profile") {
     return renderRoomProfile();
+  }
+
+  if (normalizedPath === "/room/inbox") {
+    return renderRoomLinkInbox();
+  }
+
+  const linkSlug = linkSlugFromPath(normalizedPath);
+  if (linkSlug) {
+    return renderLinkSendRoute(normalizedPath, linkSlug);
   }
 
   if (normalizedPath === "/room/access") {
@@ -6401,6 +6470,14 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindRoomRecoveryInteractions(root);
   bindRoomTipAddressInteractions(root);
   bindRoomPostComposerInteractions(root);
+  bindLinkSendPage(root);
+  if (normalizePath(window.location.pathname) === "/room/inbox" && roomAnonymousIdentity) {
+    const identity = roomAnonymousIdentity;
+    bindLinkInbox(root, {
+      inboxKey: () => deriveLinkInboxKey(identity.secret),
+      prove: (content) => createAnonymousRoomProof("link", "room", "INBOX", content),
+    });
+  }
   bindRoomMuseumInteractions(root);
   bindRoomSpaceInteractions(root);
   bindRoomHallInteractions(root);

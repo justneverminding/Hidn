@@ -12,7 +12,7 @@ export const ANONYMOUS_FIELD_MODULUS = 21888242871839275222246405745257275088548
 const ANONYMOUS_RECOVERY_PREFIX = "HIDN-ANON-";
 const ANONYMOUS_ALIAS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-export type AnonymousAction = "post" | "reply" | "reaction" | "report";
+export type AnonymousAction = "post" | "reply" | "reaction" | "report" | "link";
 
 export interface AnonymousIdentity {
   recoveryCode: string;
@@ -192,6 +192,15 @@ export function secretFromRecoveryCode(recoveryCode: string): string {
 
 export async function deriveNotificationCapability(secret: string): Promise<string> {
   const material = new TextEncoder().encode(`hidn-anonymous-notifications-v1:${secret}`);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", material);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+/** The key that opens a member's link inbox. It is derived from the recovery
+ * secret, so the same inbox opens on any device the member returns on, but
+ * it shares nothing with the commitment or notification keys. */
+export async function deriveLinkInboxKey(secret: string): Promise<string> {
+  const material = new TextEncoder().encode(`hidn-link-inbox-v1:${secret}`);
   const digest = await globalThis.crypto.subtle.digest("SHA-256", material);
   return bytesToHex(new Uint8Array(digest));
 }

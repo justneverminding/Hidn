@@ -993,7 +993,7 @@ interface VerifiedAnonymousAction {
 async function verifyAnonymousAction(
   env: HidnWorkerEnv,
   body: Record<string, unknown>,
-  action: "post" | "reply" | "reaction" | "report",
+  action: "post" | "reply" | "reaction" | "report" | "link",
   targetType: "room" | "thread" | "reply",
   targetId: string,
   content: string,
@@ -2569,6 +2569,365 @@ async function listModerationVisibility(request: Request, env: HidnWorkerEnv): P
   });
 }
 
+// MARK: Personal confession links
+
+const LINK_MESSAGE_MAX_LENGTH = 500;
+const LINK_PROMPT_MAX_LENGTH = 120;
+const LINK_INBOX_KEEP = 200;
+const LINK_INBOX_DAILY_LIMIT = 120;
+const LINK_SLUG_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+
+interface LinkInboxRow {
+  link_id: string;
+  slug: string;
+  prompt: string;
+  tip_address: string | null;
+  status: "open" | "closed";
+  created_at: string;
+}
+
+interface LinkMessageRow {
+  message_id: string;
+  content: string;
+  tip_code: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+function createLinkSlug(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => LINK_SLUG_ALPHABET[byte % LINK_SLUG_ALPHABET.length]).join("");
+}
+
+function isLinkSlug(value: string): boolean {
+  return /^[a-z2-9]{8}$/.test(value);
+}
+
+function serializeLinkInbox(row: LinkInboxRow): Record<string, unknown> {
+  return {
+    slug: row.slug,
+    prompt: row.prompt,
+    tipAddress: row.tip_address,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+/** The owner proves ownership with the inbox key; only its hash is stored. */
+async function linkOwnerKeyHash(request: Request): Promise<string | null> {
+  const key = (request.headers.get("X-HIDN-Link-Key") ?? "").trim().toLowerCase();
+  return isValidAnonymousCapability(key) ? hashText(key) : null;
+}
+
+async function linkInboxForOwner(env: HidnWorkerEnv, ownerKeyHash: string): Promise<LinkInboxRow | null> {
+  return env.ROOM_DB!.prepare(
+    `SELECT link_id, slug, prompt, tip_address, status, created_at
+     FROM hidn_link_inboxes
+     WHERE owner_key_hash = ?
+     LIMIT 1`,
+  )
+    .bind(ownerKeyHash)
+    .first<LinkInboxRow>();
+}
+
+async function getMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const ownerKeyHash = await linkOwnerKeyHash(request);
+  if (!ownerKeyHash) {
+    return jsonResponse({ error: "Send a valid inbox key." }, 400);
+  }
+  const link = await linkInboxForOwner(env, ownerKeyHash);
+  if (!link) {
+    return jsonResponse({ link: null, messages: [], unreadCount: 0 }, 200, "no-store");
+  }
+
+  const [messages, unread] = await Promise.all([
+    env.ROOM_DB!.prepare(
+      `SELECT message_id, content, tip_code, created_at, read_at
+       FROM hidn_link_messages
+       WHERE link_id = ?
+       ORDER BY created_at DESC
+       LIMIT 100`,
+    )
+      .bind(link.link_id)
+      .all<LinkMessageRow>(),
+    env.ROOM_DB!.prepare(
+      `SELECT COUNT(*) AS count FROM hidn_link_messages WHERE link_id = ? AND read_at IS NULL`,
+    )
+      .bind(link.link_id)
+      .first<{ count: number }>(),
+  ]);
+
+  return jsonResponse({
+    link: serializeLinkInbox(link),
+    messages: messages.results.map((message) => ({
+      id: message.message_id,
+      text: message.content,
+      tipCode: message.tip_code,
+      createdAt: message.created_at,
+      readAt: message.read_at,
+    })),
+    unreadCount: Number(unread?.count ?? 0),
+  }, 200, "no-store");
+}
+
+async function createMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+  const rateLimit = await enforceEdgeRateLimit(request, env, { action: "link-create", limit: 10, windowMs: 30 * 60 * 1000 });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
+  const ownerKeyHash = await linkOwnerKeyHash(request);
+  if (!ownerKeyHash) {
+    return jsonResponse({ error: "Send a valid inbox key." }, 400);
+  }
+  const existing = await linkInboxForOwner(env, ownerKeyHash);
+  if (existing) {
+    return jsonResponse({ link: serializeLinkInbox(existing), status: "existing" }, 200, "no-store");
+  }
+
+  // Only room members can open a link. The proof is bound to the hash of the
+  // inbox key, so it cannot be replayed to open a link for another key.
+  const body = await requestBody(request);
+  const action = await verifyAnonymousAction(env, body, "link", "room", "INBOX", ownerKeyHash);
+  if (action instanceof Response) {
+    return action;
+  }
+
+  const now = new Date().toISOString();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const row: LinkInboxRow = {
+      link_id: `LNK-${createRandomHex(12).toUpperCase()}`,
+      slug: createLinkSlug(),
+      prompt: "",
+      tip_address: null,
+      status: "open",
+      created_at: now,
+    };
+    try {
+      await env.ROOM_DB!.prepare(
+        `INSERT INTO hidn_link_inboxes
+          (link_id, slug, owner_key_hash, prompt, tip_address, status, created_at, updated_at)
+         VALUES (?, ?, ?, '', NULL, 'open', ?, ?)`,
+      )
+        .bind(row.link_id, row.slug, ownerKeyHash, now, now)
+        .run();
+      return jsonResponse({ link: serializeLinkInbox(row), status: "created" }, 201, "no-store");
+    } catch {
+      const raced = await linkInboxForOwner(env, ownerKeyHash);
+      if (raced) {
+        return jsonResponse({ link: serializeLinkInbox(raced), status: "existing" }, 200, "no-store");
+      }
+      // Otherwise the slug collided; try another.
+    }
+  }
+  return jsonResponse({ error: "The link could not be created. Try again." }, 500);
+}
+
+async function updateMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const ownerKeyHash = await linkOwnerKeyHash(request);
+  if (!ownerKeyHash) {
+    return jsonResponse({ error: "Send a valid inbox key." }, 400);
+  }
+  const link = await linkInboxForOwner(env, ownerKeyHash);
+  if (!link) {
+    return jsonResponse({ error: "Create your link first." }, 404);
+  }
+
+  const body = await requestBody(request);
+  const next = { ...link };
+  if (typeof body.prompt === "string") {
+    const prompt = body.prompt.replace(/\s+/g, " ").trim();
+    if (prompt.length > LINK_PROMPT_MAX_LENGTH) {
+      return jsonResponse({ error: `Keep the prompt under ${LINK_PROMPT_MAX_LENGTH} characters.` }, 400);
+    }
+    next.prompt = prompt;
+  }
+  if (typeof body.tipAddress === "string") {
+    const tipAddress = normalizeMainnetTipAddress(body.tipAddress);
+    if (tipAddress && !isValidMainnetTipAddress(tipAddress)) {
+      return jsonResponse({ error: "Use a shielded Zcash mainnet address beginning with u1 or zs1." }, 400);
+    }
+    next.tip_address = tipAddress || null;
+  }
+  if (body.status === "open" || body.status === "closed") {
+    next.status = body.status;
+  }
+  // A new address retires the old one at once: anyone holding it gets nothing.
+  if (body.rotate === true) {
+    next.slug = createLinkSlug();
+  }
+
+  try {
+    await env.ROOM_DB!.prepare(
+      `UPDATE hidn_link_inboxes
+       SET slug = ?, prompt = ?, tip_address = ?, status = ?, updated_at = ?
+       WHERE link_id = ?`,
+    )
+      .bind(next.slug, next.prompt, next.tip_address, next.status, new Date().toISOString(), link.link_id)
+      .run();
+  } catch {
+    return jsonResponse({ error: "The link could not be updated. Try again." }, 409);
+  }
+  return jsonResponse({ link: serializeLinkInbox(next), status: "updated" }, 200, "no-store");
+}
+
+async function markMyLinkMessagesRead(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const ownerKeyHash = await linkOwnerKeyHash(request);
+  const link = ownerKeyHash ? await linkInboxForOwner(env, ownerKeyHash) : null;
+  if (!link) {
+    return jsonResponse({ error: "Inbox not found." }, 404);
+  }
+  await env.ROOM_DB!.prepare(
+    `UPDATE hidn_link_messages SET read_at = ? WHERE link_id = ? AND read_at IS NULL`,
+  )
+    .bind(new Date().toISOString(), link.link_id)
+    .run();
+  return jsonResponse({ status: "read" });
+}
+
+async function deleteMyLinkMessage(messageId: string, request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const ownerKeyHash = await linkOwnerKeyHash(request);
+  const link = ownerKeyHash ? await linkInboxForOwner(env, ownerKeyHash) : null;
+  if (!link) {
+    return jsonResponse({ error: "Inbox not found." }, 404);
+  }
+  await env.ROOM_DB!.prepare(`DELETE FROM hidn_link_messages WHERE message_id = ? AND link_id = ?`)
+    .bind(messageId, link.link_id)
+    .run();
+  return jsonResponse({ status: "deleted" });
+}
+
+async function linkInboxBySlug(env: HidnWorkerEnv, slug: string): Promise<LinkInboxRow | null> {
+  return env.ROOM_DB!.prepare(
+    `SELECT link_id, slug, prompt, tip_address, status, created_at
+     FROM hidn_link_inboxes
+     WHERE slug = ?
+     LIMIT 1`,
+  )
+    .bind(slug)
+    .first<LinkInboxRow>();
+}
+
+async function getPublicLink(slug: string, env: HidnWorkerEnv): Promise<Response> {
+  const link = await linkInboxBySlug(env, slug);
+  if (!link) {
+    return jsonResponse({ error: "This link does not exist or was replaced." }, 404);
+  }
+  return jsonResponse({
+    link: { slug: link.slug, prompt: link.prompt, tipAddress: link.tip_address, status: link.status },
+  }, 200, "no-store");
+}
+
+/** Anyone holding the link may write. Nothing about the sender is stored:
+ * abuse limits use only the short-lived edge digest the room already uses. */
+async function sendLinkMessage(slug: string, request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const rateLimit = await enforceEdgeRateLimit(request, env, { action: "link-send", limit: 8, windowMs: 10 * 60 * 1000 });
+  if (rateLimit) {
+    return rateLimit;
+  }
+
+  const body = await requestBody(request);
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  const tipCode = typeof body.tipCode === "string" ? body.tipCode.trim().toUpperCase() : "";
+  if (!content) {
+    return jsonResponse({ error: "Write something before sending." }, 400);
+  }
+  if (content.length > LINK_MESSAGE_MAX_LENGTH) {
+    return jsonResponse({ error: `Messages must be ${LINK_MESSAGE_MAX_LENGTH} characters or fewer.` }, 400);
+  }
+  if (tipCode && !/^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(tipCode)) {
+    return jsonResponse({ error: "That tip code is not valid." }, 400);
+  }
+
+  const link = await linkInboxBySlug(env, slug);
+  if (!link) {
+    return jsonResponse({ error: "This link does not exist or was replaced." }, 404);
+  }
+  if (link.status !== "open") {
+    return jsonResponse({ error: "This link is closed. It is not taking messages right now." }, 403);
+  }
+  if (tipCode && !link.tip_address) {
+    return jsonResponse({ error: "This link does not take ZEC tips." }, 400);
+  }
+
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const recent = await env.ROOM_DB!.prepare(
+    `SELECT COUNT(*) AS count FROM hidn_link_messages WHERE link_id = ? AND created_at >= ?`,
+  )
+    .bind(link.link_id, dayAgo)
+    .first<{ count: number }>();
+  if (Number(recent?.count ?? 0) >= LINK_INBOX_DAILY_LIMIT) {
+    return jsonResponse({ error: "This inbox has taken all it can for today. Try again tomorrow." }, 429);
+  }
+
+  const abuseResponse = await assessAnonymousAbuse(request, env, content);
+  if (abuseResponse) {
+    return abuseResponse;
+  }
+
+  const createdAt = new Date().toISOString();
+  await env.ROOM_DB!.prepare(
+    `INSERT INTO hidn_link_messages (message_id, link_id, content, tip_code, created_at, read_at)
+     VALUES (?, ?, ?, ?, ?, NULL)`,
+  )
+    .bind(`MSG-${createRandomHex(12).toUpperCase()}`, link.link_id, content, tipCode || null, createdAt)
+    .run();
+  // Keep each inbox bounded; the oldest messages fall away first.
+  await env.ROOM_DB!.prepare(
+    `DELETE FROM hidn_link_messages
+     WHERE link_id = ? AND message_id NOT IN (
+       SELECT message_id FROM hidn_link_messages WHERE link_id = ? ORDER BY created_at DESC LIMIT ${LINK_INBOX_KEEP}
+     )`,
+  )
+    .bind(link.link_id, link.link_id)
+    .run();
+
+  return jsonResponse({ status: "sent", createdAt }, 201, "no-store");
+}
+
+async function routeLinkApi(url: URL, request: Request, env: HidnWorkerEnv): Promise<Response | undefined> {
+  if (!url.pathname.startsWith("/api/links/")) {
+    return undefined;
+  }
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+  const path = url.pathname.slice("/api/links/".length).replace(/\/+$/, "");
+  const method = request.method;
+
+  try {
+    if (path === "mine") {
+      if (method === "GET") return await getMyLinkInbox(request, env);
+      if (method === "POST") return await createMyLinkInbox(request, env);
+      if (method === "PATCH") return await updateMyLinkInbox(request, env);
+      return jsonResponse({ error: "Method not allowed." }, 405);
+    }
+    if (path === "mine/read") {
+      return method === "POST" ? await markMyLinkMessagesRead(request, env) : jsonResponse({ error: "Method not allowed." }, 405);
+    }
+    const deleteMatch = path.match(/^mine\/messages\/(MSG-[A-F0-9]{24})$/);
+    if (deleteMatch) {
+      return method === "DELETE" ? await deleteMyLinkMessage(deleteMatch[1], request, env) : jsonResponse({ error: "Method not allowed." }, 405);
+    }
+    const sendMatch = path.match(/^([a-z2-9]{8})\/messages$/);
+    if (sendMatch) {
+      return method === "POST" ? await sendLinkMessage(sendMatch[1], request, env) : jsonResponse({ error: "Method not allowed." }, 405);
+    }
+    if (isLinkSlug(path)) {
+      return method === "GET" ? await getPublicLink(path, env) : jsonResponse({ error: "Method not allowed." }, 405);
+    }
+    return jsonResponse({ error: "Not found." }, 404);
+  } catch {
+    return jsonResponse({ error: "The link service is unavailable right now." }, 500);
+  }
+}
+
 const INDEXABLE_PUBLIC_PATHS = new Set(["/", "/how-it-works", "/manifesto", "/privacy"]);
 
 function crawlerPolicyForHtmlPath(pathname: string): string {
@@ -2802,6 +3161,11 @@ const worker = {
       } catch {
         return jsonResponse({ error: "Report could not be updated." }, 500);
       }
+    }
+
+    const linkResponse = await routeLinkApi(url, request, env);
+    if (linkResponse) {
+      return linkResponse;
     }
 
     if (url.pathname === "/api/zcash-tip") {
