@@ -18843,3 +18843,28 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 }
 @media (prefers-reduced-motion: reduce) { .zcash-status-slide { animation: none; } }
 .ui-nav-shell__status[data-zcash-status] { white-space: nowrap; }
+
+/* ME: who you are today, then one tab at a time. */
+.hidn-me { display: grid; gap: 6px; margin-bottom: 14px; }
+.hidn-me__who { align-items: center; display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; }
+.hidn-me__who h1 { color: #4dff6e; font: 600 clamp(22px, 5vw, 30px)/1.2 var(--hidn-font-mono); letter-spacing: .06em; margin: 0; }
+.hidn-me__sub { color: rgba(143, 217, 160, .7); font: 12px var(--hidn-font-mono); letter-spacing: .06em; margin: 0; }
+.hidn-me__stats { color: #b9f7c4; font: 12px var(--hidn-font-mono); letter-spacing: .14em; margin: 6px 0 0; }
+.hidn-me__tabs { border-bottom: 1px solid rgba(77, 255, 110, .22); display: flex; gap: 2px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
+.hidn-me__tab { background: none; border: 0; border-bottom: 2px solid transparent; color: rgba(143, 217, 160, .75); cursor: pointer; flex: none; font: 12px var(--hidn-font-mono); letter-spacing: .14em; margin-bottom: -1px; min-height: 44px; padding: 10px 12px; }
+.hidn-me__tab b { color: #f4c85a; }
+.hidn-me__tab--active { border-bottom-color: #4dff6e; color: #4dff6e; text-shadow: 0 0 8px rgba(77, 255, 110, .45); }
+.hidn-me__tab:hover, .hidn-me__tab:focus-visible { color: #4dff6e; outline: none; }
+.hidn-me__panel { border: 1px dashed rgba(77, 255, 110, .3); display: grid; font-family: var(--hidn-font-mono); gap: 12px; margin-bottom: 14px; padding: 16px; }
+.hidn-me__label { color: rgba(77, 255, 110, .8); font-size: 12px; letter-spacing: .14em; margin: 0; }
+.hidn-me__note { color: #8fd9a0; font-size: 12px; line-height: 1.65; margin: 0; }
+.hidn-me__switch { display: flex; gap: 8px; }
+.hidn-me__switch button { background: none; border: 1px solid rgba(77, 255, 110, .25); color: #8fd9a0; cursor: pointer; font: 11px var(--hidn-font-mono); letter-spacing: .12em; min-height: 36px; padding: 6px 12px; }
+.hidn-me__switch button[aria-selected="true"] { background: rgba(77, 255, 110, .12); border-color: #4dff6e; color: #4dff6e; }
+.hidn-me__key { background: #010301; border: 1px solid rgba(77, 255, 110, .4); color: #4dff6e; cursor: pointer; display: grid; gap: 8px; padding: 14px; text-align: left; }
+.hidn-me__key code { font-size: clamp(12px, 2.6vw, 15px); letter-spacing: .06em; line-height: 1.7; overflow-wrap: anywhere; user-select: all; }
+.hidn-me__key span { color: rgba(143, 217, 160, .7); font: 10px var(--hidn-font-mono); letter-spacing: .16em; }
+.hidn-me__countdown { background: rgba(77, 255, 110, .12); height: 3px; overflow: hidden; }
+.hidn-me__countdown i { animation: hidn-me-countdown 20s linear forwards; background: #4dff6e; display: block; height: 100%; }
+@keyframes hidn-me-countdown { from { width: 100%; } to { width: 0; } }
+.hidn-profile .room-profile-card--tips { margin-bottom: 14px; }

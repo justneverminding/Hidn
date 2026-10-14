@@ -4620,6 +4620,7 @@ function clearRoomSession(): void {
   resetRoomRecoveryReveal();
   resetLinkInbox();
   resetKeyKeeper();
+  profileView = null;
   stopRoomNotificationPolling();
   sessionStorage.removeItem("hidn:room:entered");
   sessionStorage.removeItem(ROOM_ANONYMOUS_SESSION_STORAGE);
@@ -4912,38 +4913,6 @@ function contentStatusLabel(status: RoomComment["status"]): string {
   }
 }
 
-function renderProfileRecoveryKey(): string {
-  if (!roomAccountRecoveryCode) {
-    return `<section class="room-profile-card room-profile-card--key" aria-labelledby="room-profile-key-title">
-      <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / NOT IN THIS SESSION</span>
-      <p class="room-profile-card__note">The recovery key cannot be recovered from HIDN. Return to the room with the key you saved to restore it in this browser session.</p>
-      ${SecondaryButton({ label: "RECOVER KEY / RETURN TO LOGIN →", dataAction: "room-recovery-open" })}
-    </section>`;
-  }
-
-  if (roomRecoveryRevealMode === "visible") {
-    const repeatInstruction = "VISIBLE FOR 20 SECONDS / REPEAT THE CONFIRMATIONS TO REVEAL IT AGAIN.";
-    return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--visible" aria-labelledby="room-profile-key-title" aria-live="polite">
-      <span class="room-access-key__label" id="room-profile-key-title" data-room-recovery-label>RECOVERY KEY / SAVE THIS NOW</span>
-      <button class="room-access-key__copy" type="button" data-action="room-copy-recovery-key" aria-label="Copy recovery key">
-        <code>${escapeHtml(roomAccountRecoveryCode)}</code>
-      </button>
-      <span class="room-access-key__warning">${repeatInstruction}</span>
-    </section>`;
-  }
-
-  if (roomRecoveryRevealMode === "prompt") {
-    return renderRecoveryRevealPrompt("room-profile-card room-profile-card--key room-login-card room-recovery-panel");
-  }
-
-  return `<section class="room-profile-card room-profile-card--key room-recovery-panel room-recovery-panel--hidden" aria-labelledby="room-profile-key-title">
-    <span class="room-access-key__label" id="room-profile-key-title">RECOVERY KEY / HIDDEN</span>
-    <p class="room-profile-card__note">The recovery key is hidden by default. Confirm both recovery statements to reveal it for 20 seconds.</p>
-    ${SecondaryButton({ label: "RECOVER KEY →", dataAction: "room-recovery-open" })}
-    <span class="room-access-key__warning">The recovery key cannot be recovered from HIDN. So keep it safely; it is your key to the private room.</span>
-  </section>`;
-}
-
 function renderProfilePost(post: DeviceSignalPost): string {
   return `<article class="room-profile-history__item">
     <header><span>${escapeHtml(post.reference)} / ${escapeHtml(post.channel.toUpperCase())}</span><time>${escapeHtml(formatTransmissionTime(post.time))}</time></header>
@@ -4991,6 +4960,91 @@ function renderZecVerificationNotice(): string {
   </div>`;
 }
 
+// The ME page: who you are today, then one of three tabs at a time.
+type ProfileView = "posts" | "key" | "settings";
+let profileView: ProfileView | null = null;
+let profileHistoryView: "posts" | "comments" = "posts";
+
+function renderProfileKey(): string {
+  if (!roomAccountRecoveryCode) {
+    return `<section class="hidn-me__panel">
+      <p class="hidn-me__label">&gt; YOUR KEY / NOT IN THIS SESSION</p>
+      <p class="hidn-me__note">Your key isn't stored in this tab. Leave the room and sign back in with the key you saved, and it will show here.</p>
+    </section>`;
+  }
+  // Not saved yet: the save options come first, with the key in view.
+  if (!isKeySaved(roomAccountRecoveryCode) || keyJustSaved()) {
+    return renderKeySaveCard(roomAccountRecoveryCode);
+  }
+  if (roomRecoveryRevealMode === "visible") {
+    return `<section class="hidn-me__panel hidn-me__panel--key" aria-live="polite">
+      <p class="hidn-me__label">&gt; YOUR KEY / VISIBLE FOR 20 SECONDS</p>
+      <button class="hidn-me__key" type="button" data-action="room-copy-recovery-key" aria-label="Copy your key"><code>${escapeHtml(roomAccountRecoveryCode)}</code><span>TAP TO COPY</span></button>
+      <div class="hidn-me__countdown" aria-hidden="true"><i></i></div>
+      <p class="hidn-me__note">Make sure nobody is looking at your screen. It hides itself again.</p>
+    </section>`;
+  }
+  return `<section class="hidn-me__panel">
+    <p class="hidn-me__label">&gt; YOUR KEY / HIDDEN</p>
+    <p class="hidn-me__note">Your key is your account. Show it only when nobody is looking.</p>
+    ${SecondaryButton({ label: "[ SHOW MY KEY · 20 SEC ]", dataAction: "room-key-show" })}
+  </section>`;
+}
+
+function renderProfileActivity(posts: DeviceSignalPost[], comments: RoomComment[]): string {
+  const showPosts = profileHistoryView === "posts";
+  const list = showPosts
+    ? (posts.length ? posts.map(renderProfilePost).join("") : `<p class="room-profile-history__empty">&gt; nothing posted from this device yet.</p>`)
+    : (comments.length ? comments.map(renderProfileComment).join("") : `<p class="room-profile-history__empty">&gt; no replies from this device yet.</p>`);
+  return `<section class="hidn-me__panel">
+    <div class="hidn-me__switch" role="tablist" aria-label="History">
+      <button type="button" role="tab" aria-selected="${showPosts}" data-action="profile-history" data-view="posts">POSTS (${posts.length})</button>
+      <button type="button" role="tab" aria-selected="${!showPosts}" data-action="profile-history" data-view="comments">COMMENTS (${comments.length})</button>
+    </div>
+    <div class="room-profile-history__list">${list}</div>
+    <p class="hidn-me__note">Kept on this device only.</p>
+  </section>`;
+}
+
+function renderProfileBody(
+  profileLabel: string,
+  profileStats: ReturnType<typeof deviceSignalStats>,
+  posts: DeviceSignalPost[],
+  comments: RoomComment[],
+): string {
+  const keyUnsaved = Boolean(roomAccountRecoveryCode) && !isKeySaved(roomAccountRecoveryCode);
+  if (profileView === null) {
+    profileView = keyUnsaved || window.location.hash === "#key" ? "key" : "posts";
+  }
+  const tab = (view: ProfileView, label: string, alert = false): string =>
+    `<button class="hidn-me__tab${profileView === view ? " hidn-me__tab--active" : ""}" type="button" role="tab" aria-selected="${profileView === view}" data-action="profile-view" data-view="${view}">${label}${alert ? ` <b aria-label="not saved">●</b>` : ""}</button>`;
+  const panel = profileView === "key"
+    ? renderProfileKey()
+    : profileView === "settings"
+      ? `${renderProfileTipAddress()}
+        <section class="hidn-me__panel">
+          <p class="hidn-me__label">&gt; VERIFY WITH ZEC</p>
+          <p class="hidn-me__note">A private ZEC payment will unlock extra features. Coming soon.</p>
+          ${GhostButton({ label: "[ VERIFY WITH ZEC ]", dataAction: "room-open-verification" })}
+        </section>`
+      : renderProfileActivity(posts, comments);
+  return `<header class="hidn-me">
+      <p class="hidn-access__code">/// ME</p>
+      <div class="hidn-me__who">
+        <h1>${escapeHtml(profileLabel)}</h1>
+        ${StatusIndicator("SIGNED IN", "online", true)}
+      </div>
+      <p class="hidn-me__sub">today's name · changes every visit</p>
+      <p class="hidn-me__stats">${profileStats.posts} ${profileStats.posts === 1 ? "POST" : "POSTS"} · ${profileStats.comments} ${profileStats.comments === 1 ? "COMMENT" : "COMMENTS"} · ${profileStats.likes} ${profileStats.likes === 1 ? "LIKE" : "LIKES"}</p>
+    </header>
+    <div class="hidn-me__tabs" role="tablist" aria-label="Me">
+      ${tab("posts", "MY POSTS")}
+      ${tab("key", "MY KEY", keyUnsaved)}
+      ${tab("settings", "SETTINGS")}
+    </div>
+    ${panel}`;
+}
+
 function renderRoomProfile(): RenderedProductRoute {
   restoreRoomAccountState();
   if (!hasRoomSession()) {
@@ -5021,70 +5075,7 @@ function renderRoomProfile(): RenderedProductRoute {
       "/room/profile",
       `<main id="main-content" class="public-main room-main room-profile-main hidn-term-main">
         ${terminalWindow("hidn@room: ~/profile", `<div class="room-profile-page hidn-profile">
-          <header class="hidn-access">
-            <p class="hidn-access__code">/// PROFILE</p>
-            <h1>YOUR CORNER. NOBODY ELSE SEES IT.</h1>
-            <p class="hidn-access__line" data-hidn-type>&gt; Only you can see this page. Your key is your account, and nothing here is linked to your name. Your list of past posts is kept on this device only.</p>
-          </header>
-          <section class="room-profile-card room-profile-card--identity" aria-labelledby="room-profile-status-title">
-            <div class="room-profile-card__heading">
-              <div>
-                ${TerminalLabel("YOU / TODAY'S ANONYMOUS NAME")}
-                <h2 id="room-profile-status-title">${escapeHtml(profileLabel)}</h2>
-              </div>
-              ${StatusIndicator("SIGNED IN · NO NAME", "online", true)}
-            </div>
-            <p class="room-profile-card__note">This name changes every time you sign in, so nobody can follow you around. You can post, reply and like, up to ${roomPostCharacterLimit()} characters at a time. Your post history below lives on this device only.</p>
-            <div class="room-profile-stats" aria-label="Private account totals">
-              <div><span>TOTAL POSTS</span><strong>${formatPrivateTotal(profileStats.posts)}</strong></div>
-              <div><span>TOTAL COMMENTS</span><strong>${formatPrivateTotal(profileStats.comments)}</strong></div>
-              <div><span>LIKES RECEIVED</span><strong>${formatPrivateTotal(profileStats.likes)}</strong></div>
-            </div>
-            <div class="room-profile-card__actions">
-              ${SecondaryButton({ label: "[ VERIFY WITH ZEC ]", dataAction: "room-open-verification" })}
-              ${GhostButton({ label: "[ CONTINUE ]", dataAction: "room-profile-back" })}
-            </div>
-          </section>
-          <section class="room-profile-card room-profile-card--link" aria-labelledby="room-profile-link-title">
-            ${TerminalLabel("LINK / ANONYMOUS INBOX")}
-            <h2 id="room-profile-link-title">LET THEM SAY IT. NO NAMES.</h2>
-            <p class="room-profile-card__note">Get one link to share anywhere. Anyone can leave you a message through it without a name, with an optional ZEC tip. Your link never shows your alias or your posts.</p>
-            <div class="room-profile-card__actions">
-              <a class="ui-button ui-button--secondary" href="/room/inbox">[ OPEN MY LINK / INBOX → ]</a>
-            </div>
-          </section>
-          ${renderProfileTipAddress()}
-          ${roomAccountRecoveryCode && (!isKeySaved(roomAccountRecoveryCode) || keyJustSaved()) ? `<div id="key" class="room-profile-card room-profile-card--save-key">${renderKeySaveCard(roomAccountRecoveryCode)}</div>` : ""}
-          ${renderProfileRecoveryKey()}
-          <div class="room-profile-history-grid">
-            <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-posts-title">
-              <header class="room-profile-history__header">
-                <div>
-                  ${TerminalLabel("HISTORY / YOUR POSTS")}
-                  <h2 id="room-profile-posts-title">POSTS</h2>
-                </div>
-                <span>${formatPrivateTotal(profileStats.posts)}</span>
-              </header>
-              <div class="room-profile-history__list">
-                ${posts.length ? posts.map(renderProfilePost).join("") : `<p class="room-profile-history__empty">NO POSTS SAVED ON THIS DEVICE YET.</p>`}
-              </div>
-            </section>
-            <section class="room-profile-card room-profile-history" aria-labelledby="room-profile-comments-title">
-              <header class="room-profile-history__header">
-                <div>
-                  ${TerminalLabel("HISTORY / YOUR COMMENTS")}
-                  <h2 id="room-profile-comments-title">COMMENTS</h2>
-                </div>
-                <span>${formatPrivateTotal(profileStats.comments)}</span>
-              </header>
-              <div class="room-profile-history__list">
-                ${comments.length ? comments.map(renderProfileComment).join("") : `<p class="room-profile-history__empty">NO COMMENTS SAVED ON THIS DEVICE YET.</p>`}
-              </div>
-            </section>
-          </div>
-          <div class="room-access-actions room-profile-page__actions">
-            ${GhostButton({ label: "[ ← BACK TO THE ROOM ]", dataAction: "room-profile-back" })}
-          </div>
+          ${renderProfileBody(profileLabel, profileStats, posts, comments)}
         </div>`, "hidn-term--access hidn-term--profile")}
         ${renderZecVerificationNotice()}
       </main>`,
@@ -6868,6 +6859,18 @@ export function bindProductRoute(root: ParentNode = document): void {
           break;
         case "room-notifications-read":
           void markRoomNotificationsRead();
+          break;
+        case "profile-view":
+          profileView = (button.dataset.view as ProfileView) ?? "posts";
+          rerenderProductRoute();
+          break;
+        case "profile-history":
+          profileHistoryView = button.dataset.view === "comments" ? "comments" : "posts";
+          rerenderProductRoute();
+          break;
+        case "room-key-show":
+          revealRoomRecoveryKeyTemporarily();
+          rerenderProductRoute();
           break;
         case "room-recovery-open":
           openRoomRecoveryCheck();
