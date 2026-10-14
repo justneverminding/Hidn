@@ -1,5 +1,6 @@
 import { escapeHtml } from "@hidn/ui";
 import * as QRCode from "qrcode";
+import { renderShareCard } from "./share-card";
 import {
   createMyLinkInbox,
   deleteMyLinkMessage,
@@ -269,6 +270,9 @@ interface InboxState {
   feedback: string;
   promptDraft: string;
   tipDraft: string;
+  view: "messages" | "link";
+  shareStatus: Map<string, string>;
+  paidPromptOpen: boolean;
 }
 
 const inbox: InboxState = {
@@ -280,12 +284,17 @@ const inbox: InboxState = {
   feedback: "",
   promptDraft: "",
   tipDraft: "",
+  view: "messages",
+  shareStatus: new Map(),
+  paidPromptOpen: false,
 };
 
 let ownerContext: LinkOwnerContext | null = null;
 
 /** Forget the inbox when the member leaves, so another key never sees it. */
 export function resetLinkInbox(): void {
+  inbox.view = "messages";
+  inbox.shareStatus = new Map();
   backgroundUnread = 0;
   backgroundCheckedAt = 0;
   inbox.status = "idle";
@@ -374,27 +383,58 @@ function renderLinkCard(link: LinkInbox): string {
       <div class="hidn-link__actions">
         ${button(inbox.busy === "save" ? "SAVING..." : "SAVE", "save", { type: "submit", disabled: Boolean(inbox.busy) })}
         ${button(open ? "CLOSE LINK" : "REOPEN LINK", open ? "close" : "reopen", { disabled: Boolean(inbox.busy) })}
-        ${button(inbox.busy === "rotate" ? "REPLACING..." : "NEW LINK ADDRESS", "rotate", { disabled: Boolean(inbox.busy) })}
+        ${button("NEW LINK ADDRESS · ZEC", "rotate-paid", { disabled: Boolean(inbox.busy) })}
       </div>
     </form>
   </section>`;
 }
 
+/** A new link address is a paid feature. Until HIDN can confirm ZEC
+ * payments, the prompt explains it and takes no money. */
+function renderPaidAddressPrompt(): string {
+  if (!inbox.paidPromptOpen) return "";
+  return `<div class="hidn-link__paywall" role="dialog" aria-modal="true" aria-labelledby="hidn-paywall-title">
+    <button class="hidn-link__paywall-backdrop" type="button" data-link-action="paid-close" aria-label="Close"></button>
+    <section class="hidn-link__paywall-panel">
+      <p class="hidn-link__log">&gt; new-address --pay zec --shielded</p>
+      <p class="hidn-link__log"><b>[LOCK]</b> PAID FEATURE</p>
+      <h2 id="hidn-paywall-title" class="hidn-link__title hidn-link__title--sm" data-text="A NEW ADDRESS.">A NEW ADDRESS.</h2>
+      <p class="hidn-link__line">&gt; Swap your link for a fresh one. The old link dies at once, for when it has gone further than you wanted. Your messages stay.</p>
+      <p class="hidn-link__note">Paid privately with ZEC from a shielded wallet such as ZODL or Vizor. Nothing about the payment is linked to you.</p>
+      <div class="hidn-link__paywall-status">
+        <p class="hidn-link__log"><b>[WAIT]</b> ZEC PAYMENT MODULE<span class="hidn-soon__dots" aria-hidden="true"></span></p>
+        <div class="hidn-soon__bar" role="img" aria-label="Payments are still being built"><i></i></div>
+        <p class="hidn-soon__title" data-text="COMING SOON">COMING SOON</p>
+        <p class="hidn-link__note">HIDN is finishing the part that confirms payments. Until then nothing can be paid here and nothing is charged.</p>
+      </div>
+      <div class="hidn-link__actions">${button("CLOSE", "paid-close", { primary: true })}</div>
+    </section>
+  </div>`;
+}
+
 function renderMessages(data: LinkInboxResponse): string {
-  const items = data.messages.map((message) => `<article class="hidn-link__msg${inbox.unreadIds.has(message.id) ? " hidn-link__msg--new" : ""}">
-      <header><span>${inbox.unreadIds.has(message.id) ? "ᙇ NEW" : "ANONYMOUS"}</span><time>${escapeHtml(formatWhen(message.createdAt))}</time></header>
+  const items = data.messages.map((message) => {
+    const isNew = inbox.unreadIds.has(message.id);
+    const status = inbox.shareStatus.get(message.id) ?? "";
+    return `<article class="hidn-link__msg${isNew ? " hidn-link__msg--new" : ""}">
+      <header><span>${isNew ? "● NEW" : "ANONYMOUS"}</span><time>${escapeHtml(formatWhen(message.createdAt))}</time></header>
       <p>${escapeHtml(message.text)}</p>
-      <footer>
-        ${message.tipCode ? `<span class="hidn-link__tipcode">ZEC TIP · CODE ${escapeHtml(message.tipCode)} · CHECK YOUR WALLET MEMOS</span>` : "<span></span>"}
-        <button class="hidn-link__del" type="button" data-link-action="delete" data-message-id="${escapeHtml(message.id)}">[ DELETE ]</button>
-      </footer>
-    </article>`).join("");
+      ${message.tipCode ? `<p class="hidn-link__tipcode">ZEC TIP · CODE ${escapeHtml(message.tipCode)} · CHECK YOUR WALLET MEMOS</p>` : ""}
+      <div class="hidn-link__msg-bar" role="group" aria-label="Message actions">
+        <button class="hidn-link__seg" type="button" data-link-action="share-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↗</span> SHARE</button>
+        <button class="hidn-link__seg" type="button" data-link-action="save-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↓</span> SAVE</button>
+        <button class="hidn-link__seg hidn-link__seg--danger" type="button" data-link-action="delete" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">✕</span> DELETE</button>
+      </div>
+      ${status ? `<p class="hidn-link__msg-status" role="status">&gt; ${escapeHtml(status)}</p>` : ""}
+    </article>`;
+  }).join("");
   return `<section class="hidn-link__inbox">
     <header class="hidn-link__inbox-head">
-      <p class="hidn-link__label">&gt; INBOX ᙇ ${data.messages.length}</p>
+      <p class="hidn-link__label">&gt; ${data.messages.length} ${data.messages.length === 1 ? "MESSAGE" : "MESSAGES"}</p>
       ${button(inbox.status === "loading" ? "READING..." : "REFRESH", "refresh")}
     </header>
-    ${items || `<p class="hidn-link__empty">&gt; nothing yet. share your link and wait in the dark.<span class="hidn-link__caret">▌</span></p>`}
+    ${items || `<p class="hidn-link__empty">&gt; nothing yet. share your link and wait in the dark.<span class="hidn-link__caret">▌</span></p>
+      <div class="hidn-link__actions">${button("GET MY LINK", "view-link", { primary: true })}</div>`}
   </section>`;
 }
 
@@ -427,8 +467,22 @@ export function renderLinkInboxBody(): string {
     </div>`;
   }
 
-  // Messages first: they are what people come back for.
-  return `<div class="hidn-link">${head}${error}${status}${renderMessages(data)}${renderLinkCard(data.link)}</div>`;
+  // Two views: the messages people come back for, and the link with its
+  // settings, so the page never shows everything at once.
+  const count = data.messages.length;
+  const unread = inbox.unreadIds.size;
+  const tab = (view: "messages" | "link", label: string): string =>
+    `<button class="hidn-link__tab${inbox.view === view ? " hidn-link__tab--active" : ""}" type="button" role="tab" aria-selected="${inbox.view === view}" data-link-action="view-${view === "messages" ? "messages" : "link"}">${label}</button>`;
+  return `<div class="hidn-link">
+    <p class="hidn-link__code-line">/// INBOX</p>
+    <div class="hidn-link__tabs" role="tablist" aria-label="Inbox">
+      ${tab("messages", `MESSAGES${unread ? ` <b>${unread} NEW</b>` : count ? ` (${count})` : ""}`)}
+      ${tab("link", "MY LINK")}
+    </div>
+    ${error}${status}
+    ${inbox.view === "messages" ? renderMessages(data) : renderLinkCard(data.link)}
+    ${renderPaidAddressPrompt()}
+  </div>`;
 }
 
 export function bindLinkInbox(root: ParentNode, context: LinkOwnerContext): void {
@@ -467,6 +521,17 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
     await loadInbox(context);
     return;
   }
+  if (action === "view-messages" || action === "view-link") {
+    inbox.view = action === "view-link" ? "link" : "messages";
+    inbox.feedback = "";
+    inbox.paidPromptOpen = false;
+    rerender();
+    return;
+  }
+  if ((action === "share-message" || action === "save-message") && messageId) {
+    await shareMessageImage(messageId, action === "share-message" ? "share" : "save");
+    return;
+  }
   if (action === "copy-link" && link) {
     inbox.feedback = (await copyText(linkUrl(link.slug))) ? "copied" : "";
     rerender();
@@ -480,6 +545,14 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
   }
   if (action === "share-link" && link) {
     void navigator.share?.({ title: "HIDN", text: "say it. no names.", url: linkUrl(link.slug) }).catch(() => undefined);
+    return;
+  }
+  if (action === "delete" && !window.confirm("Delete this message? It cannot be undone.")) {
+    return;
+  }
+  if (action === "rotate-paid" || action === "paid-close") {
+    inbox.paidPromptOpen = action === "rotate-paid";
+    rerender();
     return;
   }
   if (action === "rotate" && !window.confirm("Replace your link? The old link stops working at once. Your messages stay.")) {
@@ -502,6 +575,7 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
       inbox.promptDraft = created.prompt;
       inbox.tipDraft = created.tipAddress ?? "";
       inbox.feedback = "LINK CREATED. COPY IT AND SHARE IT ANYWHERE.";
+      inbox.view = "link";
     } else if (action === "save" || action === "close" || action === "reopen" || action === "rotate") {
       const tip = inbox.tipDraft.trim().toLowerCase();
       if (action === "save" && tip && !/^(?:u1|zs1)[0-9a-z]{18,}$/.test(tip)) {
@@ -529,6 +603,54 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
   } finally {
     inbox.busy = "";
     rerender();
+  }
+}
+
+/** The message as the room's share card: the words only, no name and no
+ * link, so sharing it never points back to the owner or the sender. */
+async function shareMessageImage(messageId: string, mode: "share" | "save"): Promise<void> {
+  const message = inbox.data?.messages.find((candidate) => candidate.id === messageId);
+  if (!message) return;
+  const setStatus = (text: string): void => {
+    if (text) inbox.shareStatus.set(messageId, text); else inbox.shareStatus.delete(messageId);
+    rerender();
+  };
+  setStatus("RENDERING IMAGE...");
+  try {
+    const blob = await renderShareCard({
+      text: message.text,
+      replies: [],
+      room: "MY INBOX",
+      reference: message.id,
+      mark: "// SENT TO ME, NO NAME",
+      theme: "signal",
+    });
+    const filename = `hidn-message-${message.id.replace(/^MSG-/, "").slice(0, 8).toLowerCase()}.png`;
+    const file = new File([blob], filename, { type: "image/png" });
+    if (mode === "share" && typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "HIDN", text: "said to me with no name. hidn." });
+        setStatus("");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setStatus("");
+          return;
+        }
+      }
+    }
+    // Saving, or sharing where the browser cannot share files: download it.
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    setStatus(mode === "save" ? "IMAGE SAVED" : "IMAGE SAVED. POST IT FROM YOUR PHOTOS.");
+  } catch {
+    setStatus("THE IMAGE COULD NOT BE MADE. TRY AGAIN.");
   }
 }
 

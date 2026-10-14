@@ -6303,8 +6303,10 @@ function bindRoomMuseumInteractions(root: ParentNode): void {
           beginEntry(() => navigateProductRoute("/museum-preview?view=hall"));
           return;
         }
+        // Walking through the hallway door leads into the museum's hallway;
+        // the feed is where buttons and sign-in land, not the door.
         const returning = hasRoomSession();
-        beginEntry(() => navigateIntoRoom(returning ? ROOM_HOME_PATH : "/room/access"));
+        beginEntry(() => navigateIntoRoom(returning ? "/room" : "/room/access"));
       },
     });
     roomMuseumCleanup = () => {
