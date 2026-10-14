@@ -4,7 +4,7 @@
 
 ## What HIDN is
 
-HIDN is a privacy-focused room for sharing thoughts without turning a person's name into the subject. Its public language centers on anonymous expression, pseudonymous room access, recovery keys, and revealing less by default.
+HIDN is a privacy-focused room for sharing thoughts without turning a person's name into the subject. There are no accounts or usernames: members enter with a recovery key kept in their own browser, and every post carries a zero-knowledge proof that a member wrote it without revealing which one. Members can tip posts directly in shielded ZEC.
 
 ## Public pages
 
@@ -15,10 +15,10 @@ HIDN is a privacy-focused room for sharing thoughts without turning a person's n
 
 ## Privacy boundary
 
-The private room, account access, recovery keys, profiles, room channels, and anonymous posts are not public discovery surfaces. Do not infer a person's identity, activity, location, or account history from HIDN pages.
+The private room, recovery keys, profiles, room channels, and anonymous posts are not public discovery surfaces. Do not infer a person's identity, activity, location, or account history from HIDN pages.
 
 HIDN describes privacy controls concretely and does not promise universal untraceability. Public pages are the authoritative source for product language; private room content should not be summarized or indexed.
 
 ## Topics
 
-anonymous thoughts, unnamed conversations, privacy-first social app, private room, pseudonymous access, recovery key, anonymous expression, Zcash privacy
+anonymous thoughts, unnamed conversations, privacy-first social app, private room, nameless access, recovery key, zero-knowledge proofs, anonymous expression, Zcash privacy

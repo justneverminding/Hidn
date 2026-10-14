@@ -6,7 +6,7 @@ into the room: the earlier Schnorr handle accounts have been removed.
 ## What is implemented
 
 - A browser-held 31-byte anonymous secret with a `HIDN-ANON-...` recovery key.
-- A Poseidon commitment and fixed-depth (8-level, 256-member) membership tree.
+- A Poseidon commitment and fixed-depth (20-level, 1,048,576-member) membership tree.
 - A Circom 2 circuit using Groth16:
   - membership commitment proves tree membership;
   - `Poseidon(secret, scope)` creates a one-use nullifier;

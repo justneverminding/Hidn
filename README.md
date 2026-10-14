@@ -19,22 +19,23 @@ HIDN is an active pre-release workspace. The package version is currently
 The current build includes:
 
 - A Vite + TypeScript web application served through a Cloudflare Worker.
-- Signal Mode as the first-visit default, with Quiet Mode available from the
-  homepage. The selected theme is remembered locally in the browser.
-- A browser-local recovery-key flow for anonymous room access and a separate
-  pseudonymous account flow.
-- Private room access, profile, session validation, recovery-key reveal, room
-  activity, moderation/report boundaries, and optional Zcash verification.
-- Six rooms: General, Letting Go, Blackbox, Redacted, Night Shift, and The
-  Underground.
-- Anonymous posts, replies, and reactions backed by the anonymous Groth16
-  protocol described below.
-- Free posts and replies capped at 500 characters. Verified access has higher
-  limits in the current UI.
-- Direct shielded testnet TAZ tips from a wallet to a post destination. HIDN
-  does not hold the funds or a spending key.
-- Responsive desktop and mobile layouts, signal-console effects, the Quiet
-  editorial surface, and the shared UI token/effect packages.
+- A terminal-style interface throughout (CRT scanlines, glitch titles, typed
+  text) with the `>hidn▌` logo; a lighter mode for phones and low-power devices.
+- Nameless access only: a recovery key created and kept in the browser. No
+  accounts, usernames, emails or passwords.
+- A private profile with a rotating `ANON-…` name, a time-limited recovery-key
+  reveal, a local tip address and on-device history.
+- Six rooms (General, Letting Go, Blackbox, Redacted, Night Shift and The
+  Underground) as a live terminal feed, plus a 3D museum: a private main room,
+  a hallway, themed rooms that hang real posts, and a library with ZecHub
+  lessons, a wallet kiosk and an in-room learning TV.
+- Anonymous posts, replies, likes and reports backed by the Groth16 protocol
+  described below; posts and replies are capped at 500 characters.
+- Direct shielded mainnet ZEC tips from a member's wallet to a post's address.
+  HIDN never holds the funds or a spending key.
+- Shareable terminal-style thread cards with the signature redacted.
+- A private moderation console behind Cloudflare Access.
+- Zcash verification is planned and shown as "coming soon"; it is not live.
 
 The live Worker deployment is
 [hidn.justneverminding.workers.dev](https://hidn.justneverminding.workers.dev/).

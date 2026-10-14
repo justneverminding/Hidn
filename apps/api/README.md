@@ -1,10 +1,9 @@
 # HIDN API — reserved host boundary
 
-This directory reserves the future `api.hidn.xyz` service boundary. The first
-server-backed account and payment endpoints currently live in
-`apps/web/src/worker.ts` so the static frontend and Cloudflare Worker can ship
-from the same deployment.
+This directory reserves a future standalone API host. The current API lives in
+`apps/web/src/worker.ts`, shipped with the frontend as one Cloudflare Worker:
+nameless membership (`/api/anonymous/*`), posts, replies, likes, reports,
+notifications, moderation, room activity and Zcash network data.
 
-The separate host remains reserved for a later extraction. The current Worker
-boundary is documented in `docs/HIDN-PAYMENTS.md`; it does not make the
-browser-local confession mock a persistent public content API.
+The earlier account and payment endpoints were removed; see
+`docs/HIDN-PAYMENTS.md` for that retired boundary.
