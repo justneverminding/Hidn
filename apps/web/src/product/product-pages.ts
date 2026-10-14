@@ -347,7 +347,11 @@ interface HomeAudioGraph {
 }
 
 const HOME_STREAM_LIMIT = 4;
-const HOME_AUDIO_SRC = "/audio/hidn-recording-source.m4a";
+// The room sound: a three-minute seamless loop built from the story ad's
+// soundtrack (marketing/tools/render-site-ambience.swift). The original
+// 53-second sound is kept at /audio/hidn-recording-source.m4a; point this
+// back at it to switch.
+const HOME_AUDIO_SRC = "/audio/hidn-room-loop.m4a";
 const HOME_AUDIO_SOURCE_VOLUME = 0.55;
 const HOME_AUDIO_MASTER_GAIN = 0.50587;
 const HOME_AUDIO_TEMPO = 54;
@@ -2627,7 +2631,8 @@ function roomPostRandomKey(id: string): number {
 
 type MixedFeedTab = "mixed" | "latest" | "felt";
 const MIXED_FEED_PATH = "/room/feed";
-const MIXED_FEED_RECENT = 150;
+const FEED_PAGE_SIZE = 20;
+const FEED_FETCH_SIZE = 50;
 const MIXED_FEED_REFRESH_MS = 60_000;
 let mixedFeedPosts: RoomPost[] = [];
 let mixedFeedShuffled: RoomPost[] = [];
@@ -2645,29 +2650,49 @@ function shuffled<T>(items: T[]): T[] {
   return copy;
 }
 
+/** Per room: the oldest post loaded so far, and whether there is more. */
+const mixedFeedCursors = new Map<RoomChannel, { oldest: string; done: boolean }>();
+let mixedFeedVisible = FEED_PAGE_SIZE;
+let mixedFeedLoadingMore = false;
+
+function rememberFeedPosts(posts: RoomPost[]): void {
+  for (const post of posts) {
+    if (!roomLikeCounts.has(post.id)) roomLikeCounts.set(post.id, post.reactions);
+    if (post.liked) roomLikedIds.add(post.id);
+  }
+}
+
+function updateMixedCursor(channel: RoomChannel, posts: RoomPost[]): void {
+  const previous = mixedFeedCursors.get(channel);
+  const oldest = posts.length ? posts[posts.length - 1].time : previous?.oldest ?? "";
+  mixedFeedCursors.set(channel, { oldest, done: posts.length < FEED_FETCH_SIZE });
+}
+
+/** First load, and a quiet refresh every minute that only adds new posts on
+ * top, so older pages already loaded stay where the reader left them. */
 async function refreshMixedFeed(force = false): Promise<void> {
   if (!hasRoomSession() || mixedFeedRequest) return mixedFeedRequest;
   if (!force && mixedFeedLoadedAt && Date.now() - mixedFeedLoadedAt < MIXED_FEED_REFRESH_MS) return;
-  mixedFeedRequest = Promise.allSettled(ROOM_CHANNEL_KEYS.map((channel) => fetchAnonymousPosts(channel)))
+  const firstLoad = !mixedFeedLoadedAt;
+  mixedFeedRequest = Promise.allSettled(ROOM_CHANNEL_KEYS.map((channel) => fetchAnonymousPosts(channel, { limit: FEED_FETCH_SIZE })))
     .then((results) => {
-      const posts = results.flatMap((result) => (result.status === "fulfilled" ? result.value.posts : []));
-      if (!posts.length && results.every((result) => result.status === "rejected")) {
-        mixedFeedError = "The rooms could not be reached. Pull to refresh in a moment.";
+      if (results.every((result) => result.status === "rejected")) {
+        mixedFeedError = "The rooms could not be reached. Try again in a moment.";
         return;
       }
-      // Most recent first, then a fresh shuffle of that recent slice.
-      const recent = posts.sort((left, right) => right.time.localeCompare(left.time)).slice(0, MIXED_FEED_RECENT);
-      const known = new Set(mixedFeedShuffled.map((post) => post.id));
-      mixedFeedPosts = recent;
-      // Keep the order people are reading in; new arrivals go on top.
-      const byId = new Map(recent.map((post) => [post.id, post]));
-      mixedFeedShuffled = mixedFeedShuffled.length
-        ? [...recent.filter((post) => !known.has(post.id)), ...mixedFeedShuffled.filter((post) => byId.has(post.id)).map((post) => byId.get(post.id)!)]
-        : shuffled(recent);
-      for (const post of recent) {
-        if (!roomLikeCounts.has(post.id)) roomLikeCounts.set(post.id, post.reactions);
-        if (post.liked) roomLikedIds.add(post.id);
-      }
+      const fetched: RoomPost[] = [];
+      results.forEach((result, index) => {
+        if (result.status !== "fulfilled") return;
+        fetched.push(...result.value.posts);
+        if (firstLoad || !mixedFeedCursors.has(ROOM_CHANNEL_KEYS[index])) updateMixedCursor(ROOM_CHANNEL_KEYS[index], result.value.posts);
+      });
+      const byId = new Map(fetched.map((post) => [post.id, post]));
+      const known = new Set(mixedFeedPosts.map((post) => post.id));
+      const fresh = fetched.filter((post) => !known.has(post.id)).sort((left, right) => right.time.localeCompare(left.time));
+      const refreshed = (post: RoomPost): RoomPost => byId.get(post.id) ?? post;
+      mixedFeedPosts = [...fresh, ...mixedFeedPosts.map(refreshed)];
+      mixedFeedShuffled = firstLoad ? shuffled(fresh) : [...fresh, ...mixedFeedShuffled.map(refreshed)];
+      rememberFeedPosts(fetched);
       mixedFeedError = "";
       mixedFeedLoadedAt = Date.now();
       if (normalizePath(window.location.pathname) === MIXED_FEED_PATH) rerenderProductRoute();
@@ -2676,6 +2701,48 @@ async function refreshMixedFeed(force = false): Promise<void> {
       mixedFeedRequest = undefined;
     });
   return mixedFeedRequest;
+}
+
+function mixedFeedHasMore(): boolean {
+  return mixedFeedVisible < mixedFeedPosts.length || [...mixedFeedCursors.values()].some((cursor) => !cursor.done);
+}
+
+/** Show the next 20; fetch older posts from every room that has more when
+ * the loaded ones run out. Older posts join the end of the list. */
+async function loadMoreMixedFeed(): Promise<void> {
+  if (mixedFeedLoadingMore) return;
+  mixedFeedVisible += FEED_PAGE_SIZE;
+  if (mixedFeedVisible > mixedFeedPosts.length) {
+    const pending = ROOM_CHANNEL_KEYS.filter((channel) => {
+      const cursor = mixedFeedCursors.get(channel);
+      return cursor && !cursor.done && cursor.oldest;
+    });
+    if (pending.length) {
+      mixedFeedLoadingMore = true;
+      rerenderProductRoute();
+      const results = await Promise.allSettled(pending.map((channel) => fetchAnonymousPosts(channel, { before: mixedFeedCursors.get(channel)!.oldest, limit: FEED_FETCH_SIZE })));
+      const older: RoomPost[] = [];
+      results.forEach((result, index) => {
+        if (result.status !== "fulfilled") return;
+        older.push(...result.value.posts);
+        updateMixedCursor(pending[index], result.value.posts);
+      });
+      const known = new Set(mixedFeedPosts.map((post) => post.id));
+      const added = older.filter((post) => !known.has(post.id)).sort((left, right) => right.time.localeCompare(left.time));
+      mixedFeedPosts = [...mixedFeedPosts, ...added];
+      mixedFeedShuffled = [...mixedFeedShuffled, ...shuffled(added)];
+      rememberFeedPosts(added);
+      mixedFeedLoadingMore = false;
+    }
+  }
+  rerenderProductRoute();
+}
+
+function renderLoadMore(action: string, hasMore: boolean, loading: boolean): string {
+  if (!hasMore) {
+    return `<p class="hidn-feed-end">&gt; that's everything. you've reached the start of the room.</p>`;
+  }
+  return `<div class="hidn-feed-more"><button class="room-message__action hidn-feed-more__btn" type="button" data-feed-more="${action}"${loading ? " disabled" : ""}>${loading ? "[ LOADING… ]" : "[ LOAD MORE ]"}</button></div>`;
 }
 
 function mixedFeedRows(): string {
@@ -2694,11 +2761,12 @@ function mixedFeedRows(): string {
     return EmptyState("QUIET FOR NOW", "Nobody has posted yet. Be the first voice in the room.");
   }
   return visible
+    .slice(0, mixedFeedVisible)
     .map((post) => renderTransmissionRow(transmissionViewFromRoomPost(post), {
       href: `/c/${encodeURIComponent(post.id)}`,
       roomLabel: roomChannelOption(post.channel as RoomChannel).label,
     }))
-    .join("");
+    .join("") + renderLoadMore("mixed", mixedFeedHasMore(), mixedFeedLoadingMore);
 }
 
 function renderMixedFeed(): RenderedProductRoute {
@@ -2755,22 +2823,62 @@ function liveRoomPostsForTab(tab: FeedTab): RoomPost[] {
   return posts;
 }
 
+let roomFeedVisible = FEED_PAGE_SIZE;
+let roomFeedVisibleChannel = "";
+let roomFeedLoadingMore = false;
+/** Rooms whose oldest post has been reached. */
+const roomFeedExhausted = new Set<string>();
+
 function renderTransmissionRows(tab: FeedTab): string {
   if (roomPostsLoadedChannel !== activeRoomChannel) {
     return LoadingState("LISTENING TO LIVE ROOM", "Connecting to the current room feed.");
   }
-
-  const rows = liveRoomPostsForTab(tab).map(transmissionViewFromRoomPost);
-  if (!rows.length) {
-    return EmptyState("NO LIVE TRANSMISSIONS", "No posts have been published in this room yet.");
+  if (roomFeedVisibleChannel !== activeRoomChannel) {
+    roomFeedVisibleChannel = activeRoomChannel;
+    roomFeedVisible = FEED_PAGE_SIZE;
   }
 
-  return rows
+  const posts = liveRoomPostsForTab(tab);
+  if (!posts.length) {
+    return EmptyState("NO POSTS YET", "Nobody has posted in this room yet. Be the first.");
+  }
+
+  const hasMore = roomFeedVisible < posts.length || !roomFeedExhausted.has(activeRoomChannel);
+  return posts
+    .slice(0, roomFeedVisible)
+    .map(transmissionViewFromRoomPost)
     .map((transmission) => renderTransmissionRow(
       transmission,
       { href: transmission.id ? `/c/${encodeURIComponent(transmission.id)}` : undefined },
     ))
-    .join("");
+    .join("") + renderLoadMore("room", hasMore, roomFeedLoadingMore);
+}
+
+async function loadMoreRoomFeed(): Promise<void> {
+  if (roomFeedLoadingMore) return;
+  const channel = activeRoomChannel;
+  roomFeedVisible += FEED_PAGE_SIZE;
+  const loaded = roomPosts.filter((post) => post.channel === channel);
+  if (roomFeedVisible > loaded.length && !roomFeedExhausted.has(channel) && loaded.length) {
+    roomFeedLoadingMore = true;
+    rerenderProductRoute();
+    try {
+      const oldest = loaded.reduce((min, post) => (post.time < min ? post.time : min), loaded[0].time);
+      const { posts } = await fetchAnonymousPosts(channel, { before: oldest, limit: FEED_FETCH_SIZE });
+      const known = new Set(roomPosts.map((post) => post.id));
+      roomPosts = [...roomPosts, ...posts.filter((post) => !known.has(post.id))];
+      rememberFeedPosts(posts);
+      if (posts.length < FEED_FETCH_SIZE) roomFeedExhausted.add(channel);
+    } catch {
+      roomFeedVisible -= FEED_PAGE_SIZE;
+    } finally {
+      roomFeedLoadingMore = false;
+    }
+  } else if (roomFeedVisible >= loaded.length && loaded.length < 100) {
+    // The first load already held the whole room.
+    roomFeedExhausted.add(channel);
+  }
+  rerenderProductRoute();
 }
 
 function renderExploreTabs(): string {
@@ -2914,6 +3022,7 @@ async function refreshRoomPosts(force = false): Promise<void> {
         }
       }
       roomPostsLoadedChannel = requestedChannel;
+      if (response.posts.length < 100) roomFeedExhausted.add(requestedChannel);
       roomMuseumPostsByChannel.set(requestedChannel, response.posts);
       roomPostError = "";
       const normalizedPath = normalizePath(window.location.pathname);
@@ -5829,6 +5938,7 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
   root.querySelectorAll<HTMLButtonElement>("[data-feed-tab]").forEach((button) => {
     button.setAttribute("aria-selected", String(button.dataset.feedTab === tab));
   });
+  list.querySelector<HTMLButtonElement>("[data-feed-more]")?.addEventListener("click", () => void loadMoreRoomFeed());
   bindComponentInteractions(list);
   bindRoomLikeInteractions(list);
 }
@@ -6724,6 +6834,11 @@ export function bindProductRoute(root: ParentNode = document): void {
     void refreshMixedFeed();
   }
   watchBottomNavScroll();
+  root.querySelectorAll<HTMLButtonElement>("[data-feed-more]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void (button.dataset.feedMore === "mixed" ? loadMoreMixedFeed() : loadMoreRoomFeed());
+    });
+  });
   // The live "new confession" line runs on the reading pages only.
   const pulsePath = normalizePath(window.location.pathname);
   const memberReading = hasRoomSession() && (pulsePath === MIXED_FEED_PATH || pulsePath === "/room/rooms" || Boolean(roomChannelFeedFromPath(pulsePath)));

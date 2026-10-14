@@ -1586,10 +1586,16 @@ async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise
     return unavailable;
   }
 
-  const channel = new URL(request.url).searchParams.get("channel")?.trim().toLowerCase() ?? "general";
+  const params = new URL(request.url).searchParams;
+  const channel = params.get("channel")?.trim().toLowerCase() ?? "general";
   if (!isRoomChannel(channel)) {
     return jsonResponse({ error: "Choose a valid room channel." }, 400);
   }
+  // Paging: posts strictly older than `before`, up to `limit` at a time.
+  const beforeParam = Date.parse(params.get("before") ?? "");
+  const before = Number.isNaN(beforeParam) ? "9999-12-31T23:59:59.999Z" : new Date(beforeParam).toISOString();
+  const requestedLimit = Number(params.get("limit") ?? "100");
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 100;
 
   const result = await env.ROOM_DB!.prepare(
     `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
@@ -1603,12 +1609,12 @@ async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise
        ON r.target_type = 'thread'
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
-     WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible'
+     WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible' AND t.created_at < ?
      GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
      ORDER BY t.created_at DESC
-     LIMIT 100`,
+     LIMIT ${limit}`,
   )
-    .bind(MAIN_ROOM_ID, channel)
+    .bind(MAIN_ROOM_ID, channel, before)
     .all<RoomPostRow>();
 
   return jsonResponse({ posts: result.results.map(serializeRoomPost), channel }, 200, "no-store");

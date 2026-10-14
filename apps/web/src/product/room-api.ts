@@ -241,8 +241,11 @@ export function enrollAnonymousMember(input: {
   return anonymousRequest<AnonymousEnrollmentResponse>("/api/anonymous/enroll", input);
 }
 
-export function fetchAnonymousPosts(channel: string): Promise<RoomPostsResponse> {
-  return anonymousGet<RoomPostsResponse>(`/api/anonymous/posts?channel=${encodeURIComponent(channel)}`);
+export function fetchAnonymousPosts(channel: string, page: { before?: string; limit?: number } = {}): Promise<RoomPostsResponse> {
+  const query = new URLSearchParams({ channel });
+  if (page.before) query.set("before", page.before);
+  if (page.limit) query.set("limit", String(page.limit));
+  return anonymousGet<RoomPostsResponse>(`/api/anonymous/posts?${query}`);
 }
 
 export function fetchAnonymousThread(threadId: string): Promise<RoomThreadResponse> {
