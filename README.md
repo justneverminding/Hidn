@@ -93,8 +93,8 @@ shell and require their configured administrative access boundary.
 
 ## Anonymous ZK protocol
 
-The current anonymous participation path is a separate protocol from the
-ordinary account credential flow.
+Nameless access is the only way into the room: there are no accounts,
+usernames, emails or passwords.
 
 ### Anonymous room actions
 
@@ -105,7 +105,15 @@ ordinary account credential flow.
   account ID, leaf index, or Merkle witness to the Worker.
 - `Poseidon(secret, scope)` produces a one-use nullifier.
 - `Poseidon(nullifier, message binding)` binds the proof to the exact post,
-  reply, or reaction action.
+  reply, reaction or report.
+- Likes use a scope fixed to the post, so each member can like a post once,
+  while likes on different posts stay unlinkable.
+- Posts, replies and likes store no member alias. Each post and reply carries
+  its own one-off notification key, kept in the browser, so the server cannot
+  group a member's posts together.
+- The `ANON-…` name shown on a member's profile is cosmetic and changes on
+  every login: the server issues a fresh random alias and overwrites the old
+  one, so no label follows a member between visits.
 - A dedicated browser Web Worker runs proof generation locally.
 - The Cloudflare Worker verifies the proof, accepted Merkle root, action
   binding, and nullifier replay state before writing D1 records.

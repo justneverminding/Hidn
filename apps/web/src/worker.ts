@@ -1213,6 +1213,14 @@ async function enrollAnonymousMember(request: Request, env: HidnWorkerEnv): Prom
     } catch {
       return jsonResponse({ error: "That anonymous credential was enrolled concurrently. Try again." }, 409);
     }
+  } else {
+    // A returning member gets a fresh alias every time they enter, and the
+    // old one is overwritten, so no label follows a member between visits.
+    const alias = createNotificationAlias();
+    await env.ROOM_DB!.prepare("UPDATE hidn_anonymous_members SET display_alias = ? WHERE commitment = ?")
+      .bind(alias, commitment)
+      .run();
+    member = { ...member, display_alias: alias };
   }
 
   const snapshot = await anonymousTreeSnapshot(env);
