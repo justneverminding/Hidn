@@ -974,7 +974,8 @@ function renderTransmissionRow(
 
   // Tapping the post itself opens it (replies and the full actions live there).
   const openAttribute = options.href && threadId ? ` data-open-href="${escapeHtml(options.href)}"` : "";
-  return `<article class="transmission-row${className}"${openAttribute}>
+  const openClass = threadId && threadId === deskOpenThreadId ? " transmission-row--open" : "";
+  return `<article class="transmission-row${className}${openClass}"${openAttribute}>
     <div class="transmission-row__meta">
       <span>ANONYMOUS${options.roomLabel ? ` · IN ${escapeHtml(options.roomLabel)}` : ""}</span>
       <time datetime="${escapeHtml(transmission.time)}">${escapeHtml(threadId ? timeAgo(transmission.time) || formatTransmissionTime(transmission.time) : formatTransmissionTime(transmission.time))}</time>
@@ -2502,6 +2503,24 @@ function renderMixedFeed(): RenderedProductRoute {
     metadata: { ...EXPLORE_METADATA, title: "HIDN — Feed", canonicalPath: MIXED_FEED_PATH },
     html: !hasRoomSession()
       ? publicFrame(MIXED_FEED_PATH, renderConnectionLost(), "public-page--explore")
+      : isRoomDesktopViewport()
+      ? publicFrame(
+        MIXED_FEED_PATH,
+        renderDeskRoom(
+          "feed",
+          `<p class="hidn-desk__label">/// FEED</p>
+            <h1 class="type-display-lg hidn-glitch-title" data-text="THE FEED">THE FEED</h1>
+            <p>Recent posts from every room. Tap any post to open it.</p>
+            ${renderKeyReminder(roomAccountRecoveryCode)}`,
+          `<section class="explore-feed" aria-label="Posts from every room">
+            <div class="explore-tabs" role="tablist" aria-label="Feed order">
+              ${tabs.map((tab) => `<button class="explore-tabs__tab" type="button" role="tab" data-mixed-tab="${tab.key}" aria-selected="${activeMixedTab === tab.key}">${tab.label}</button>`).join("")}
+            </div>
+            <div class="explore-feed__list" aria-live="polite">${mixedFeedRows()}</div>
+          </section>`,
+        ),
+        "public-page--explore public-page--mixed-feed public-page--desk",
+      )
       : publicFrame(
         MIXED_FEED_PATH,
         `<main id="main-content" class="public-main explore-main">
@@ -2842,7 +2861,7 @@ async function refreshRoomThread(threadId: string): Promise<void> {
       );
       roomThreadDetailLoaded.add(response.post.id);
       roomThreadDetailErrors.delete(response.post.id);
-      if (roomThreadIdFromPath(normalizePath(window.location.pathname)) === response.post.id) {
+      if (roomThreadIdFromPath(normalizePath(window.location.pathname)) === response.post.id || deskOpenThreadId === response.post.id) {
         rerenderProductRoute();
       }
     })
@@ -2851,7 +2870,7 @@ async function refreshRoomThread(threadId: string): Promise<void> {
         threadId,
         error instanceof Error ? error.message : "The private thread could not be opened.",
       );
-      if (roomThreadIdFromPath(normalizePath(window.location.pathname)) === threadId) {
+      if (roomThreadIdFromPath(normalizePath(window.location.pathname)) === threadId || deskOpenThreadId === threadId) {
         rerenderProductRoute();
       }
     })
@@ -3629,6 +3648,108 @@ function isRoomMobileViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
 }
 
+/** Wide screens get the three-column room: rooms rail, feed, open post. */
+const ROOM_DESKTOP_QUERY = "(min-width: 1100px)";
+
+function isRoomDesktopViewport(): boolean {
+  return typeof window !== "undefined" && window.matchMedia(ROOM_DESKTOP_QUERY).matches;
+}
+
+/** The post open in the desktop side panel, if any. */
+let deskOpenThreadId = "";
+
+// Crossing the desktop width swaps the room between its two layouts.
+if (typeof window !== "undefined") {
+  window.matchMedia(ROOM_DESKTOP_QUERY).addEventListener("change", () => {
+    const path = normalizePath(window.location.pathname);
+    if (path === MIXED_FEED_PATH || roomChannelFeedFromPath(path) || roomChannelFromPath(path)) {
+      rerenderProductRoute();
+    }
+  });
+}
+
+function openDeskThread(threadId: string): void {
+  deskOpenThreadId = threadId;
+  void refreshRoomThread(threadId);
+  rerenderProductRoute();
+}
+
+function renderDeskRail(current: string): string {
+  const channels = visibleRoomChannelOptions();
+  const item = (title: string, description: string) =>
+    `<span class="hidn-desk__rail-title">${escapeHtml(title)}</span><span class="hidn-desk__rail-desc">${escapeHtml(description)}</span>`;
+  return `<nav class="hidn-desk__rail" aria-label="Feed and rooms">
+    <p class="hidn-desk__label">/// WHERE TO</p>
+    <a class="hidn-desk__rail-item${current === "feed" ? " hidn-desk__rail-item--active" : ""}" href="${MIXED_FEED_PATH}"${current === "feed" ? ` aria-current="page"` : ""}>${item("FEED", "every room, newest first")}</a>
+    <p class="hidn-desk__label">/// ROOMS</p>
+    ${channels.map((channel) => `<button class="hidn-desk__rail-item${current === channel.key ? " hidn-desk__rail-item--active" : ""}" type="button" data-room-channel="${channel.key}"${current === channel.key ? ` aria-current="page"` : ""}>${item(channel.label, channel.description)}</button>`).join("")}
+  </nav>`;
+}
+
+function renderDeskThread(post: RoomPost): string {
+  const replies = repliesForThread(post.id);
+  const loading = !roomThreadDetailLoaded.has(post.id) && !roomThreadDetailErrors.has(post.id);
+  const error = roomThreadDetailErrors.get(post.id);
+  const replyCount = replyCountForThread(post.id, post.replies);
+  return `<section class="hidn-desk__card hidn-desk__thread" aria-label="Open post" data-thread-root="${escapeHtml(post.id)}">
+    <div class="hidn-desk__thread-head">
+      <p class="hidn-desk__label">/// ${escapeHtml(roomChannelOption(post.channel as RoomChannel).label)}</p>
+      <button class="hidn-desk__close" type="button" data-desk-close aria-label="Close this post">×</button>
+    </div>
+    <p class="hidn-desk__thread-text">“${escapeHtml(post.text)}”</p>
+    <p class="hidn-desk__meta">ANONYMOUS · ${escapeHtml(timeAgo(post.time) || formatTransmissionTime(post.time))} · ♡ ${reactionCountForThread(post.id, post.reactions)}</p>
+    <div class="hidn-desk__replies">
+      <p class="hidn-desk__label">REPLIES · ${replyCount}</p>
+      ${replies.map((reply) => `<div class="hidn-desk__reply"><p>${escapeHtml(reply.text)}</p><span>ANONYMOUS · ${escapeHtml(reply.time)}</span></div>`).join("")}
+      ${loading && !replies.length && replyCount ? `<p class="hidn-desk__muted">&gt; loading replies…</p>` : ""}
+      ${error ? `<p class="hidn-desk__muted">!! ${escapeHtml(error)}</p>` : ""}
+      ${!replyCount && !loading ? `<p class="hidn-desk__muted">&gt; no replies yet. say something back.</p>` : ""}
+    </div>
+    <label class="hidn-desk__label" for="desk-reply-${escapeHtml(post.id)}">REPLY · NO NAMES</label>
+    <textarea class="hidn-desk__input" id="desk-reply-${escapeHtml(post.id)}" rows="3" maxlength="${roomReplyCharacterLimit()}" placeholder="say it back_" data-thread-input></textarea>
+    <button class="hidn-desk__primary" type="button" data-action="thread-reply"${roomReplySubmitting ? " disabled" : ""}>${roomReplySubmitting ? "PROVING &amp; SENDING…" : "REPLY ANONYMOUSLY"}</button>
+    <a class="hidn-desk__link" href="/c/${encodeURIComponent(post.id)}">OPEN FULL PAGE · QUOTE · REPORT →</a>
+  </section>`;
+}
+
+function renderDeskPanel(): string {
+  const post = deskOpenThreadId ? roomPosts.find((candidate) => candidate.id === deskOpenThreadId) : undefined;
+  if (post && !isModerationHidden("thread", post.id)) {
+    return `<aside class="hidn-desk__panel" aria-label="Open post">${renderDeskThread(post)}</aside>`;
+  }
+  return `<aside class="hidn-desk__panel" aria-label="More">
+    <section class="hidn-desk__card">
+      <p class="hidn-desk__label">/// OPEN A POST</p>
+      <p>Tap any post to read its replies here and answer without leaving the feed.</p>
+    </section>
+    <section class="hidn-desk__card">
+      <p class="hidn-desk__label">/// YOUR PRIVATE LINK</p>
+      <p>People send you messages. They never know it was you, you never know it was them.</p>
+      <a class="hidn-desk__secondary" href="/room/inbox">OPEN INBOX</a>
+    </section>
+    <section class="hidn-desk__card">
+      <p class="hidn-desk__label">/// BUILT ON ZCASH</p>
+      ${renderRoomZcashStatus()}
+      <p class="hidn-desk__muted">Tips go wallet to wallet. HIDN never holds the funds.</p>
+    </section>
+  </aside>`;
+}
+
+/** The desktop room: rooms rail on the left, the feed (header, composer,
+ * sort tabs, posts) in the middle, and the open post on the right. */
+function renderDeskRoom(current: string, header: string, feed: string): string {
+  return `<main id="main-content" class="public-main explore-main hidn-desk">
+    <div class="hidn-desk__grid">
+      ${renderDeskRail(current)}
+      <div class="hidn-desk__center">
+        <header class="explore-header hidn-desk__header">${header}${renderMobilePostSurface()}</header>
+        ${feed}
+      </div>
+      ${renderDeskPanel()}
+    </div>
+  </main>`;
+}
+
 function renderRoomZcashStatus(): string {
   return `<span class="ui-status-indicator zcash-status-carousel" data-zcash-status>${StatusDot("online", true)}<span data-zcash-status-label>BUILT ON ZCASH</span></span>`;
 }
@@ -4190,6 +4311,26 @@ function renderExplore(path = "/room"): string {
       path,
       renderConnectionLost(),
       "public-page--explore",
+    );
+  }
+
+  if (isChannelRoute && isRoomDesktopViewport()) {
+    const care = channelKey ? roomLinkByKey(channelKey)?.note : undefined;
+    return publicFrame(
+      path,
+      renderDeskRoom(
+        channel.key,
+        `<p class="hidn-desk__label">/// ROOM</p>
+          <h1 id="room-channel-title" class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
+          <p>${escapeHtml(headerCopy)}</p>
+          ${care ? `<p class="room-channel-care">${escapeHtml(care)}</p>` : ""}
+          ${renderKeyReminder(roomAccountRecoveryCode)}`,
+        `<section class="explore-feed" aria-labelledby="room-channel-title">
+          ${renderExploreTabs()}
+          <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
+        </section>`,
+      ),
+      "public-page--explore public-page--room-channel public-page--desk",
     );
   }
 
@@ -5784,17 +5925,33 @@ function bindTransmissionRowOpen(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>(".transmission-row[data-open-href]").forEach((row) => {
     row.addEventListener("click", (event) => {
       const target = event.target as HTMLElement | null;
+      const href = row.dataset.openHref;
+      const onDesk = Boolean(row.closest(".hidn-desk"));
+      // On the desktop room the reply link opens the side panel too.
+      const replyLink = target?.closest<HTMLAnchorElement>('a[href^="/c/"]');
+      if (onDesk && replyLink && href) {
+        event.preventDefault();
+        openDeskThread(decodeURIComponent(href.slice("/c/".length)));
+        return;
+      }
       // Buttons and links in the row keep their own job; a text selection
       // (for quoting) is not a tap.
       if (target?.closest("a, button, input, textarea, label")) return;
       if (window.getSelection()?.toString()) return;
-      const href = row.dataset.openHref;
-      if (href) navigateProductRoute(href);
+      if (!href) return;
+      if (onDesk) openDeskThread(decodeURIComponent(href.slice("/c/".length)));
+      else navigateProductRoute(href);
     });
   });
 }
 
 function bindRoomChannelButtons(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-desk-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      deskOpenThreadId = "";
+      rerenderProductRoute();
+    });
+  });
   root.querySelectorAll<HTMLButtonElement>("[data-room-post-channel]").forEach((button) => {
     button.addEventListener("click", () => {
       const key = button.dataset.roomPostChannel as RoomChannel | undefined;

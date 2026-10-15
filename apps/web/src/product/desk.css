@@ -1,0 +1,318 @@
+/* Desktop room (≥1100px): rooms rail, feed, open post.
+ * Only pages rendered with .hidn-desk use these rules; phones and tablets
+ * keep their own layout. */
+
+.hidn-desk {
+  --desk-line: var(--hidn-border, #173a22);
+  --desk-panel: rgba(93, 255, 143, 0.035);
+  --desk-active: rgba(93, 255, 143, 0.08);
+  --desk-dim: #8fbf98;
+}
+
+.hidn-desk .hidn-desk__grid {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) minmax(300px, 380px);
+  gap: 32px;
+  align-items: start;
+  margin: 0 auto;
+  max-width: 1480px;
+  padding: 28px 32px 72px;
+}
+
+/* The tab bar stays pinned at the top; keep the side columns below it. */
+.public-page .public-main.hidn-desk {
+  margin-top: 0;
+}
+
+.hidn-desk .hidn-desk__rail,
+.hidn-desk .hidn-desk__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  position: sticky;
+  top: 72px;
+}
+
+.hidn-desk .hidn-desk__panel {
+  gap: 14px;
+}
+
+.hidn-desk .hidn-desk__label {
+  color: var(--desk-dim);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  margin: 12px 0 4px;
+  text-transform: uppercase;
+}
+
+.hidn-desk .hidn-desk__rail .hidn-desk__label:first-child,
+.hidn-desk .hidn-desk__card .hidn-desk__label:first-child,
+.hidn-desk .hidn-desk__header .hidn-desk__label:first-child {
+  margin-top: 0;
+}
+
+/* Rail items: one per room, the current one marked. */
+.hidn-desk .hidn-desk__rail-item {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--hidn-bone);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--hidn-font-mono);
+  gap: 2px;
+  min-height: 44px;
+  padding: 10px 14px;
+  text-align: left;
+  text-decoration: none;
+  text-transform: none;
+  width: 100%;
+}
+
+.hidn-desk .hidn-desk__rail-item:hover {
+  border-color: var(--desk-line);
+}
+
+.hidn-desk .hidn-desk__rail-item--active {
+  background: var(--desk-active);
+  border-color: var(--desk-line);
+  box-shadow: inset 3px 0 0 var(--hidn-signal);
+}
+
+.hidn-desk .hidn-desk__rail-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hidn-desk .hidn-desk__rail-item--active .hidn-desk__rail-title {
+  color: var(--hidn-signal);
+}
+
+.hidn-desk .hidn-desk__rail-desc {
+  color: var(--desk-dim);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* Centre column: the room header and the posts. */
+.hidn-desk .hidn-desk__center {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.public-page .hidn-desk .hidn-desk__header {
+  border-bottom: 1px solid var(--desk-line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  max-width: none;
+  padding: 0 0 20px;
+}
+
+.hidn-desk .hidn-desk__header h1 {
+  margin: 0;
+}
+
+.public-page .hidn-desk .explore-feed {
+  max-width: none;
+  padding: 0;
+  width: 100%;
+}
+
+.public-page .hidn-desk .explore-tabs {
+  margin: 0 0 4px;
+}
+
+/* Posts read top to bottom here: who and when, then the words, then actions. */
+.public-page.public-page--explore .hidn-desk .explore-feed__list .transmission-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 18px;
+}
+
+.public-page.public-page--explore .hidn-desk .transmission-row__meta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.public-page.public-page--explore .hidn-desk .transmission-row__thought,
+.public-page.public-page--explore .hidn-desk .transmission-row__footer {
+  grid-column: auto;
+  max-width: 62ch;
+}
+
+.hidn-desk .transmission-row[data-open-href]:hover {
+  background: rgba(93, 255, 143, 0.025);
+}
+
+.hidn-desk .transmission-row--open {
+  background: var(--desk-active);
+  box-shadow: inset 3px 0 0 var(--hidn-signal);
+}
+
+
+/* Right column: cards, or the open post with its replies. */
+.hidn-desk .hidn-desk__card {
+  background: var(--desk-panel);
+  border: 1px solid var(--desk-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.hidn-desk .hidn-desk__card p {
+  margin: 0;
+  text-transform: none;
+}
+
+.hidn-desk .hidn-desk__thread {
+  border-color: var(--hidn-signal-soft, #2c6a3e);
+}
+
+.hidn-desk .hidn-desk__thread-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.hidn-desk .hidn-desk__thread-head .hidn-desk__label {
+  margin: 0;
+}
+
+.hidn-desk .hidn-desk__close {
+  background: transparent;
+  border: 1px solid var(--desk-line);
+  color: var(--hidn-bone);
+  cursor: pointer;
+  flex: none;
+  font-size: 1.1rem;
+  height: 44px;
+  width: 44px;
+}
+
+.hidn-desk .hidn-desk__thread-text {
+  color: var(--hidn-bone);
+  font-size: 1.15rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.hidn-desk .hidn-desk__meta,
+.hidn-desk .hidn-desk__muted {
+  color: var(--desk-dim);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+.hidn-desk .hidn-desk__replies {
+  border-top: 1px solid var(--desk-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.hidn-desk .hidn-desk__reply {
+  background: rgba(0, 0, 0, 0.35);
+  border-left: 2px solid var(--hidn-signal-soft, #2c6a3e);
+  padding: 10px 12px;
+}
+
+.hidn-desk .hidn-desk__reply p {
+  color: var(--hidn-bone);
+  overflow-wrap: anywhere;
+}
+
+.hidn-desk .hidn-desk__reply span {
+  color: var(--desk-dim);
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.hidn-desk .hidn-desk__input {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--desk-line);
+  color: var(--hidn-bone);
+  font-family: var(--hidn-font-mono);
+  font-size: 0.95rem;
+  min-height: 84px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.hidn-desk .hidn-desk__primary {
+  background: var(--hidn-signal);
+  border: 0;
+  color: #020604;
+  cursor: pointer;
+  font-family: var(--hidn-font-mono);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  min-height: 44px;
+}
+
+.hidn-desk .hidn-desk__primary:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.hidn-desk .hidn-desk__secondary {
+  align-self: flex-start;
+  border: 1px solid var(--hidn-signal-soft, #2c6a3e);
+  color: var(--hidn-signal);
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--hidn-font-mono);
+  letter-spacing: 0.08em;
+  min-height: 44px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.hidn-desk .hidn-desk__link {
+  color: var(--desk-dim);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+
+.hidn-desk .hidn-desk__link:hover,
+.hidn-desk .hidn-desk__secondary:hover {
+  color: var(--hidn-bone);
+}
+
+/* Older explore rules (some inside media queries) set a two-column grid on
+ * rows and padding on the feed; on the desktop room these win. */
+.public-page.public-page--explore.public-page--desk .hidn-desk .explore-feed__list .transmission-row.transmission-row {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+}
+
+.hidn-desk .explore-feed {
+  padding: 0 !important;
+}
+
+.hidn-desk .hidn-desk__card .zcash-status-carousel {
+  align-self: flex-start;
+  flex: 0 0 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
