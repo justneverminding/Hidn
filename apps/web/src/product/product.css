@@ -18918,3 +18918,83 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 .transmission-row[data-open-href] {
   cursor: pointer;
 }
+
+/* Watcher, real eyes: glossy eyeballs with a green iris and a round pupil that
+ * follows the pointer. They pop out when the watcher opens, blink with a lid,
+ * and widen (pupils dilating) when the visitor points at ENTER THE ROOM. */
+.hidn-watcher__eyes { gap: 16px; padding: 4px 0 2px; }
+.hidn-watcher .hidn-watcher__eye {
+  --hidn-pupil: 34%;
+  animation: none;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .95) 0 9%, transparent 22%),
+    radial-gradient(circle at 50% 52%, #ffffff 0 48%, #e3ece0 66%, #a9b8a6 88%, #6f7f6c 100%);
+  border: 2px solid #0b1a0e;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px rgba(77, 255, 110, .55),
+    0 6px 14px rgba(0, 0, 0, .7),
+    0 0 22px rgba(77, 255, 110, .35),
+    inset 0 -6px 10px rgba(30, 50, 30, .35);
+  clip-path: none;
+  display: grid;
+  filter: none;
+  height: 60px;
+  overflow: hidden;
+  place-items: center;
+  position: relative;
+  transform-origin: 50% 60%;
+  width: 60px;
+}
+.hidn-watcher .hidn-watcher__eye i {
+  background:
+    radial-gradient(circle at 36% 32%, rgba(255, 255, 255, .9) 0 7%, transparent 9%),
+    radial-gradient(circle at 50% 50%, #000 0 var(--hidn-pupil), transparent calc(var(--hidn-pupil) + 1%)),
+    radial-gradient(circle at 50% 50%, #9dffb4 0 38%, #2fd65a 56%, #0c6e27 78%, #052b10 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 0 10px rgba(77, 255, 110, .55);
+  height: 28px;
+  transition: transform .09s linear;
+  width: 28px;
+}
+/* The lid: drops over the eye for a blink. */
+.hidn-watcher .hidn-watcher__eye::after {
+  animation: hidn-eye-lid 5.2s infinite;
+  background: linear-gradient(180deg, #071209 0 86%, #0f2a15 92%, rgba(77, 255, 110, .7) 100%);
+  content: "";
+  inset: 0 0 auto;
+  height: 100%;
+  pointer-events: none;
+  position: absolute;
+  transform: scaleY(0);
+  transform-origin: 50% 0;
+}
+.hidn-watcher .hidn-watcher__eye:nth-child(2)::after { animation-delay: .06s; }
+@keyframes hidn-eye-lid {
+  0%, 90%, 100% { transform: scaleY(0); }
+  93%, 94% { transform: scaleY(1); }
+}
+.hidn-watcher--open .hidn-watcher__eye {
+  animation: hidn-eye-pop .75s cubic-bezier(.25, 1.7, .45, 1) .2s both;
+}
+.hidn-watcher--open .hidn-watcher__eye:nth-child(2) { animation-delay: .32s; }
+@keyframes hidn-eye-pop {
+  0% { transform: scale(0); }
+  55% { transform: scale(1.28); }
+  75% { transform: scale(.94); }
+  100% { transform: scale(1); }
+}
+/* Pointing at the way in: eyes go wide, pupils dilate. */
+.hidn-watcher:has(.hidn-watcher__enter:hover, .hidn-watcher__enter:focus-visible) .hidn-watcher__eye {
+  --hidn-pupil: 44%;
+  transform: scale(1.14);
+  transition: transform .18s cubic-bezier(.25, 1.7, .45, 1);
+}
+.hidn-watcher:has(.hidn-watcher__enter:hover, .hidn-watcher__enter:focus-visible) .hidn-watcher__eye::after {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hidn-watcher .hidn-watcher__eye,
+  .hidn-watcher--open .hidn-watcher__eye,
+  .hidn-watcher .hidn-watcher__eye::after { animation: none; }
+}

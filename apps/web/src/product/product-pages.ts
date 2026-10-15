@@ -3686,30 +3686,40 @@ function renderDeskRail(current: string): string {
   </nav>`;
 }
 
+function renderDeskWindow(title: string, body: string, options: { close?: boolean; className?: string; label?: string; root?: string } = {}): string {
+  return `<section class="hidn-desk__window${options.className ? ` ${options.className}` : ""}"${options.label ? ` aria-label="${escapeHtml(options.label)}"` : ""}${options.root ? ` data-thread-root="${escapeHtml(options.root)}"` : ""}>
+    <div class="hidn-desk__window-bar">
+      <span class="hidn-desk__window-title">${escapeHtml(title)}<span class="hidn-desk__caret" aria-hidden="true">▌</span></span>
+      ${options.close ? `<button class="hidn-desk__window-close" type="button" data-desk-close aria-label="Close this post">[ × ]</button>` : ""}
+    </div>
+    <div class="hidn-desk__window-body">${body}</div>
+  </section>`;
+}
+
 function renderDeskThread(post: RoomPost): string {
   const replies = repliesForThread(post.id);
   const loading = !roomThreadDetailLoaded.has(post.id) && !roomThreadDetailErrors.has(post.id);
   const error = roomThreadDetailErrors.get(post.id);
   const replyCount = replyCountForThread(post.id, post.replies);
-  return `<section class="hidn-desk__card hidn-desk__thread" aria-label="Open post" data-thread-root="${escapeHtml(post.id)}">
-    <div class="hidn-desk__thread-head">
-      <p class="hidn-desk__label">/// ${escapeHtml(roomChannelOption(post.channel as RoomChannel).label)}</p>
-      <button class="hidn-desk__close" type="button" data-desk-close aria-label="Close this post">×</button>
-    </div>
-    <p class="hidn-desk__thread-text">“${escapeHtml(post.text)}”</p>
-    <p class="hidn-desk__meta">ANONYMOUS · ${escapeHtml(timeAgo(post.time) || formatTransmissionTime(post.time))} · ♡ ${reactionCountForThread(post.id, post.reactions)}</p>
+  const reference = post.id.replace(/^THR-/, "").slice(0, 8).toLowerCase();
+  const room = roomChannelOption(post.channel as RoomChannel).label;
+  const body = `
+    <p class="hidn-desk__meta">// ${escapeHtml(room)} · ANONYMOUS · ${escapeHtml((timeAgo(post.time) || formatTransmissionTime(post.time)).toUpperCase())} · ♡ ${reactionCountForThread(post.id, post.reactions)}</p>
+    <p class="hidn-desk__thread-text"><span class="hidn-desk__prompt" aria-hidden="true">&gt;</span> “${escapeHtml(post.text)}”</p>
     <div class="hidn-desk__replies">
-      <p class="hidn-desk__label">REPLIES · ${replyCount}</p>
-      ${replies.map((reply) => `<div class="hidn-desk__reply"><p>${escapeHtml(reply.text)}</p><span>ANONYMOUS · ${escapeHtml(reply.time)}</span></div>`).join("")}
+      <p class="hidn-desk__label">&gt;&gt; REPLIES · ${replyCount}</p>
+      ${replies.map((reply) => `<div class="hidn-desk__reply"><span class="hidn-desk__reply-mark" aria-hidden="true">↳</span><div><p>${escapeHtml(reply.text)}</p><span>ANONYMOUS · ${escapeHtml(reply.time)}</span></div></div>`).join("")}
       ${loading && !replies.length && replyCount ? `<p class="hidn-desk__muted">&gt; loading replies…</p>` : ""}
       ${error ? `<p class="hidn-desk__muted">!! ${escapeHtml(error)}</p>` : ""}
       ${!replyCount && !loading ? `<p class="hidn-desk__muted">&gt; no replies yet. say something back.</p>` : ""}
     </div>
-    <label class="hidn-desk__label" for="desk-reply-${escapeHtml(post.id)}">REPLY · NO NAMES</label>
+    <label class="hidn-desk__label" for="desk-reply-${escapeHtml(post.id)}">&gt; REPLY · NO NAMES</label>
     <textarea class="hidn-desk__input" id="desk-reply-${escapeHtml(post.id)}" rows="3" maxlength="${roomReplyCharacterLimit()}" placeholder="say it back_" data-thread-input></textarea>
-    <button class="hidn-desk__primary" type="button" data-action="thread-reply"${roomReplySubmitting ? " disabled" : ""}>${roomReplySubmitting ? "PROVING &amp; SENDING…" : "REPLY ANONYMOUSLY"}</button>
-    <a class="hidn-desk__link" href="/c/${encodeURIComponent(post.id)}">OPEN FULL PAGE · QUOTE · REPORT →</a>
-  </section>`;
+    <div class="hidn-desk__actions">
+      ${SecondaryButton({ label: roomReplySubmitting ? "[ TRANSMITTING… ]" : "[ REPLY ANONYMOUSLY ]", disabled: roomReplySubmitting, dataAction: "thread-reply" })}
+      <a class="hidn-desk__link" href="/c/${encodeURIComponent(post.id)}">[ FULL PAGE · QUOTE · REPORT ]</a>
+    </div>`;
+  return renderDeskWindow(`hidn://thread/${reference}`, body, { close: true, className: "hidn-desk__thread", label: "Open post", root: post.id });
 }
 
 function renderDeskPanel(): string {
@@ -3718,20 +3728,10 @@ function renderDeskPanel(): string {
     return `<aside class="hidn-desk__panel" aria-label="Open post">${renderDeskThread(post)}</aside>`;
   }
   return `<aside class="hidn-desk__panel" aria-label="More">
-    <section class="hidn-desk__card">
-      <p class="hidn-desk__label">/// OPEN A POST</p>
-      <p>Tap any post to read its replies here and answer without leaving the feed.</p>
-    </section>
-    <section class="hidn-desk__card">
-      <p class="hidn-desk__label">/// YOUR PRIVATE LINK</p>
-      <p>People send you messages. They never know it was you, you never know it was them.</p>
-      <a class="hidn-desk__secondary" href="/room/inbox">OPEN INBOX</a>
-    </section>
-    <section class="hidn-desk__card">
-      <p class="hidn-desk__label">/// BUILT ON ZCASH</p>
-      ${renderRoomZcashStatus()}
-      <p class="hidn-desk__muted">Tips go wallet to wallet. HIDN never holds the funds.</p>
-    </section>
+    ${renderDeskWindow("hidn://open_a_post", `<p><span class="hidn-desk__prompt" aria-hidden="true">&gt;</span> tap any post to read its replies here and answer without leaving the feed.</p>`)}
+    ${renderDeskWindow("hidn://private_link", `<p><span class="hidn-desk__prompt" aria-hidden="true">&gt;</span> people send you messages. they never know it was you, you never know it was them.</p>
+      <div class="hidn-desk__actions"><a class="hidn-desk__link hidn-desk__link--strong" href="/room/inbox">[ OPEN INBOX ]</a></div>`)}
+    ${renderDeskWindow("hidn://zcash", `${renderRoomZcashStatus()}<p class="hidn-desk__muted">tips go wallet to wallet. HIDN never holds the funds.</p>`)}
   </aside>`;
 }
 

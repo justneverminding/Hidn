@@ -1217,12 +1217,23 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
     }
     dirty = true;
   }, events);
+  // Set once a phone proves too slow for the sharper buffer (see animate).
+  let lowResolution = false;
+  function applyPixelRatio(width: number, height: number): void {
+    // Give dense phone screens sharper lettering while bounding the GPU cost
+    // on large displays. Phones (lite) get up to 2x: at 1.25x a 3x screen drew
+    // the room at 40% sharpness, so the posts only read up close. The buffer
+    // stays near 1.3M pixels (about 10 MB); textures are unchanged. A phone
+    // that can't keep up drops back to the old 1.25x.
+    const cap = LITE ? (lowResolution ? 1.25 : 2) : 2.5;
+    const budget = LITE ? (lowResolution ? 1_100_000 : 1_300_000) : 2_400_000;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap, Math.sqrt(budget / (width * height))));
+  }
   const resize = new ResizeObserver(() => {
     const width = host.clientWidth; const height = host.clientHeight;
     if (!width || !height || disposed) return;
-    // Give dense phone screens sharper lettering while bounding the GPU cost
-    // on large displays. Recalculate when the phone rotates or the view resizes.
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, LITE ? 1.25 : 2.5, Math.sqrt((LITE ? 1_100_000 : 2_400_000) / (width * height))));
+    // Recalculate when the phone rotates or the view resizes.
+    applyPixelRatio(width, height);
     renderer.setSize(width, height, false);
     camera.aspect = width / height; camera.updateProjectionMatrix(); dirty = true;
   });
@@ -1293,6 +1304,7 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
   // Frame budget: 45fps on capable hardware, less on phones, and less
   // again when the museum is only the homepage's background.
   const frameInterval = 1000 / (LITE ? (options.ambientLook ? 24 : 30) : 45);
+  let lastRenderTime = 0; let sampledFrames = 0; let slowFrames = 0;
   function animate(time: number): void {
     if (disposed) return;
     if (!host?.isConnected) { dispose(); return; }
@@ -1353,7 +1365,29 @@ export function mountRoomMuseum(root: HTMLElement, posts: MuseumPost[], signal: 
         hoverLook.pitch += (hoverLook.targetPitch - hoverLook.pitch) * .06;
         dirty = true;
       }
-      if (dirty) { updateView(); renderer.render(scene, camera); dirty = false; }
+      if (dirty) {
+        updateView(); renderer.render(scene, camera); dirty = false;
+        // While the view moves frame after frame, count frames that come in
+        // well under the budget (below ~18fps). Mostly slow: lower the
+        // resolution once, for the rest of the visit.
+        if (LITE && !lowResolution) {
+          const gap = time - lastRenderTime;
+          if (gap < 1000) {
+            sampledFrames += 1;
+            if (gap > 55) slowFrames += 1;
+            if (sampledFrames >= 40) {
+              if (slowFrames > 24) {
+                lowResolution = true;
+                applyPixelRatio(host.clientWidth, host.clientHeight);
+                renderer.setSize(host.clientWidth, host.clientHeight, false);
+                dirty = true;
+              }
+              sampledFrames = 0; slowFrames = 0;
+            }
+          }
+          lastRenderTime = time;
+        }
+      }
     }
     animationId = requestAnimationFrame(animate);
   }

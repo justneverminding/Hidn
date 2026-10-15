@@ -86,7 +86,7 @@ export function mountWelcome(root: ParentNode): () => void {
           const dx = event.clientX - (eye.left + eye.width / 2);
           const dy = event.clientY - (eye.top + eye.height / 2);
           const distance = Math.hypot(dx, dy) || 1;
-          const reach = Math.min(1, distance / 200) * eye.width * .22;
+          const reach = Math.min(1, distance / 200) * eye.width * .2;
           pupil.style.transform = `translate(${(dx / distance) * reach}px, ${(dy / distance) * reach}px)`;
         });
       }, { signal: abort.signal });
