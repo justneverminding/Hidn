@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
-const roomApiTarget = process.env.HIDN_ROOM_API_ORIGIN ?? "https://hidn.justneverminding.workers.dev";
+const roomApiTarget = process.env.HIDN_ROOM_API_ORIGIN ?? "https://hidnroom.com";
 const shieldedScanStatusUrl = "https://api.shieldedscan.xyz/v1/status";
 const shieldedScanSupplyUrl = "https://api.shieldedscan.xyz/v1/supply";
 

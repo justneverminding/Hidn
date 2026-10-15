@@ -11,4 +11,4 @@ Disallow: /explore
 Disallow: /c/
 Disallow: /system
 
-Sitemap: https://hidn.justneverminding.workers.dev/sitemap.xml
+Sitemap: https://hidnroom.com/sitemap.xml

@@ -19,7 +19,7 @@ export interface HidnMetadata {
   structuredData?: Record<string, unknown>;
 }
 
-export const PUBLIC_SITE_ORIGIN = "https://hidn.justneverminding.workers.dev";
+export const PUBLIC_SITE_ORIGIN = "https://hidnroom.com";
 
 const HOME_STRUCTURED_DATA: Record<string, unknown> = {
   "@context": "https://schema.org",

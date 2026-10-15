@@ -2,15 +2,15 @@
 <!-- Only intentionally public, canonical informational surfaces are listed. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://hidn.justneverminding.workers.dev/</loc>
+    <loc>https://hidnroom.com/</loc>
   </url>
   <url>
-    <loc>https://hidn.justneverminding.workers.dev/how-it-works</loc>
+    <loc>https://hidnroom.com/how-it-works</loc>
   </url>
   <url>
-    <loc>https://hidn.justneverminding.workers.dev/manifesto</loc>
+    <loc>https://hidnroom.com/manifesto</loc>
   </url>
   <url>
-    <loc>https://hidn.justneverminding.workers.dev/privacy</loc>
+    <loc>https://hidnroom.com/privacy</loc>
   </url>
 </urlset>

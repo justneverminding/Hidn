@@ -8,11 +8,11 @@ HIDN is a privacy-focused room for sharing thoughts without turning a person's n
 
 ## Public pages
 
-- [HIDN home](https://hidn.justneverminding.workers.dev/): the public introduction to HIDN.
-- [How HIDN works](https://hidn.justneverminding.workers.dev/how-it-works): the public access and conversation model.
-- [Read the room](https://hidn.justneverminding.workers.dev/read): a public, read-only feed of recent posts.
-- [HIDN manifesto](https://hidn.justneverminding.workers.dev/manifesto): the product's privacy-first principles.
-- [HIDN privacy](https://hidn.justneverminding.workers.dev/privacy): concrete privacy boundaries and limitations.
+- [HIDN home](https://hidnroom.com/): the public introduction to HIDN.
+- [How HIDN works](https://hidnroom.com/how-it-works): the public access and conversation model.
+- [Read the room](https://hidnroom.com/read): a public, read-only feed of recent posts.
+- [HIDN manifesto](https://hidnroom.com/manifesto): the product's privacy-first principles.
+- [HIDN privacy](https://hidnroom.com/privacy): concrete privacy boundaries and limitations.
 
 ## Privacy boundary
 

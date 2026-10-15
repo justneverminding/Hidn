@@ -19,6 +19,7 @@ const CIPHERSCAN_RECENT_BLOCKS_URL =
 const SHIELDEDSCAN_STATUS_URL = "https://api.shieldedscan.xyz/v1/status";
 const SHIELDEDSCAN_SUPPLY_URL = "https://api.shieldedscan.xyz/v1/supply";
 const MAIN_ROOM_ID = "HIDN-MAIN-ROOM";
+const CANONICAL_ORIGIN = "https://hidnroom.com";
 const ROOM_FREE_POST_MAX_LENGTH = 500;
 const ROOM_FREE_REPLY_MAX_LENGTH = 500;
 const ABUSE_WINDOW_MS = 10 * 60 * 1000;
@@ -3079,6 +3080,18 @@ function crawlerPolicyForHtmlPath(pathname: string): string {
 const worker = {
   async fetch(request: Request, env: HidnWorkerEnv): Promise<Response> {
     const url = new URL(request.url);
+
+    // hidnroom.com is the address. Page visits to www or the old workers.dev
+    // address move there for good, path and all, so shared links keep
+    // working. API calls are served where they land, so a page someone
+    // already has open does not break mid-post.
+    if (
+      (url.hostname === "www.hidnroom.com" || url.hostname.endsWith(".workers.dev"))
+      && (request.method === "GET" || request.method === "HEAD")
+      && !url.pathname.startsWith("/api/")
+    ) {
+      return Response.redirect(`${CANONICAL_ORIGIN}${url.pathname}${url.search}`, 301);
+    }
 
     if (url.pathname === "/api/anonymous/status") {
       if (request.method !== "GET") {

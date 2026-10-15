@@ -2,6 +2,13 @@
   "name": "hidn",
   "main": "./apps/web/src/worker.ts",
   "compatibility_date": "2026-09-29",
+  // The old workers.dev address stays on so links already shared keep
+  // working; the Worker forwards its pages to hidnroom.com.
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "hidnroom.com", "custom_domain": true },
+    { "pattern": "www.hidnroom.com", "custom_domain": true }
+  ],
   "vars": {
     "ANONYMOUS_ZK_ENABLED": "true"
   },

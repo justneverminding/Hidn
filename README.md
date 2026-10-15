@@ -7,10 +7,10 @@ accounts, usernames, emails or passwords: you get a recovery key that stays in
 your browser, and every post carries a zero-knowledge proof that a member
 wrote it, without showing which one.
 
-**Live:** [hidn.justneverminding.workers.dev](https://hidn.justneverminding.workers.dev/)
-· **Read without joining:** [/read](https://hidn.justneverminding.workers.dev/read)
-· **How it works:** [/how-it-works](https://hidn.justneverminding.workers.dev/how-it-works)
-· **Privacy:** [/privacy](https://hidn.justneverminding.workers.dev/privacy)
+**Live:** [hidnroom.com](https://hidnroom.com/)
+· **Read without joining:** [/read](https://hidnroom.com/read)
+· **How it works:** [/how-it-works](https://hidnroom.com/how-it-works)
+· **Privacy:** [/privacy](https://hidnroom.com/privacy)
 
 Built on Zcash. Runs on a Cloudflare Worker with a D1 database
 (configuration in [`wrangler.jsonc`](wrangler.jsonc)).
@@ -40,13 +40,13 @@ Built on Zcash. Runs on a Cloudflare Worker with a D1 database
 
 | Room | About | Share link |
 | --- | --- | --- |
-| General | everything people are saying | [/r/general](https://hidn.justneverminding.workers.dev/r/general) |
-| Things I've Never Told Anyone | say it here first | [/r/never-told-anyone](https://hidn.justneverminding.workers.dev/r/never-told-anyone) |
-| Talk About Your Ex | women and men spill | [/r/talk-about-your-ex](https://hidn.justneverminding.workers.dev/r/talk-about-your-ex) |
-| Ragebait Me | say the take that starts a fight | [/r/ragebait-me](https://hidn.justneverminding.workers.dev/r/ragebait-me) |
-| The Wildest Thing You've Done | no names. no judgment. just tell it | [/r/wildest-thing](https://hidn.justneverminding.workers.dev/r/wildest-thing) |
-| Student Secrets | school, uni, everything in between | [/r/student-secrets](https://hidn.justneverminding.workers.dev/r/student-secrets) |
-| Crypto Confessions | wins, losses, things you'd never tweet | [/r/crypto-confessions](https://hidn.justneverminding.workers.dev/r/crypto-confessions) |
+| General | everything people are saying | [/r/general](https://hidnroom.com/r/general) |
+| Things I've Never Told Anyone | say it here first | [/r/never-told-anyone](https://hidnroom.com/r/never-told-anyone) |
+| Talk About Your Ex | women and men spill | [/r/talk-about-your-ex](https://hidnroom.com/r/talk-about-your-ex) |
+| Ragebait Me | say the take that starts a fight | [/r/ragebait-me](https://hidnroom.com/r/ragebait-me) |
+| The Wildest Thing You've Done | no names. no judgment. just tell it | [/r/wildest-thing](https://hidnroom.com/r/wildest-thing) |
+| Student Secrets | school, uni, everything in between | [/r/student-secrets](https://hidnroom.com/r/student-secrets) |
+| Crypto Confessions | wins, losses, things you'd never tweet | [/r/crypto-confessions](https://hidnroom.com/r/crypto-confessions) |
 
 The room list lives in
 [`apps/web/src/product/room-links.ts`](apps/web/src/product/room-links.ts),
@@ -58,16 +58,16 @@ Public:
 
 | Page | What it is |
 | --- | --- |
-| [`/`](https://hidn.justneverminding.workers.dev/) | Homepage, with a ticker of recent posts |
-| [`/read`](https://hidn.justneverminding.workers.dev/read) | Read-only feed, no key needed |
+| [`/`](https://hidnroom.com/) | Homepage, with a ticker of recent posts |
+| [`/read`](https://hidnroom.com/read) | Read-only feed, no key needed |
 | `/r/<room>` | One room's share link (see [Rooms](#rooms)) |
 | `/to/<name>` | Someone's private link: send them an anonymous message |
-| [`/how-it-works`](https://hidn.justneverminding.workers.dev/how-it-works) | How access and privacy work |
-| [`/manifesto`](https://hidn.justneverminding.workers.dev/manifesto) | HIDN's principles |
-| [`/privacy`](https://hidn.justneverminding.workers.dev/privacy) | Concrete privacy boundaries and limitations |
+| [`/how-it-works`](https://hidnroom.com/how-it-works) | How access and privacy work |
+| [`/manifesto`](https://hidnroom.com/manifesto) | HIDN's principles |
+| [`/privacy`](https://hidnroom.com/privacy) | Concrete privacy boundaries and limitations |
 
 Inside the room (after getting a key at
-[`/room/access`](https://hidn.justneverminding.workers.dev/room/access)):
+[`/room/access`](https://hidnroom.com/room/access)):
 
 | Tab | Route |
 | --- | --- |
