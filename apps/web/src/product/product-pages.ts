@@ -2311,7 +2311,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     : isHome || isRoomCreation
     ? [{ label: "HOW IT WORKS", href: "/how-it-works" }]
     : isHowItWorks
-      ? [{ label: "HOME", href: "/" }]
+      ? [{ label: "BACK TO HOME", href: "/" }]
     : isRoomSurface
       ? [
           { label: "HOW IT WORKS", href: "/how-it-works" },
@@ -5367,6 +5367,88 @@ function placeholderForPath(path: string): PlaceholderPage {
   };
 }
 
+/** How it works, in plain words: the four steps, the extras, why it is
+ * anonymous, and what HIDN can and cannot see. */
+function renderHowItWorks(): RenderedProductRoute {
+  const description = "How HIDN works: get a key, pick a room, say it with no name. What HIDN never sees.";
+  const step = (number: string, title: string, body: string, note = "") => `<li class="hidn-how__step">
+      <span class="hidn-how__num" aria-hidden="true">${number}</span>
+      <div><h3>${title}</h3><p>${body}</p>${note ? `<p class="hidn-how__note">${note}</p>` : ""}</div>
+    </li>`;
+  const extra = (title: string, body: string) => `<div class="hidn-how__card"><h3>${title}</h3><p>${body}</p></div>`;
+  const rooms = roomChannelOptions.map((channel) => escapeHtml(roomLinkByKey(channel.key)?.title ?? channel.label)).join(" · ");
+  return {
+    metadata: {
+      kind: "public-page",
+      title: "HIDN — How it works",
+      description,
+      canonicalPath: "/how-it-works",
+      structuredData: webPageStructuredData("HIDN — How it works", description, "/how-it-works"),
+    },
+    html: publicFrame(
+      "/how-it-works",
+      `<main id="main-content" class="public-main hidn-how">
+        <div class="hidn-how__wrap">
+          <header class="hidn-how__head">
+            ${TerminalLabel("HOW IT WORKS")}
+            <h1>Say it. No names.</h1>
+            <p class="hidn-how__lead">HIDN is a place to say what you can't say anywhere else. Nobody sees who you are: not other people, and not us.</p>
+          </header>
+
+          <section aria-labelledby="hidn-how-steps">
+            <h2 id="hidn-how-steps" class="hidn-how__label">&gt; IN 4 STEPS</h2>
+            <ol class="hidn-how__steps">
+              ${step("01", "Get your key", "Tap ENTER THE ROOM. Your browser makes a key for you. No email, no phone number, no username, no password.", "Save your key. It's the only way back in, and if you lose it, nobody can get it back for you. You stay in for an hour on that tab; after that, paste your key to come back.")}
+              ${step("02", "Pick a room", `Read the FEED, which mixes every room, or pick one: ${rooms}.`)}
+              ${step("03", "Say it", "Write up to 500 characters and post. No name is attached. Links aren't allowed, so say it in words.")}
+              ${step("04", "Talk back", "Reply, like (once per post), or share a post as an image. Everyone stays anonymous, including you.")}
+            </ol>
+          </section>
+
+          <section aria-labelledby="hidn-how-extras">
+            <h2 id="hidn-how-extras" class="hidn-how__label">&gt; ALSO</h2>
+            <div class="hidn-how__cards">
+              ${extra("Your private link", "Get your own link and share it. Anyone can send you an anonymous message through it, up to 120 a day. You read them in INBOX.")}
+              ${extra("Tips in ZEC", "Love a post? Tip it in Zcash, straight from your wallet to theirs. HIDN never touches the money.")}
+              ${extra("The museum", "Walk a 3D gallery where real posts hang on the walls. Open MUSEUM and look around.")}
+            </div>
+          </section>
+
+          <section aria-labelledby="hidn-how-why">
+            <h2 id="hidn-how-why" class="hidn-how__label">&gt; HOW CAN IT BE ANONYMOUS?</h2>
+            <p class="hidn-how__text">When you post, your browser proves you hold a HIDN key without showing which key. This is called a zero-knowledge proof. HIDN can check that a real member posted, but it can't tell which member it was.</p>
+            <p class="hidn-how__text">Your posts aren't linked to each other either, and the ANON name on your profile changes every visit. HIDN is built on Zcash, which uses the same kind of proof to keep payments private.</p>
+          </section>
+
+          <section aria-labelledby="hidn-how-sees">
+            <h2 id="hidn-how-sees" class="hidn-how__label">&gt; WHAT HIDN NEVER SEES</h2>
+            <div class="hidn-how__sees">
+              <div class="hidn-how__col hidn-how__col--never">
+                <ul>
+                  <li>Your name, email or phone number. We never ask.</li>
+                  <li>Which member wrote a post.</li>
+                  <li>Your key. It stays in your browser.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section aria-labelledby="hidn-how-rules">
+            <h2 id="hidn-how-rules" class="hidn-how__label">&gt; HOUSE RULES</h2>
+            <p class="hidn-how__text">No real names of other people. No links. No threats. Anyone can report a post, and reported posts can be hidden. If you're in danger, please reach a local helpline or someone you trust.</p>
+          </section>
+
+          <div class="hidn-how__cta">
+            <a class="hidn-how__btn hidn-how__btn--primary" href="/room/access">[ ENTER THE ROOM ]</a>
+            <a class="hidn-how__btn" href="/read">[ READ FIRST ]</a>
+          </div>
+        </div>
+      </main>`,
+      "public-page--placeholder public-page--how-it-works",
+    ),
+  };
+}
+
 function renderPlaceholder(path: string): RenderedProductRoute {
   const page = placeholderForPath(path);
   const title = path === "/manifesto" ? "Manifesto" : path === "/privacy" ? "Privacy" : "How it works";
@@ -5711,7 +5793,11 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     };
   }
 
-  if (["/manifesto", "/how-it-works", "/privacy"].includes(normalizedPath)) {
+  if (normalizedPath === "/how-it-works") {
+    return renderHowItWorks();
+  }
+
+  if (["/manifesto", "/privacy"].includes(normalizedPath)) {
     return renderPlaceholder(normalizedPath);
   }
 

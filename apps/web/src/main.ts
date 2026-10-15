@@ -3,6 +3,7 @@ import "./product/product.css";
 import "./system/system-page.css";
 import "./product/clarity.css";
 import "./product/desk.css";
+import "./product/how.css";
 
 import { applyMetadata, SYSTEM_METADATA } from "./metadata";
 import { bindProductRoute, disposeProductRoute, renderProductRoute } from "./product/product-pages";
