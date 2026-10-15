@@ -138,6 +138,21 @@ the later anonymous-posting protocol. Private profile history, rotating public
 signals, anonymous nullifiers, and operator-blind retrieval still require a
 separate protocol review and implementation milestone.
 
+## Shipped since Phase 3.0
+
+**Status: live.** Parts of the later milestones below have shipped:
+
+- nameless Groth16 membership proofs on posts, replies, likes and reports
+  (Phase 4 in part; the like scope is a public signal since protocol v2; the
+  multi-party ceremony, relay/Tor and E2E notifications remain open);
+- a private moderation console behind Cloudflare Access, reports and hiding
+  (Phase 5 in part);
+- direct shielded ZEC tips on posts and on private links (Phase 6 in part;
+  Zcash verification and paid link features remain "coming soon");
+- persistent feed, seven rooms with shareable `/r/<slug>` links, `/read`,
+  a 3D museum, private links (`/to/<slug>`, 120 messages a day) and a link
+  block on all user text.
+
 ## Later milestones
 
 The order below is a planning sequence, not permission to implement it during

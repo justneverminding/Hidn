@@ -56,10 +56,14 @@ authentication, secrets, and access controls for it are later work.
   fallback;
 - an internal `/system` visual design-system preview marked noindex and kept
   out of public navigation;
-- public Phase 2 routes at `/`, `/room`, `/explore`, `/c/:id`,
-  `/manifesto`, `/how-it-works`, and `/privacy`;
-- local in-memory mock data for message content and room interactions;
-  - a Worker + D1 Room Access boundary for nameless members: a browser-held
+- public routes at `/`, `/read`, `/r/<slug>`, `/to/<slug>`, `/c/:id`,
+  `/manifesto`, `/how-it-works` and `/privacy`, and room routes under `/room/`
+  (`feed`, `rooms`, `main`, `hall`, `library`, `inbox`, `profile`,
+  `channel/<key>`); `/explore` redirects;
+- persistent content in D1 (`hidn-room`), not mock data;
+- the room list shared by the site and the Worker in
+  `apps/web/src/product/room-links.ts` (the Worker uses it for link previews);
+- a Worker + D1 Room Access boundary for nameless members: a browser-held
   secret, a Poseidon Merkle member tree, and Groth16 membership proofs on every
   post, reply, reaction and report;
 

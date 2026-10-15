@@ -4,12 +4,13 @@
 
 ## What HIDN is
 
-HIDN is a privacy-focused room for sharing thoughts without turning a person's name into the subject. There are no accounts or usernames: members enter with a recovery key kept in their own browser, and every post carries a zero-knowledge proof that a member wrote it without revealing which one. Members can tip posts directly in shielded ZEC.
+HIDN is a privacy-focused room for sharing thoughts without turning a person's name into the subject. There are no accounts or usernames: members enter with a recovery key kept in their own browser, and every post carries a zero-knowledge proof that a member wrote it without revealing which one. Members can tip posts directly in shielded ZEC. Posts live in seven topic rooms (General, Things I've Never Told Anyone, Talk About Your Ex, Ragebait Me, The Wildest Thing You've Done, Student Secrets, Crypto Confessions). Members can also open a private link where anyone can send them an anonymous message. Links are not allowed in posts.
 
 ## Public pages
 
 - [HIDN home](https://hidn.justneverminding.workers.dev/): the public introduction to HIDN.
 - [How HIDN works](https://hidn.justneverminding.workers.dev/how-it-works): the public access and conversation model.
+- [Read the room](https://hidn.justneverminding.workers.dev/read): a public, read-only feed of recent posts.
 - [HIDN manifesto](https://hidn.justneverminding.workers.dev/manifesto): the product's privacy-first principles.
 - [HIDN privacy](https://hidn.justneverminding.workers.dev/privacy): concrete privacy boundaries and limitations.
 
@@ -21,4 +22,4 @@ HIDN describes privacy controls concretely and does not promise universal untrac
 
 ## Topics
 
-anonymous thoughts, unnamed conversations, privacy-first social app, private room, nameless access, recovery key, zero-knowledge proofs, anonymous expression, Zcash privacy
+anonymous thoughts, anonymous confessions, unnamed conversations, anonymous messages, privacy-first social app, private room, nameless access, recovery key, zero-knowledge proofs, anonymous expression, Zcash privacy

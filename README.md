@@ -1,65 +1,154 @@
 # HIDN
 
-HIDN is a privacy-first anonymous expression platform: a private room for
-thoughts, confessions, and conversations without public names.
+**Say it. No names.**
 
-The product is built around a simple boundary:
+HIDN is a privacy-first place for anonymous confessions. There are no
+accounts, usernames, emails or passwords: you get a recovery key that stays in
+your browser, and every post carries a zero-knowledge proof that a member
+wrote it, without showing which one.
 
-**WRITE FREELY / STAY PRIVATE**
+**Live:** [hidn.justneverminding.workers.dev](https://hidn.justneverminding.workers.dev/)
+· **Read without joining:** [/read](https://hidn.justneverminding.workers.dev/read)
+· **How it works:** [/how-it-works](https://hidn.justneverminding.workers.dev/how-it-works)
+· **Privacy:** [/privacy](https://hidn.justneverminding.workers.dev/privacy)
 
-This repository contains the current web product, its Cloudflare Worker and
-D1 room boundary, the nameless anonymous proof flow, and the shared visual
-system.
+Built on Zcash. Runs on a Cloudflare Worker with a D1 database
+(configuration in [`wrangler.jsonc`](wrangler.jsonc)).
 
-## Current build
+> HIDN is pre-release (`0.0.0`) and has not had a security audit. Read
+> [What HIDN does not hide yet](#what-hidn-does-not-hide-yet) before relying
+> on it.
 
-HIDN is an active pre-release workspace. The package version is currently
-`0.0.0`; there is no published semver release yet.
+## What you can do
 
-The current build includes:
+- **Post, reply and like anonymously.** Posts and replies are up to 500
+  characters. Links are not allowed anywhere; say it in words.
+- **Browse the feed.** Recent posts from every room, 20 at a time, with a
+  live pulse that briefly shows new posts (delayed at least two minutes, plus
+  a random wait, so a post can't be matched to the moment it was written).
+- **Pick a room** and share it. Each room has its own link and preview card;
+  someone who opens it and taps SAY IT gets a key and lands in that room.
+- **Get anonymous messages.** Open one private link (`/to/<name>`) and anyone
+  can send you a message, with an optional shielded ZEC tip. Up to 120
+  messages a day. Messages can be shared or saved as images.
+- **Tip in shielded ZEC.** Tips go straight from one wallet to another; HIDN
+  never holds funds or a spending key.
+- **Walk the museum.** A 3D main room, a hallway, themed rooms that hang real
+  posts, and a library with ZecHub lessons, a wallet kiosk and a learning TV.
 
-- A Vite + TypeScript web application served through a Cloudflare Worker.
-- A terminal-style interface throughout (CRT scanlines, glitch titles, typed
-  text) with the `>hidn▌` logo; a lighter mode for phones and low-power devices.
-- Nameless access only: a recovery key created and kept in the browser. No
-  accounts, usernames, emails or passwords.
-- A private profile with a rotating `ANON-…` name, a time-limited recovery-key
-  reveal, a local tip address and on-device history.
-- Seven rooms (General, Talk About Your Ex, Ragebait Me, Crypto Confessions,
-  Things I've Never Told Anyone, The Wildest Thing You've Done and Student
-  Secrets) as a live
-  terminal feed, plus a 3D museum: a private main room,
-  a hallway, themed rooms that hang real posts, and a library with ZecHub
-  lessons, a wallet kiosk and an in-room learning TV.
-- Anonymous posts, replies, likes and reports backed by the Groth16 protocol
-  described below; posts and replies are capped at 500 characters.
-- Direct shielded mainnet ZEC tips from a member's wallet to a post's address.
-  HIDN never holds the funds or a spending key.
-- Shareable terminal-style thread cards with the signature redacted.
-- A private moderation console behind Cloudflare Access.
-- Zcash verification is planned and shown as "coming soon"; it is not live.
+## Rooms
 
-The live Worker deployment is
-[hidn.justneverminding.workers.dev](https://hidn.justneverminding.workers.dev/).
-The repository deployment configuration is in
-[`wrangler.jsonc`](wrangler.jsonc).
+| Room | About | Share link |
+| --- | --- | --- |
+| General | everything people are saying | [/r/general](https://hidn.justneverminding.workers.dev/r/general) |
+| Things I've Never Told Anyone | say it here first | [/r/never-told-anyone](https://hidn.justneverminding.workers.dev/r/never-told-anyone) |
+| Talk About Your Ex | women and men spill | [/r/talk-about-your-ex](https://hidn.justneverminding.workers.dev/r/talk-about-your-ex) |
+| Ragebait Me | say the take that starts a fight | [/r/ragebait-me](https://hidn.justneverminding.workers.dev/r/ragebait-me) |
+| The Wildest Thing You've Done | no names. no judgment. just tell it | [/r/wildest-thing](https://hidn.justneverminding.workers.dev/r/wildest-thing) |
+| Student Secrets | school, uni, everything in between | [/r/student-secrets](https://hidn.justneverminding.workers.dev/r/student-secrets) |
+| Crypto Confessions | wins, losses, things you'd never tweet | [/r/crypto-confessions](https://hidn.justneverminding.workers.dev/r/crypto-confessions) |
 
-This is not a security-audited or universally anonymous release. In
-particular, the current anonymous protocol still needs an independently
-reviewed multi-party Groth16 ceremony, relay or Tor transport, hardened local
-vault storage, end-to-end encrypted notifications, and independent protocol
-review before it should be described as fully anonymous.
+The room list lives in
+[`apps/web/src/product/room-links.ts`](apps/web/src/product/room-links.ts),
+shared by the site and the Worker.
 
-## Run the web app locally
+## Pages
 
-Requirements: Node.js with npm workspaces enabled.
+Public:
+
+| Page | What it is |
+| --- | --- |
+| [`/`](https://hidn.justneverminding.workers.dev/) | Homepage, with a ticker of recent posts |
+| [`/read`](https://hidn.justneverminding.workers.dev/read) | Read-only feed, no key needed |
+| `/r/<room>` | One room's share link (see [Rooms](#rooms)) |
+| `/to/<name>` | Someone's private link: send them an anonymous message |
+| [`/how-it-works`](https://hidn.justneverminding.workers.dev/how-it-works) | How access and privacy work |
+| [`/manifesto`](https://hidn.justneverminding.workers.dev/manifesto) | HIDN's principles |
+| [`/privacy`](https://hidn.justneverminding.workers.dev/privacy) | Concrete privacy boundaries and limitations |
+
+Inside the room (after getting a key at
+[`/room/access`](https://hidn.justneverminding.workers.dev/room/access)):
+
+| Tab | Route |
+| --- | --- |
+| FEED | `/room/feed` (where members land) |
+| ROOMS | `/room/rooms`, one room at `/room/channel/<key>` |
+| MUSEUM | `/room/main`, hallway `/room/hall`, library `/room/library` |
+| INBOX | `/room/inbox`: private-link messages and link settings |
+| ME | `/room/profile`: my posts, recovery key (shown for 20 seconds), settings |
+
+`/explore` redirects into the room. `/c/:id` is a thread page and is not
+indexed. `/system` is an internal design preview. The moderation console is
+behind Cloudflare Access and is not linked anywhere.
+
+## How the anonymity works
+
+- Your browser creates a 31-byte secret. Its recovery key form
+  (`HIDN-ANON-…`) is the only way back in, so save it.
+- The browser sends only a Poseidon **commitment** to that secret, which joins
+  a 20-level Merkle tree (room for 1,048,576 members).
+- Every post, reply, like and report carries a **Groth16 proof**, made in the
+  browser, that the sender's commitment is in the tree. The secret, the leaf
+  position and the Merkle path never leave the browser.
+- `Poseidon(secret, scope)` gives a one-use **nullifier**, so a proof can't be
+  replayed. `Poseidon(nullifier, message)` binds the proof to that exact post,
+  reply, like or report.
+- **One like per post.** A like uses a scope fixed to its post, and the scope
+  is a public signal of the proof (protocol v2), so the Worker checks it: a
+  second like on the same post is refused, while likes on different posts
+  can't be linked to each other.
+- **Posts aren't grouped by person.** Posts, replies and likes store no member
+  name. Each post and reply gets its own one-off notification key, kept in the
+  browser. The `ANON-…` name on your profile is cosmetic and changes on every
+  visit.
+- **Private links:** the inbox opens with a key derived from your recovery
+  key; the server stores only its hash, not which member owns the link.
+
+Where to look in the code:
+
+- Circuit: [`packages/anonymous-zk/circuits/hidn_membership.circom`](packages/anonymous-zk/circuits/hidn_membership.circom)
+- Protocol and Merkle helpers: [`protocol.ts`](packages/anonymous-zk/src/protocol.ts), [`merkle.ts`](packages/anonymous-zk/src/merkle.ts)
+- Browser prover: [`prover.ts`](packages/anonymous-zk/src/prover.ts) in a Web Worker, [`anonymous-proof-worker.ts`](apps/web/src/anonymous-proof-worker.ts)
+- Verifier: [`verifier.ts`](packages/anonymous-zk/src/verifier.ts)
+- Request checks, replay protection, rate limits, link blocking: [`apps/web/src/worker.ts`](apps/web/src/worker.ts)
+- Public proving files: [`public/anonymous-zk/v2/`](public/anonymous-zk/v2/)
+
+### Trusted setup
+
+- **Phase 1:** the public Hermez Powers of Tau
+  (`powersOfTau28_hez_final_15.ptau`). Its BLAKE2b hash matches the value
+  published in the snarkjs README, so it is byte-for-byte the official file.
+- **Phase 2:** one HIDN contribution made with random entropy that was not
+  kept, then a public beacon from Zcash mainnet block 3,518,070
+  (`0000000000585c54…4e964611`). `snarkjs zkey verify` passes against the
+  circuit and the Hermez file.
+
+Phase 2 is single-party, so it is **not yet a multi-party ceremony**. Full
+details are in
+[`docs/HIDN-ANONYMOUS-ZK-MILESTONE.md`](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md).
+
+### What HIDN does not hide yet
+
+- **Your network address and timing.** Requests go straight to Cloudflare;
+  there is no relay or Tor transport yet.
+- **What you write.** The Worker sees post content, public proof signals and
+  normal request metadata.
+- **Notifications and private-link messages** are stored in plain text. They
+  are not end-to-end encrypted, so the operator can read them.
+- **The setup** needs more independent phase-2 contributions, and the
+  protocol needs an independent review, before HIDN should be called fully
+  anonymous.
+
+## Run it locally
+
+Requirements: Node.js with npm workspaces.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Useful checks:
+Checks:
 
 ```bash
 npm run typecheck
@@ -67,118 +156,21 @@ npm run build
 npm run check
 ```
 
-The Vite server uses the Cloudflare Worker origin configured in
-`apps/web/vite.config.ts` for local API proxying. Set
-`HIDN_ROOM_API_ORIGIN` when you need to use a different Worker origin.
+The Vite dev server proxies API calls to the Worker origin set in
+`apps/web/vite.config.ts`. Set `HIDN_ROOM_API_ORIGIN` to use a different one.
 
-## Public routes
-
-| Route | Purpose |
-| --- | --- |
-| `/` | Homepage and Signal/Quiet theme selector |
-| `/room/access` | Create anonymous access, return with a recovery key, or enter the account flow |
-| `/room` | Private room index after access |
-| `/room/channel/general` | General room |
-| `/room/channel/love` | Talk About Your Ex room |
-| `/room/channel/crypto` | Crypto Confessions room |
-| `/room/channel/ragebait` | Ragebait Me room |
-| `/room/channel/underground` | Things I've Never Told Anyone room |
-| `/room/channel/wildest` | The Wildest Thing You've Done room |
-| `/room/channel/students` | Student Secrets room |
-| `/room/profile` | Local profile, recovery-key controls, activity, and optional Zcash verification |
-| `/how-it-works` | Access and privacy explanation |
-| `/manifesto` | HIDN product principles |
-| `/privacy` | Concrete privacy boundaries and limitations |
-
-`/explore` is kept as a compatibility route and redirects to `/room`.
-`/system` is an internal, noindex design-system preview. `/c/:id` is a
-noindex thread-detail surface. Admin routes are not linked from the public
-shell and require their configured administrative access boundary.
-
-## Anonymous ZK protocol
-
-Nameless access is the only way into the room: there are no accounts,
-usernames, emails or passwords.
-
-### Anonymous room actions
-
-- The browser creates and holds a 31-byte anonymous secret.
-- The secret becomes a Poseidon commitment in a 20-level Merkle membership
-  tree with room for 1,048,576 members.
-- Circom 2 and Groth16 prove membership without sending the secret, username,
-  account ID, leaf index, or Merkle witness to the Worker.
-- `Poseidon(secret, scope)` produces a one-use nullifier.
-- `Poseidon(nullifier, message binding)` binds the proof to the exact post,
-  reply, reaction or report.
-- Likes use a scope fixed to the post, so each member can like a post once,
-  while likes on different posts stay unlinkable.
-- Posts, replies and likes store no member alias. Each post and reply carries
-  its own one-off notification key, kept in the browser, so the server cannot
-  group a member's posts together.
-- The `ANON-…` name shown on a member's profile is cosmetic and changes on
-  every login: the server issues a fresh random alias and overwrites the old
-  one, so no label follows a member between visits.
-- A dedicated browser Web Worker runs proof generation locally.
-- The Cloudflare Worker verifies the proof, accepted Merkle root, action
-  binding, and nullifier replay state before writing D1 records.
-
-Source and verification points:
-
-- Circuit: [`packages/anonymous-zk/circuits/hidn_membership.circom`](packages/anonymous-zk/circuits/hidn_membership.circom)
-- Protocol and Merkle helpers: [`packages/anonymous-zk/src/protocol.ts`](packages/anonymous-zk/src/protocol.ts) and [`packages/anonymous-zk/src/merkle.ts`](packages/anonymous-zk/src/merkle.ts)
-- Browser prover: [`packages/anonymous-zk/src/prover.ts`](packages/anonymous-zk/src/prover.ts)
-- Browser proof worker: [`apps/web/src/anonymous-proof-worker.ts`](apps/web/src/anonymous-proof-worker.ts)
-- Worker verifier: [`packages/anonymous-zk/src/verifier.ts`](packages/anonymous-zk/src/verifier.ts)
-- Cloudflare request validation and replay protection: [`apps/web/src/worker.ts`](apps/web/src/worker.ts)
-- Public browser proving assets: [`public/anonymous-zk/`](public/anonymous-zk/)
-
-The Worker still sees the request content, public proof signals, temporary
-display alias, and normal edge request metadata. Without a relay or Tor,
-network address and timing are not hidden from the edge. Anonymous
-notification capabilities are hashed in D1, but notification payloads are not
-currently end-to-end encrypted.
-
-The committed proving key (`public/anonymous-zk/depth20/`) is public browser
-material. The trusted setup for the depth-20 circuit: phase 1 is the public Hermez
-Powers of Tau (`powersOfTau28_hez_final_15.ptau`, BLAKE2b checked against the
-value published in the snarkjs README, and its contribution chain verified
-with `snarkjs powersoftau verify`). Phase 2
-has one HIDN contribution made with random entropy that was not kept, followed
-by a public beacon from Zcash mainnet block 3,515,842
-(`000000000033ba47…6da69e8`); `snarkjs zkey verify` passes against the circuit
-and the Hermez file. Phase 2 is still a single-party contribution, so it is not
-yet a full multi-party ceremony: more independent phase-2 contributions are
-needed before it can be called one. Ceremony toxic waste and all private deployment secrets
-must never be committed.
-
-## Architecture
+The Worker needs:
 
 ```text
-apps/web/
-  Vite frontend
-  Cloudflare Worker API and asset boundary
-
-packages/ui/             shared tokens, typography, effects, and components
-packages/anonymous-zk/   Circom/Groth16 anonymous membership protocol
-packages/privacy/        privacy protocol boundary
-packages/shared/         cross-surface types and vocabulary
-packages/zcash/          reusable Zcash integration boundary
-
-apps/admin/              reserved/private administrative surface
-apps/api/                reserved API extraction boundary
-migrations/              Cloudflare D1 migrations
-public/                  brand assets, metadata, and public ZK assets
-docs/                    product, privacy, brand, architecture, and protocol notes
+ANONYMOUS_ZK_ENABLED=true
+ANONYMOUS_ZK_VERIFICATION_KEY_V2=<JSON verification key, v2>
+ANONYMOUS_ZK_VERIFICATION_KEY=<JSON verification key, v1, for pages loaded before v2>
 ```
 
-The Worker uses the `ROOM_DB` D1 binding for anonymous membership roots,
-nullifiers, posts, replies, reactions, notifications, reports, and moderation
-state. Room access is nameless only: there are no usernames, handles or
-account sessions.
+Keep Worker secrets, admin credentials, spending keys, recovery keys and setup
+entropy out of Git.
 
-## Verify the anonymous protocol locally
-
-Compile the source circuit and run the protocol and proof tests:
+### Test the proof system
 
 ```bash
 npm --workspace @hidn/anonymous-zk run build:circuit
@@ -186,41 +178,41 @@ npm --workspace @hidn/anonymous-zk run test:protocol
 npm --workspace @hidn/anonymous-zk run test:proof
 ```
 
-The proof test generates a real local Groth16 proof and checks that changing
-the public message binding causes verification to fail. Generated circuit
-outputs belong under the ignored `packages/anonymous-zk/build/` directory.
+`test:proof` makes a real Groth16 proof and checks that a tampered message
+binding or scope is rejected. It needs a proving key in
+`packages/anonymous-zk/build/`; generated files there are ignored by Git.
 
-The anonymous Worker configuration requires the public protocol switch and a
-JSON verification key:
+## Repository
 
 ```text
-ANONYMOUS_ZK_ENABLED=true
-ANONYMOUS_ZK_VERIFICATION_KEY=<JSON verification key>
+apps/web/                Vite frontend and the Cloudflare Worker (API + assets)
+packages/anonymous-zk/   Circom/Groth16 membership circuit, prover, verifier
+packages/ui/             shared tokens, typography, effects, components
+packages/shared/         cross-surface types and vocabulary
+packages/privacy/        privacy protocol boundary
+packages/zcash/          Zcash integration boundary
+apps/admin/, apps/api/   reserved
+migrations/              D1 migrations (database `hidn-room`)
+public/                  brand assets, metadata, public proving files
+docs/                    product, privacy, brand, architecture, protocol notes
+marketing/               ad and image renderers
 ```
 
-Keep Worker secrets, admin credentials, RPC credentials, spending keys,
-recovery keys, and ceremony secrets outside Git.
+D1 holds membership roots, nullifiers, posts, replies, likes, notifications,
+reports, private links and their messages, and moderation state. There are no
+user accounts.
 
-## Zcash and payment boundary
+## Docs
 
-HIDN keeps Zcash optional. Ordinary room use does not require a wallet. The
-room tip surface sends ZEC directly between members' shielded wallets; HIDN
-never holds funds. Zcash verification is planned; see
-[`docs/HIDN-MAINNET-ZCASH-VERIFICATION-MILESTONE.md`](docs/HIDN-MAINNET-ZCASH-VERIFICATION-MILESTONE.md).
+Read the relevant one before changing the product, privacy claims,
+architecture or visuals:
 
-## Source-of-truth documentation
+- [Product](docs/HIDN-PRODUCT.md) · [Privacy](docs/HIDN-PRIVACY.md) ·
+  [Architecture](docs/HIDN-ARCHITECTURE.md) · [Brand](docs/HIDN-BRAND.md) ·
+  [Roadmap](docs/HIDN-ROADMAP.md)
+- [Anonymous ZK protocol](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md) ·
+  [Zcash verification (planned)](docs/HIDN-MAINNET-ZCASH-VERIFICATION-MILESTONE.md) ·
+  [Old account/payment design (retired)](docs/HIDN-PAYMENTS.md)
 
-Before changing the product, privacy claims, architecture, or visual system,
-read the relevant documents in `docs/`:
-
-- [`HIDN-PRODUCT.md`](docs/HIDN-PRODUCT.md)
-- [`HIDN-BRAND.md`](docs/HIDN-BRAND.md)
-- [`HIDN-PRIVACY.md`](docs/HIDN-PRIVACY.md)
-- [`HIDN-ARCHITECTURE.md`](docs/HIDN-ARCHITECTURE.md)
-- [`HIDN-ANONYMOUS-ZK-MILESTONE.md`](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md)
-- [`HIDN-PAYMENTS.md`](docs/HIDN-PAYMENTS.md)
-- [`HIDN-ROADMAP.md`](docs/HIDN-ROADMAP.md)
-
-The HIDN logo is the prompt mark `>hidn▌`; its files live in
-[`public/brand/`](public/brand/), and the original reference artwork is kept
-unchanged in `public/brand/references/`.
+The logo is the prompt mark `>hidn▌`; its files are in
+[`public/brand/`](public/brand/).

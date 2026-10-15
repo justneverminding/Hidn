@@ -409,8 +409,8 @@ function createAnonymousProofInWorker(input: AnonymousCircuitInput): Promise<Ano
     return Promise.reject(new Error("This browser cannot generate the anonymous proof locally."));
   }
 
-  const wasmUrl = new URL("/anonymous-zk/depth20/hidn_membership.wasm", window.location.origin).toString();
-  const zkeyUrl = new URL("/anonymous-zk/depth20/hidn_membership_final.zkey", window.location.origin).toString();
+  const wasmUrl = new URL("/anonymous-zk/v2/hidn_membership.wasm", window.location.origin).toString();
+  const zkeyUrl = new URL("/anonymous-zk/v2/hidn_membership_final.zkey", window.location.origin).toString();
 
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../anonymous-proof-worker.ts", import.meta.url), { type: "module" });
@@ -962,8 +962,9 @@ function renderTransmissionRow(
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasRoomSession() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
-        <a class="room-message__action" href="${escapeHtml(options.href)}">↳ ${replyCount} ${replyCount === 1 ? "REPLY" : "REPLIES"}</a>
+        <a class="room-message__action" href="${escapeHtml(options.href)}">↳ ${replyCount ? `${replyCount} ${replyCount === 1 ? "REPLY" : "REPLIES"}` : "REPLY"}</a>
         <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE</button>
+        <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE</button>
         ${tipAction}
         <span class="thread-share-status" data-share-status="${escapeHtml(threadId)}" role="status" aria-live="polite"></span>
       </div>`
@@ -971,7 +972,9 @@ function renderTransmissionRow(
       ? `<a class="transmission-row__view" href="${escapeHtml(options.href)}">OPEN <span aria-hidden="true">→</span></a>`
       : "";
 
-  return `<article class="transmission-row${className}">
+  // Tapping the post itself opens it (replies and the full actions live there).
+  const openAttribute = options.href && threadId ? ` data-open-href="${escapeHtml(options.href)}"` : "";
+  return `<article class="transmission-row${className}"${openAttribute}>
     <div class="transmission-row__meta">
       <span>ANONYMOUS${options.roomLabel ? ` · IN ${escapeHtml(options.roomLabel)}` : ""}</span>
       <time datetime="${escapeHtml(transmission.time)}">${escapeHtml(threadId ? timeAgo(transmission.time) || formatTransmissionTime(transmission.time) : formatTransmissionTime(transmission.time))}</time>
@@ -5680,8 +5683,14 @@ function renderExploreFeed(root: ParentNode, tab: FeedTab): void {
     button.setAttribute("aria-selected", String(button.dataset.feedTab === tab));
   });
   list.querySelector<HTMLButtonElement>("[data-feed-more]")?.addEventListener("click", () => void loadMoreRoomFeed());
+  // The rows are new elements: give them back their share, save, tip and
+  // open-on-tap handlers, not just likes.
+  list.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
+    button.addEventListener("click", () => handleRoomAction(root, button));
+  });
   bindComponentInteractions(list);
   bindRoomLikeInteractions(list);
+  bindTransmissionRowOpen(list);
 }
 
 async function toggleRoomLike(root: ParentNode, button: HTMLButtonElement): Promise<void> {
@@ -5767,6 +5776,25 @@ function bindRoomLikeInteractions(root: ParentNode): void {
 }
 
 function bindRoomChannelInteractions(root: ParentNode): void {
+  bindTransmissionRowOpen(root);
+  bindRoomChannelButtons(root);
+}
+
+function bindTransmissionRowOpen(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>(".transmission-row[data-open-href]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement | null;
+      // Buttons and links in the row keep their own job; a text selection
+      // (for quoting) is not a tap.
+      if (target?.closest("a, button, input, textarea, label")) return;
+      if (window.getSelection()?.toString()) return;
+      const href = row.dataset.openHref;
+      if (href) navigateProductRoute(href);
+    });
+  });
+}
+
+function bindRoomChannelButtons(root: ParentNode): void {
   root.querySelectorAll<HTMLButtonElement>("[data-room-post-channel]").forEach((button) => {
     button.addEventListener("click", () => {
       const key = button.dataset.roomPostChannel as RoomChannel | undefined;
@@ -6412,6 +6440,348 @@ function resetRoomHallView(root: ParentNode): void {
   updateRoomHallZoom(root, 1);
 }
 
+function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
+  switch (button.dataset.action) {
+    case "report-open": {
+      const targetType = button.dataset.reportTargetType;
+      if (targetType !== "thread" && targetType !== "reply" && targetType !== "account") {
+        break;
+      }
+
+      activeReportTarget = {
+        targetType,
+        targetId: button.dataset.reportTargetId ?? "",
+        targetExcerpt: button.dataset.reportTargetExcerpt ?? "",
+        label: button.dataset.reportTargetLabel ?? "REPORTED SURFACE",
+      };
+      roomReportReason = "spam";
+      roomReportDetails = "";
+      roomReportFeedback = "";
+      rerenderProductRoute();
+      break;
+    }
+    case "report-close":
+      activeReportTarget = undefined;
+      roomReportFeedback = "";
+      roomReportDetails = "";
+      roomReportSubmitting = false;
+      rerenderProductRoute();
+      break;
+    case "report-submit": {
+      const reason = root.querySelector<HTMLInputElement>('input[name="hidn-report-reason"]:checked')?.value ?? "";
+      const details = root.querySelector<HTMLTextAreaElement>("#hidn-report-details")?.value.trim() ?? "";
+      if (!REPORT_REASON_OPTIONS.some((option) => option.value === reason)) {
+        roomReportFeedback = "Choose a report reason before sending.";
+        rerenderProductRoute();
+        break;
+      }
+
+      roomReportReason = reason as ReportReason;
+      roomReportDetails = details;
+      void submitActiveReport();
+      break;
+    }
+    case "admin-reports-load": {
+      const token = root.querySelector<HTMLInputElement>("#admin-report-token")?.value.trim() ?? "";
+      if (token) {
+        adminReportToken = token;
+      }
+      const filter = root.querySelector<HTMLSelectElement>("#admin-report-filter")?.value ?? adminReportFilter;
+      if (filter === "all" || filter === "open" || filter === "reviewed" || filter === "dismissed" || filter === "actioned") {
+        adminReportFilter = filter;
+      }
+      void loadAdminReports();
+      break;
+    }
+    case "admin-reports-clear":
+      adminReportToken = "";
+      adminReports = undefined;
+      adminReportError = "";
+      adminReportFilter = "all";
+      rerenderProductRoute();
+      break;
+    case "admin-report-update":
+      void updateAdminReportFromRoot(button);
+      break;
+    case "admin-report-moderate":
+      void moderateAdminContentFromRoot(button);
+      break;
+    case "admin-moderator-create":
+      void createAdminModeratorFromRoot(root);
+      break;
+    case "admin-moderator-update":
+      void updateAdminModeratorFromRoot(button);
+      break;
+    case "admin-moderator-disable":
+      void updateAdminModeratorFromRoot(button, true);
+      break;
+    case "selection-save":
+      if (activeTextSelection) {
+        void shareSelectedTexts(root, [activeTextSelection], "save");
+      }
+      break;
+    case "selection-share":
+      if (activeTextSelection) {
+        void shareSelectedTexts(root, [activeTextSelection], "share");
+      }
+      break;
+    case "selection-add":
+      if (activeTextSelection) {
+        const alreadySelected = selectedTextBatch.some(
+          (item) => item.id === activeTextSelection?.id && item.text === activeTextSelection.text,
+        );
+        if (!alreadySelected) {
+          selectedTextBatch = [...selectedTextBatch, activeTextSelection];
+        }
+        updateSelectionBatch(root);
+        setSelectionStatus(root, `${selectedTextBatch.length} TEXT SIGNAL${selectedTextBatch.length === 1 ? "" : "S"} READY`);
+      }
+      break;
+    case "selection-batch-share":
+      if (selectedTextBatch.length) {
+        void shareSelectedTexts(root, [...selectedTextBatch], "share");
+      }
+      break;
+    case "selection-batch-clear":
+      selectedTextBatch = [];
+      updateSelectionBatch(root);
+      setSelectionStatus(root, "TEXT BATCH CLEARED");
+      break;
+    case "selection-close":
+      activeTextSelection = undefined;
+      hideSelectionTools(root);
+      break;
+    case "home-invite-close": {
+      stopHomeInvite();
+      const invite = root.querySelector<HTMLElement>("[data-home-invite]");
+      if (invite) {
+        invite.hidden = true;
+        invite.dataset.state = "dismissed";
+        scheduleHomeInvite(root, 30000);
+      }
+      break;
+    }
+    case "room-tip": {
+      const threadId = button.dataset.threadId ?? "";
+      const post = roomPosts.find((candidate) => candidate.id === threadId);
+      if (!post?.tipAddress) {
+        roomChannelNotice = "THIS POST DOES NOT HAVE A SHIELDED MAINNET DESTINATION.";
+        rerenderProductRoute();
+        break;
+      }
+
+      roomTipPostId = threadId;
+      roomTipCopyFeedback = "";
+      roomTipAddressCopyFeedback = "";
+      rerenderProductRoute();
+      break;
+    }
+    case "room-tip-close":
+      roomTipPostId = "";
+      roomTipCopyFeedback = "";
+      roomTipAddressCopyFeedback = "";
+      rerenderProductRoute();
+      break;
+    case "room-tip-copy":
+      void copyRoomTipRequest(button);
+      break;
+    case "room-tip-copy-address":
+      void copyRoomTipAddress(button);
+      break;
+    case "room-tip-address-save":
+      void saveRoomTipAddressFromRoot(root);
+      break;
+    case "room-menu-toggle": {
+      const menu = button.closest<HTMLElement>("[data-room-menu]");
+      const panel = menu?.querySelector<HTMLElement>(".room-menu__panel");
+      if (!panel) {
+        break;
+      }
+
+      const isOpen = !panel.hidden;
+      panel.hidden = isOpen;
+      button.setAttribute("aria-expanded", String(!isOpen));
+      button.setAttribute("aria-label", isOpen ? "Open private room menu" : "Close private room menu");
+      menu?.classList.toggle("room-menu--open", !isOpen);
+      break;
+    }
+    case "room-notifications-toggle":
+      roomNotificationsOpen = !roomNotificationsOpen;
+      if (roomNotificationsOpen) {
+        void refreshAccountNotifications();
+      }
+      rerenderProductRoute();
+      break;
+    case "room-notifications-read":
+      void markRoomNotificationsRead();
+      break;
+    case "profile-view":
+      profileView = (button.dataset.view as ProfileView) ?? "posts";
+      rerenderProductRoute();
+      break;
+    case "profile-history":
+      profileHistoryView = button.dataset.view === "comments" ? "comments" : "posts";
+      rerenderProductRoute();
+      break;
+    case "room-key-show":
+      revealRoomRecoveryKeyTemporarily();
+      rerenderProductRoute();
+      break;
+    case "room-recovery-open":
+      openRoomRecoveryCheck();
+      break;
+    case "room-recovery-cancel":
+      resetRoomRecoveryReveal();
+      rerenderProductRoute();
+      break;
+    case "room-recovery-submit": {
+      void verifyRoomRecoveryCheck(root);
+      break;
+    }
+    case "room-open-verification":
+      roomVerificationNoticeOpen = true;
+      rerenderProductRoute(true);
+      break;
+    case "room-verification-notice-close":
+      roomVerificationNoticeOpen = false;
+      rerenderProductRoute();
+      break;
+    case "room-create":
+      roomAccessMode = "create";
+      roomLoginError = "";
+      rerenderProductRoute();
+      break;
+    case "room-login":
+      roomAccessMode = "login";
+      roomLoginError = "";
+      roomLoginSubmitting = false;
+      rerenderProductRoute();
+      break;
+    case "room-back":
+      clearRoomSession();
+      roomAccessMode = "choose";
+      rerenderProductRoute();
+      break;
+    case "room-create-account": {
+      if (roomAnonymousSubmitting) {
+        break;
+      }
+
+      roomAnonymousSubmitting = true;
+      roomLoginError = "";
+      rerenderProductRoute();
+      void registerAnonymousRoomAccess();
+      break;
+    }
+    case "room-login-saved": {
+      void readSavedKey().then((key) => {
+        const input = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
+        if (!key || !input) {
+          roomLoginError = "No saved key found in this browser. Paste the key you kept instead.";
+          rerenderProductRoute();
+          return;
+        }
+        input.value = key;
+        root.querySelector<HTMLButtonElement>('[data-action="room-submit-login"]')?.click();
+      });
+      break;
+    }
+    case "room-submit-login": {
+      if (roomLoginSubmitting || roomAnonymousSubmitting) {
+        break;
+      }
+
+      const recoveryInput = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
+      const recoveryCode = recoveryInput?.value.trim() ?? "";
+      if (!/^HIDN-ANON-[A-F0-9-]+$/i.test(recoveryCode)) {
+        roomLoginError = "Enter the HIDN-ANON recovery key you saved before continuing.";
+        rerenderProductRoute();
+        break;
+      }
+
+      roomLoginError = "";
+      roomLoginSubmitting = true;
+      roomAnonymousSubmitting = true;
+      rerenderProductRoute();
+      void registerAnonymousRoomAccess(recoveryCode);
+      break;
+    }
+    case "room-enter":
+      navigateIntoRoom(ROOM_HOME_PATH, { portal: true });
+      break;
+    case "room-refresh":
+      void refreshActiveRoom();
+      break;
+    case "room-profile-back":
+      navigateProductRoute(ROOM_HOME_PATH);
+      break;
+    case "room-copy-recovery-key":
+      void copyRoomRecoveryKey(button);
+      break;
+    case "room-create-post":
+      if (!hasRoomSession()) {
+        navigateProductRoute("/room/access");
+        break;
+      }
+
+      roomPostComposerOpen = true;
+      roomPostTipsEnabled = false;
+      roomPostTipAddressDraft = roomTipAddress;
+      roomPostTipAddressEdited = false;
+      roomPostError = "";
+      roomChannelNotice = "";
+      void refreshRoomTipAddress();
+      rerenderProductRoute();
+      break;
+    case "room-post-cancel":
+      roomPostComposerOpen = false;
+      roomPostText = "";
+      roomPostTipsEnabled = false;
+      roomPostTipAddressDraft = "";
+      roomPostTipAddressEdited = false;
+      roomPostError = "";
+      rerenderProductRoute();
+      break;
+    case "room-post-submit": {
+      roomPostText = root.querySelector<HTMLTextAreaElement>("#room-post-content")?.value ?? roomPostText;
+      roomPostTipsEnabled = root.querySelector<HTMLInputElement>("#room-post-allow-tips")?.checked ?? roomPostTipsEnabled;
+      roomPostTipAddressDraft = root.querySelector<HTMLInputElement>("#room-post-tip-address")?.value ?? roomPostTipAddressDraft;
+      void submitRoomPost();
+      break;
+    }
+    case "thread-reply": {
+      if (!hasRoomSession()) {
+        break;
+      }
+
+      const threadRoot = button.closest<HTMLElement>("[data-thread-root]");
+      const input = threadRoot?.querySelector<HTMLTextAreaElement>("[data-thread-input]");
+      const value = input?.value.trim() ?? "";
+      if (!threadRoot || !value) {
+        input?.focus();
+        break;
+      }
+
+      const threadId = threadRoot.dataset.threadRoot;
+      if (threadId) {
+        void submitRoomReply(threadId, value);
+      }
+      break;
+    }
+    case "thread-save-image":
+      void shareThreadImage(root, button.dataset.threadId ?? "", "save", replyIndexFromButton(button));
+      break;
+    case "thread-share-image":
+      void shareThreadImage(root, button.dataset.threadId ?? "", "share", replyIndexFromButton(button));
+      break;
+    case "thread-x-share":
+      void shareThreadImage(root, button.dataset.threadId ?? "", "x", replyIndexFromButton(button));
+      break;
+    default:
+      break;
+  }
+}
+
 function bindRoomHallInteractions(root: ParentNode): void {
   const hall = root.querySelector<HTMLElement>("[data-room-hall]");
   if (!hall) {
@@ -6771,347 +7141,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   }
 
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => {
-      switch (button.dataset.action) {
-        case "report-open": {
-          const targetType = button.dataset.reportTargetType;
-          if (targetType !== "thread" && targetType !== "reply" && targetType !== "account") {
-            break;
-          }
-
-          activeReportTarget = {
-            targetType,
-            targetId: button.dataset.reportTargetId ?? "",
-            targetExcerpt: button.dataset.reportTargetExcerpt ?? "",
-            label: button.dataset.reportTargetLabel ?? "REPORTED SURFACE",
-          };
-          roomReportReason = "spam";
-          roomReportDetails = "";
-          roomReportFeedback = "";
-          rerenderProductRoute();
-          break;
-        }
-        case "report-close":
-          activeReportTarget = undefined;
-          roomReportFeedback = "";
-          roomReportDetails = "";
-          roomReportSubmitting = false;
-          rerenderProductRoute();
-          break;
-        case "report-submit": {
-          const reason = root.querySelector<HTMLInputElement>('input[name="hidn-report-reason"]:checked')?.value ?? "";
-          const details = root.querySelector<HTMLTextAreaElement>("#hidn-report-details")?.value.trim() ?? "";
-          if (!REPORT_REASON_OPTIONS.some((option) => option.value === reason)) {
-            roomReportFeedback = "Choose a report reason before sending.";
-            rerenderProductRoute();
-            break;
-          }
-
-          roomReportReason = reason as ReportReason;
-          roomReportDetails = details;
-          void submitActiveReport();
-          break;
-        }
-        case "admin-reports-load": {
-          const token = root.querySelector<HTMLInputElement>("#admin-report-token")?.value.trim() ?? "";
-          if (token) {
-            adminReportToken = token;
-          }
-          const filter = root.querySelector<HTMLSelectElement>("#admin-report-filter")?.value ?? adminReportFilter;
-          if (filter === "all" || filter === "open" || filter === "reviewed" || filter === "dismissed" || filter === "actioned") {
-            adminReportFilter = filter;
-          }
-          void loadAdminReports();
-          break;
-        }
-        case "admin-reports-clear":
-          adminReportToken = "";
-          adminReports = undefined;
-          adminReportError = "";
-          adminReportFilter = "all";
-          rerenderProductRoute();
-          break;
-        case "admin-report-update":
-          void updateAdminReportFromRoot(button);
-          break;
-        case "admin-report-moderate":
-          void moderateAdminContentFromRoot(button);
-          break;
-        case "admin-moderator-create":
-          void createAdminModeratorFromRoot(root);
-          break;
-        case "admin-moderator-update":
-          void updateAdminModeratorFromRoot(button);
-          break;
-        case "admin-moderator-disable":
-          void updateAdminModeratorFromRoot(button, true);
-          break;
-        case "selection-save":
-          if (activeTextSelection) {
-            void shareSelectedTexts(root, [activeTextSelection], "save");
-          }
-          break;
-        case "selection-share":
-          if (activeTextSelection) {
-            void shareSelectedTexts(root, [activeTextSelection], "share");
-          }
-          break;
-        case "selection-add":
-          if (activeTextSelection) {
-            const alreadySelected = selectedTextBatch.some(
-              (item) => item.id === activeTextSelection?.id && item.text === activeTextSelection.text,
-            );
-            if (!alreadySelected) {
-              selectedTextBatch = [...selectedTextBatch, activeTextSelection];
-            }
-            updateSelectionBatch(root);
-            setSelectionStatus(root, `${selectedTextBatch.length} TEXT SIGNAL${selectedTextBatch.length === 1 ? "" : "S"} READY`);
-          }
-          break;
-        case "selection-batch-share":
-          if (selectedTextBatch.length) {
-            void shareSelectedTexts(root, [...selectedTextBatch], "share");
-          }
-          break;
-        case "selection-batch-clear":
-          selectedTextBatch = [];
-          updateSelectionBatch(root);
-          setSelectionStatus(root, "TEXT BATCH CLEARED");
-          break;
-        case "selection-close":
-          activeTextSelection = undefined;
-          hideSelectionTools(root);
-          break;
-        case "home-invite-close": {
-          stopHomeInvite();
-          const invite = root.querySelector<HTMLElement>("[data-home-invite]");
-          if (invite) {
-            invite.hidden = true;
-            invite.dataset.state = "dismissed";
-            scheduleHomeInvite(root, 30000);
-          }
-          break;
-        }
-        case "room-tip": {
-          const threadId = button.dataset.threadId ?? "";
-          const post = roomPosts.find((candidate) => candidate.id === threadId);
-          if (!post?.tipAddress) {
-            roomChannelNotice = "THIS POST DOES NOT HAVE A SHIELDED MAINNET DESTINATION.";
-            rerenderProductRoute();
-            break;
-          }
-
-          roomTipPostId = threadId;
-          roomTipCopyFeedback = "";
-          roomTipAddressCopyFeedback = "";
-          rerenderProductRoute();
-          break;
-        }
-        case "room-tip-close":
-          roomTipPostId = "";
-          roomTipCopyFeedback = "";
-          roomTipAddressCopyFeedback = "";
-          rerenderProductRoute();
-          break;
-        case "room-tip-copy":
-          void copyRoomTipRequest(button);
-          break;
-        case "room-tip-copy-address":
-          void copyRoomTipAddress(button);
-          break;
-        case "room-tip-address-save":
-          void saveRoomTipAddressFromRoot(root);
-          break;
-        case "room-menu-toggle": {
-          const menu = button.closest<HTMLElement>("[data-room-menu]");
-          const panel = menu?.querySelector<HTMLElement>(".room-menu__panel");
-          if (!panel) {
-            break;
-          }
-
-          const isOpen = !panel.hidden;
-          panel.hidden = isOpen;
-          button.setAttribute("aria-expanded", String(!isOpen));
-          button.setAttribute("aria-label", isOpen ? "Open private room menu" : "Close private room menu");
-          menu?.classList.toggle("room-menu--open", !isOpen);
-          break;
-        }
-        case "room-notifications-toggle":
-          roomNotificationsOpen = !roomNotificationsOpen;
-          if (roomNotificationsOpen) {
-            void refreshAccountNotifications();
-          }
-          rerenderProductRoute();
-          break;
-        case "room-notifications-read":
-          void markRoomNotificationsRead();
-          break;
-        case "profile-view":
-          profileView = (button.dataset.view as ProfileView) ?? "posts";
-          rerenderProductRoute();
-          break;
-        case "profile-history":
-          profileHistoryView = button.dataset.view === "comments" ? "comments" : "posts";
-          rerenderProductRoute();
-          break;
-        case "room-key-show":
-          revealRoomRecoveryKeyTemporarily();
-          rerenderProductRoute();
-          break;
-        case "room-recovery-open":
-          openRoomRecoveryCheck();
-          break;
-        case "room-recovery-cancel":
-          resetRoomRecoveryReveal();
-          rerenderProductRoute();
-          break;
-        case "room-recovery-submit": {
-          void verifyRoomRecoveryCheck(root);
-          break;
-        }
-        case "room-open-verification":
-          roomVerificationNoticeOpen = true;
-          rerenderProductRoute(true);
-          break;
-        case "room-verification-notice-close":
-          roomVerificationNoticeOpen = false;
-          rerenderProductRoute();
-          break;
-        case "room-create":
-          roomAccessMode = "create";
-          roomLoginError = "";
-          rerenderProductRoute();
-          break;
-        case "room-login":
-          roomAccessMode = "login";
-          roomLoginError = "";
-          roomLoginSubmitting = false;
-          rerenderProductRoute();
-          break;
-        case "room-back":
-          clearRoomSession();
-          roomAccessMode = "choose";
-          rerenderProductRoute();
-          break;
-        case "room-create-account": {
-          if (roomAnonymousSubmitting) {
-            break;
-          }
-
-          roomAnonymousSubmitting = true;
-          roomLoginError = "";
-          rerenderProductRoute();
-          void registerAnonymousRoomAccess();
-          break;
-        }
-        case "room-login-saved": {
-          void readSavedKey().then((key) => {
-            const input = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
-            if (!key || !input) {
-              roomLoginError = "No saved key found in this browser. Paste the key you kept instead.";
-              rerenderProductRoute();
-              return;
-            }
-            input.value = key;
-            root.querySelector<HTMLButtonElement>('[data-action="room-submit-login"]')?.click();
-          });
-          break;
-        }
-        case "room-submit-login": {
-          if (roomLoginSubmitting || roomAnonymousSubmitting) {
-            break;
-          }
-
-          const recoveryInput = root.querySelector<HTMLInputElement>("#room-login-recovery-code");
-          const recoveryCode = recoveryInput?.value.trim() ?? "";
-          if (!/^HIDN-ANON-[A-F0-9-]+$/i.test(recoveryCode)) {
-            roomLoginError = "Enter the HIDN-ANON recovery key you saved before continuing.";
-            rerenderProductRoute();
-            break;
-          }
-
-          roomLoginError = "";
-          roomLoginSubmitting = true;
-          roomAnonymousSubmitting = true;
-          rerenderProductRoute();
-          void registerAnonymousRoomAccess(recoveryCode);
-          break;
-        }
-        case "room-enter":
-          navigateIntoRoom(ROOM_HOME_PATH, { portal: true });
-          break;
-        case "room-refresh":
-          void refreshActiveRoom();
-          break;
-        case "room-profile-back":
-          navigateProductRoute(ROOM_HOME_PATH);
-          break;
-        case "room-copy-recovery-key":
-          void copyRoomRecoveryKey(button);
-          break;
-        case "room-create-post":
-          if (!hasRoomSession()) {
-            navigateProductRoute("/room/access");
-            break;
-          }
-
-          roomPostComposerOpen = true;
-          roomPostTipsEnabled = false;
-          roomPostTipAddressDraft = roomTipAddress;
-          roomPostTipAddressEdited = false;
-          roomPostError = "";
-          roomChannelNotice = "";
-          void refreshRoomTipAddress();
-          rerenderProductRoute();
-          break;
-        case "room-post-cancel":
-          roomPostComposerOpen = false;
-          roomPostText = "";
-          roomPostTipsEnabled = false;
-          roomPostTipAddressDraft = "";
-          roomPostTipAddressEdited = false;
-          roomPostError = "";
-          rerenderProductRoute();
-          break;
-        case "room-post-submit": {
-          roomPostText = root.querySelector<HTMLTextAreaElement>("#room-post-content")?.value ?? roomPostText;
-          roomPostTipsEnabled = root.querySelector<HTMLInputElement>("#room-post-allow-tips")?.checked ?? roomPostTipsEnabled;
-          roomPostTipAddressDraft = root.querySelector<HTMLInputElement>("#room-post-tip-address")?.value ?? roomPostTipAddressDraft;
-          void submitRoomPost();
-          break;
-        }
-        case "thread-reply": {
-          if (!hasRoomSession()) {
-            break;
-          }
-
-          const threadRoot = button.closest<HTMLElement>("[data-thread-root]");
-          const input = threadRoot?.querySelector<HTMLTextAreaElement>("[data-thread-input]");
-          const value = input?.value.trim() ?? "";
-          if (!threadRoot || !value) {
-            input?.focus();
-            break;
-          }
-
-          const threadId = threadRoot.dataset.threadRoot;
-          if (threadId) {
-            void submitRoomReply(threadId, value);
-          }
-          break;
-        }
-        case "thread-save-image":
-          void shareThreadImage(root, button.dataset.threadId ?? "", "save", replyIndexFromButton(button));
-          break;
-        case "thread-share-image":
-          void shareThreadImage(root, button.dataset.threadId ?? "", "share", replyIndexFromButton(button));
-          break;
-        case "thread-x-share":
-          void shareThreadImage(root, button.dataset.threadId ?? "", "x", replyIndexFromButton(button));
-          break;
-        default:
-          break;
-      }
-    });
+    button.addEventListener("click", () => handleRoomAction(root, button));
   });
 
   root.querySelectorAll<HTMLButtonElement>("[data-feed-tab]").forEach((button) => {

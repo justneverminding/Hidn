@@ -54,19 +54,30 @@ the sender is a member, without revealing which one. The Worker never receives
 the secret. This does not hide transport metadata such as IP addresses or
 timing; that needs a relay or Tor transport. Handle accounts were removed.
 
-The broader zero-knowledge and Zcash protocol remain future technical
-components. HIDN must not imply that a proof has been verified for an
-anonymous post, that a Zcash network is online, or that a wallet is required
-for basic confession.
+Likes use a nullifier scope fixed to the post, and the scope is a public
+proof signal (protocol version 2), so each member can like a post once while
+likes on different posts stay unlinkable. HIDN must not imply that a wallet is required for
+basic confession, or that Zcash verification is live (it is "coming soon").
 
-Future ZEC features may include shielded tips, optional value attachment, or
-anonymous entitlements. Those flows must be opt-in, separately explained,
-and isolated from the default confession path.
+Shielded ZEC tips are live and opt-in: they go wallet to wallet, and HIDN
+stores only the public receiving address the author chose. Future paid
+features must stay opt-in, separately explained, and isolated from the
+default confession path.
+
+## Private links
+
+A member's private link (`/to/<slug>`) accepts messages from anyone, with no
+key needed to send. The server stores the link, its prompt, an optional tip
+address and the hash of an inbox key derived in the browser from the member's
+recovery key; it does not store which member owns the link. Messages are
+stored as plain text and are readable by the link owner and the service
+operator; they are not end-to-end encrypted. Sending is rate-limited at the
+edge and capped at 120 messages a day per link.
 
 ## Admin and moderation
 
-The future admin product lives at `admin.hidn.xyz` and is not public
-navigation. Admins must eventually be able to manage content, reports,
+The moderation console currently runs behind Cloudflare Access on the main
+Worker and is not public navigation (a separate `admin.hidn.xyz` is planned). Admins must eventually be able to manage content, reports,
 moderation, proofs, nullifiers, SEO, crawler policy, settings, and audit logs
 without being given a routine mechanism to identify anonymous confessors.
 

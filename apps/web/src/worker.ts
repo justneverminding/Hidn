@@ -1,4 +1,5 @@
 import {
+  ANONYMOUS_LEGACY_PROTOCOL_VERSION,
   ANONYMOUS_PROTOCOL_VERSION,
   ANONYMOUS_TREE_DEPTH,
   anonymousBinding,
@@ -82,7 +83,10 @@ interface HidnWorkerEnv {
   HIDN_SUPER_ADMIN_ACCESS_SUBJECT?: string;
   HIDN_SUPER_ADMIN_EMAIL?: string;
   ANONYMOUS_ZK_ENABLED?: string;
+  /** Verification key for the version 1 circuit (private scope). */
   ANONYMOUS_ZK_VERIFICATION_KEY?: string;
+  /** Verification key for the version 2 circuit (public scope). */
+  ANONYMOUS_ZK_VERIFICATION_KEY_V2?: string;
 }
 
 interface ShieldedScanStatusPayload {
@@ -331,11 +335,11 @@ function htmlSecurityHeaders(request: Request): Record<string, string> {
 function anonymousZkAssetContentType(pathname: string): string | null {
   // Versioned by tree depth: the files are cached as immutable, so a new
   // circuit is published under a new path rather than replacing these.
-  if (pathname === "/anonymous-zk/depth20/hidn_membership.wasm") {
+  if (pathname === "/anonymous-zk/depth20/hidn_membership.wasm" || pathname === "/anonymous-zk/v2/hidn_membership.wasm") {
     return "application/wasm";
   }
 
-  if (pathname === "/anonymous-zk/depth20/hidn_membership_final.zkey") {
+  if (pathname === "/anonymous-zk/depth20/hidn_membership_final.zkey" || pathname === "/anonymous-zk/v2/hidn_membership_final.zkey") {
     return "application/octet-stream";
   }
 
@@ -462,7 +466,7 @@ function databaseUnavailable(env: HidnWorkerEnv): Response | undefined {
 
 function anonymousZkConfigured(env: HidnWorkerEnv): boolean {
   return env.ANONYMOUS_ZK_ENABLED?.trim().toLowerCase() === "true"
-    && Boolean(env.ANONYMOUS_ZK_VERIFICATION_KEY?.trim());
+    && Boolean(env.ANONYMOUS_ZK_VERIFICATION_KEY_V2?.trim());
 }
 
 function anonymousZkUnavailable(env: HidnWorkerEnv): Response | undefined {
@@ -1017,15 +1021,22 @@ async function verifyAnonymousAction(
   tipAddress = "",
 ): Promise<VerifiedAnonymousAction | Response> {
   const protocol = typeof body.protocol === "string" ? body.protocol.trim() : "";
-  if (protocol !== ANONYMOUS_PROTOCOL_VERSION) {
+  const legacy = protocol === ANONYMOUS_LEGACY_PROTOCOL_VERSION;
+  if (protocol !== ANONYMOUS_PROTOCOL_VERSION && !legacy) {
     return jsonResponse({ error: "This anonymous proof uses an unsupported protocol version." }, 400);
+  }
+  // A version 1 proof does not show which scope its nullifier was made with,
+  // so it cannot hold a like to one per member per post. Pages loaded before
+  // version 2 can still post; they need a reload to like.
+  if (legacy && action === "reaction") {
+    return jsonResponse({ error: "HIDN updated. Reload the page to like posts.", code: "ANONYMOUS_PROTOCOL_OUTDATED" }, 400);
   }
 
   const proof = anonymousProofObject(body.proof);
   const publicSignalValues = Array.isArray(body.publicSignals)
     ? body.publicSignals.filter((value): value is string => typeof value === "string").map((value) => value.trim())
     : [];
-  if (!proof || publicSignalValues.length !== 3) {
+  if (!proof || publicSignalValues.length !== (legacy ? 3 : 4)) {
     return jsonResponse({ error: "Send a complete anonymous membership proof." }, 400);
   }
 
@@ -1035,6 +1046,11 @@ async function verifyAnonymousAction(
   const scope = normalizeAnonymousField(body.scope);
   if (!root || !nullifier || !binding || !scope) {
     return jsonResponse({ error: "The anonymous proof signals are invalid." }, 400);
+  }
+  // In version 2 the scope is a proven public signal: it must be the scope
+  // the request names, which callers such as likes check against the target.
+  if (!legacy && normalizeAnonymousField(publicSignalValues[3]) !== scope) {
+    return jsonResponse({ error: "The anonymous proof is not bound to this scope." }, 400);
   }
 
   const rootRow = await env.ROOM_DB!.prepare(
@@ -1077,7 +1093,7 @@ async function verifyAnonymousAction(
 
   let verificationKey: unknown;
   try {
-    verificationKey = JSON.parse(env.ANONYMOUS_ZK_VERIFICATION_KEY ?? "");
+    verificationKey = JSON.parse((legacy ? env.ANONYMOUS_ZK_VERIFICATION_KEY : env.ANONYMOUS_ZK_VERIFICATION_KEY_V2) ?? "");
   } catch {
     return jsonResponse({ error: "The anonymous verification key is not valid JSON." }, 503);
   }
@@ -1543,9 +1559,10 @@ async function createAnonymousReaction(request: Request, env: HidnWorkerEnv): Pr
     return jsonResponse({ error: "That live signal is no longer available." }, 404);
   }
 
-  // A like must use the scope fixed to this target. The member's nullifier is
-  // then the same on a second like of the same post (rejected as already
-  // used), but different on every other post, so likes stay unlinkable.
+  // A like must use the scope fixed to this target. The scope is a public
+  // signal of the proof, so the member's nullifier is then the same on a
+  // second like of the same post (rejected as already used), but different on
+  // every other post, so likes stay unlinkable.
   if (normalizeAnonymousField(body.scope) !== anonymousTargetScope("reaction", targetType, targetId)) {
     return jsonResponse({ error: "This like proof is not scoped to this post." }, 400);
   }

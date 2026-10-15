@@ -3,22 +3,28 @@ pragma circom 2.1.6;
 include "poseidon.circom";
 include "switcher.circom";
 
-// HIDN's first anonymous action circuit.
+// HIDN's anonymous action circuit, version 2.
 //
 // The browser proves that it knows a secret whose Poseidon commitment is a
 // member of the current HIDN tree. It derives a scope-specific nullifier and
-// binds the action message to that nullifier. The Worker receives only the
-// public root, nullifier, and binding plus a Groth16 proof.
+// binds the action message to that nullifier. The Worker receives the public
+// root, nullifier, binding and scope plus a Groth16 proof.
+//
+// Version 2 makes the scope public. In version 1 it was private, so the
+// Worker could not tell which scope a nullifier was made with, and a member
+// could like the same post again under a different scope. With a public
+// scope the Worker checks that a like uses the scope fixed to its post.
 template HidnMembership(depth, messageChunks) {
     signal input secret;
     signal input pathElements[depth];
     signal input pathIndices[depth];
-    signal input scope;
     signal input message[messageChunks];
 
+    // Public signals, in this order: root, nullifier, binding, scope.
     signal input root;
     signal input nullifier;
     signal input binding;
+    signal input scope;
 
     signal left[depth];
     signal right[depth];
@@ -66,4 +72,4 @@ template HidnMembership(depth, messageChunks) {
 }
 
 // Depth 20: room for 1,048,576 members.
-component main {public [root, nullifier, binding]} = HidnMembership(20, 16);
+component main {public [root, nullifier, binding, scope]} = HidnMembership(20, 16);

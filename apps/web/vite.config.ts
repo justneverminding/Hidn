@@ -108,10 +108,12 @@ function shieldedScanStatsPlugin() {
 }
 
 function anonymousZkAssetsPlugin() {
-  const sourceRoot = fileURLToPath(new URL("../../packages/anonymous-zk/build", import.meta.url));
-  const targetRoot = fileURLToPath(new URL("../../public/anonymous-zk", import.meta.url));
+  // Only the setup output in build/v2 is published, never the root of build/,
+  // which holds local development keys from `test:proof` runs.
+  const sourceRoot = fileURLToPath(new URL("../../packages/anonymous-zk/build/v2", import.meta.url));
+  const targetRoot = fileURLToPath(new URL("../../public/anonymous-zk/v2", import.meta.url));
   const assets = [
-    ["hidn_membership_js/hidn_membership.wasm", "hidn_membership_js/hidn_membership.wasm"],
+    ["hidn_membership.wasm", "hidn_membership.wasm"],
     ["hidn_membership_final.zkey", "hidn_membership_final.zkey"],
   ] as const;
 

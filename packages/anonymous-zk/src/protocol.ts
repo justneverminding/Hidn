@@ -1,6 +1,13 @@
 import { poseidon1, poseidon2, poseidon16 } from "poseidon-lite";
 
-export const ANONYMOUS_PROTOCOL_VERSION = "hidn-anonymous-groth16-v1";
+export const ANONYMOUS_PROTOCOL_VERSION = "hidn-anonymous-groth16-v2";
+/** Version 1 kept the scope private. Its proofs are still accepted for posts,
+ * replies, reports and links (where every action uses a fresh scope), but
+ * not for likes, whose one-per-post limit needs the public scope. */
+export const ANONYMOUS_LEGACY_PROTOCOL_VERSION = "hidn-anonymous-groth16-v1";
+/** The domain string at the start of every action message. It stays the same
+ * across proof versions so a message reads the same under either circuit. */
+const ANONYMOUS_MESSAGE_DOMAIN = "hidn-anonymous-groth16-v1";
 export const ANONYMOUS_TREE_DEPTH = 20;
 export const ANONYMOUS_MESSAGE_CHUNKS = 16;
 export const ANONYMOUS_BYTES_PER_CHUNK = 31;
@@ -43,7 +50,8 @@ export interface AnonymousCircuitInput {
 export interface AnonymousProofEnvelope {
   protocol: typeof ANONYMOUS_PROTOCOL_VERSION;
   proof: unknown;
-  publicSignals: [string, string, string];
+  /** root, nullifier, binding, scope */
+  publicSignals: [string, string, string, string];
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -122,7 +130,7 @@ export function canonicalAnonymousMessage(
   content: string,
   tipAddress = "",
 ): string {
-  const message = [ANONYMOUS_PROTOCOL_VERSION, action, targetType, targetId.trim().toUpperCase(), content.trim()];
+  const message = [ANONYMOUS_MESSAGE_DOMAIN, action, targetType, targetId.trim().toUpperCase(), content.trim()];
   const normalizedTipAddress = tipAddress.trim().toLowerCase();
   if (normalizedTipAddress) {
     // The public destination is bound to the post action for integrity. It is
@@ -256,6 +264,6 @@ export function createAnonymousCircuitInput(
   };
 }
 
-export function publicSignalsFromCircuitInput(input: AnonymousCircuitInput): [string, string, string] {
-  return [input.root, input.nullifier, input.binding];
+export function publicSignalsFromCircuitInput(input: AnonymousCircuitInput): [string, string, string, string] {
+  return [input.root, input.nullifier, input.binding, input.scope];
 }

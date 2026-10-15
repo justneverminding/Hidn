@@ -27,6 +27,24 @@ The anonymous confession system must not be architected around a traditional
 `users` table. Personal HIDN pages, anonymous inboxes, communities, and
 advanced Zcash functionality are later extensions, not Phase 0 requirements.
 
+## Current build (October 2026)
+
+The phases below are kept as history. What is live now:
+
+- nameless access with a browser-held recovery key and Groth16 membership
+  proofs on every post, reply, like and report (see `HIDN-ANONYMOUS-ZK-MILESTONE.md`);
+- a persistent D1-backed feed, seven topic rooms with shareable `/r/<slug>`
+  links, a public `/read` feed and a 3D museum;
+- private links (`/to/<slug>`): one per member, anonymous messages from anyone,
+  120 a day, optional shielded ZEC tip, inbox in the room;
+- direct shielded ZEC tips on posts (HIDN never holds funds);
+- links blocked in all user text; a private moderation console behind
+  Cloudflare Access.
+
+Still deferred: paid link features and any ZEC payment watcher, Zcash
+verification, communities, relay/Tor transport and end-to-end encrypted
+notifications or link messages.
+
 ## Product principles
 
 1. **Show the thought. Hide the person.** The confession is the product
@@ -95,9 +113,11 @@ should read as a continuous stream rather than a stack of cards.
 No backend, database, real-time connection, ZK, Zcash transaction, wallet,
 moderation, analytics, account, username, profile, or Phase 3 work is included.
 
-## Deferred product features
+## Deferred product features (Phase 0–2, historical)
 
-The following are explicitly deferred:
+At Phase 0–2 the following were deferred. Proofs, nullifiers, tips,
+persistence, feeds, personal links/inboxes and the admin console have since
+shipped; see Current build above.
 
 - ZK proofs, Merkle trees, nullifiers, and proof circuits;
 - wallet connections, shielded addresses, transactions, tips, or ZEC value

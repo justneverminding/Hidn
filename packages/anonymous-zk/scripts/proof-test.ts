@@ -32,5 +32,16 @@ if (await verifyAnonymousGroth16Proof(verificationKey, invalidSignals, proof.pro
   throw new Error("The verifier accepted a tampered public binding.");
 }
 
-console.log("anonymous Groth16 proof verified; tampered binding rejected");
+// The scope is public in version 2: a proof made under one scope must not
+// pass as a proof under another (one like per member per post relies on it).
+const tamperedScope = [...proof.publicSignals];
+tamperedScope[3] = createAnonymousScope();
+if (await verifyAnonymousGroth16Proof(verificationKey, tamperedScope, proof.proof)) {
+  throw new Error("The verifier accepted a tampered public scope.");
+}
+if (proof.publicSignals[3] !== input.scope) {
+  throw new Error("The proof's public scope is not the scope it was made with.");
+}
+
+console.log("anonymous Groth16 proof verified; tampered binding and scope rejected");
 process.exit(0);
