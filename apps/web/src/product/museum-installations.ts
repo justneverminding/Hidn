@@ -26,6 +26,7 @@ export interface InstallationHooks {
 }
 
 export const ZCASH_WALLETS_URL = "https://zechub.wiki/wallets";
+export const NOZY_WALLET_URL = "https://www.nozywallet.com/";
 
 function seeded(seed: number): () => number {
   let state = (seed * 2654435761) >>> 0 || 1;
@@ -359,6 +360,8 @@ export function buildMainRoomInstallation(b: ExhibitionBuilder, hooks: Installat
   // typed readings; a kiosk points to official wallets.
   addVitrineNotes(b, hooks, -10.92, -4, 9, -1, 0);
   addWalletKiosk(b, 8.25, 1.2, -.35);
+  // A featured wallet beside the kiosk, between the wall frames at z ±2.4.
+  addNozyWalletDisplay(b, hooks, 9.4, -.9, 2, 3);
 
   // Other anonymous visitors: one strolling, three reading, one resting.
   addVoidVisitors(b, hooks, [
@@ -753,14 +756,16 @@ function walletTexture(b: ExhibitionBuilder): THREE.CanvasTexture {
     ctx.fillStyle = "#eef0e2";
     ctx.font = "700 58px Georgia, serif";
     ctx.fillText("Carry it shielded.", 48, 176);
-    // Ironwood-ready shielded wallets, from ZecHub's wallet directory.
+    // Ironwood-ready shielded wallets: ZecHub's wallet directory, plus
+    // NozyWallet (shielded-only, Orchard and Ironwood, per nozywallet.com).
     const wallets: Array<[string, string]> = [
       ["ZODL", "Mobile"], ["Zingo!", "Mobile · Desktop"], ["Vizor", "Desktop · Mobile"], ["Edge", "Mobile"],
       ["Cake", "Mobile · Desktop"], ["Unstoppable", "Mobile"], ["Keystone", "Hardware"], ["Ledger", "Hardware"],
+      ["NozyWallet", "Desktop · Extension · CLI"],
     ];
     ctx.fillStyle = "#aab69e";
     ctx.font = "22px Georgia, serif";
-    ctx.fillText("Ironwood-ready wallets, via ZecHub.", 48, 214);
+    ctx.fillText("Ironwood-ready shielded wallets.", 48, 214);
     wallets.forEach(([name, platform], i) => {
       const x = 48 + (i % 2) * ((w - 96) / 2 + 8);
       const y = 248 + Math.floor(i / 2) * 104;
@@ -818,6 +823,145 @@ export function addWalletKiosk(b: ExhibitionBuilder, x: number, z: number, angle
   hit.castShadow = false;
   hit.userData.href = ZCASH_WALLETS_URL;
   b.obstacles.push({ minX: x - .9, maxX: x + .9, minZ: z - .9, maxZ: z + .9 });
+}
+
+/** NozyWallet slides, in their own colours: charcoal, cream, gold. */
+function nozySlides(b: ExhibitionBuilder): THREE.CanvasTexture[] {
+  const W = 720, H = 1080;
+  const cream = "#f5f0e6", gold = "#d4af37", silver = "#c8ccd4", taupe = "#a39a88", ground = "#0c0b09";
+  const sans = (weight: number, size: number) => `${weight} ${size}px "Helvetica Neue", Arial, sans-serif`;
+  const frame = (ctx: CanvasRenderingContext2D, w: number, h: number, step: number): void => {
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, "#15130f");
+    wash.addColorStop(1, ground);
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(212,175,55,.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(28, 28, w - 56, h - 56);
+    ctx.fillStyle = gold;
+    ctx.font = sans(600, 22);
+    ctx.fillText("FEATURED WALLET", 64, 92);
+    // Slide dots.
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i === step ? gold : "rgba(245,240,230,.25)";
+      ctx.beginPath(); ctx.arc(w / 2 - 28 + i * 28, h - 70, 7, 0, Math.PI * 2); ctx.fill();
+    }
+  };
+  const wordmark = (ctx: CanvasRenderingContext2D, y: number, size: number): void => {
+    ctx.font = sans(800, size);
+    ctx.fillStyle = cream;
+    ctx.fillText("Nozy", 64, y);
+    const nozy = ctx.measureText("Nozy").width;
+    ctx.fillStyle = gold;
+    ctx.fillText("Wallet", 64 + nozy, y);
+  };
+  const lines = (ctx: CanvasRenderingContext2D, text: string[], y: number, size: number, color: string, gap = 1.3): void => {
+    ctx.font = sans(400, size);
+    ctx.fillStyle = color;
+    text.forEach((line, i) => ctx.fillText(line, 64, y + i * size * gap));
+  };
+  const one = canvasMap(b, W, H, (ctx, w, h) => {
+    frame(ctx, w, h, 0);
+    // A shield mark, drawn: the wallet's promise in one shape.
+    ctx.save();
+    ctx.translate(w / 2, 330);
+    ctx.beginPath();
+    ctx.moveTo(0, -120); ctx.lineTo(104, -78); ctx.lineTo(96, 30);
+    ctx.quadraticCurveTo(80, 104, 0, 140); ctx.quadraticCurveTo(-80, 104, -96, 30);
+    ctx.lineTo(-104, -78); ctx.closePath();
+    ctx.fillStyle = "rgba(212,175,55,.1)"; ctx.fill();
+    ctx.strokeStyle = gold; ctx.lineWidth = 6; ctx.stroke();
+    ctx.fillStyle = cream; ctx.font = sans(800, 120); ctx.textAlign = "center"; ctx.fillText("N", 0, 52);
+    ctx.restore();
+    wordmark(ctx, 620, 104);
+    lines(ctx, ["Shielded Zcash,", "private by default."], 720, 48, cream, 1.25);
+    lines(ctx, ["Self-custody. Your keys never leave", "your device unencrypted."], 900, 28, taupe);
+  });
+  const two = canvasMap(b, W, H, (ctx, w, h) => {
+    frame(ctx, w, h, 1);
+    wordmark(ctx, 190, 64);
+    ctx.fillStyle = gold; ctx.fillRect(64, 236, 90, 4);
+    const rows: Array<[string, string]> = [
+      ["Orchard + Ironwood", "Sender, receiver and amount stay hidden."],
+      ["Transparent sends blocked", "Privacy is the product, not a toggle."],
+      ["Open-source Rust core", "Auditable. No ads, no tracking SDKs."],
+    ];
+    rows.forEach(([title, body], i) => {
+      const y = 330 + i * 220;
+      ctx.fillStyle = "rgba(245,240,230,.05)"; ctx.fillRect(64, y - 56, w - 128, 176);
+      ctx.fillStyle = gold; ctx.fillRect(64, y - 56, 5, 176);
+      ctx.fillStyle = cream; ctx.font = sans(700, 40); ctx.fillText(title, 96, y + 6);
+      ctx.fillStyle = silver; ctx.font = sans(400, 26);
+      const words = body.split(" "); let line = ""; let ly = y + 58;
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (ctx.measureText(next).width > w - 200) { ctx.fillText(line, 96, ly); line = word; ly += 34; } else line = next;
+      }
+      ctx.fillText(line, 96, ly);
+    });
+  });
+  const three = canvasMap(b, W, H, (ctx, w, h) => {
+    frame(ctx, w, h, 2);
+    wordmark(ctx, 190, 64);
+    lines(ctx, ["Desktop · Windows, macOS, Linux", "Browser extension · Chrome, Edge, Brave", "CLI", "Mobile companion · coming soon"], 290, 30, cream, 1.6);
+    const qr = QRCode.create(NOZY_WALLET_URL, { errorCorrectionLevel: "M" });
+    const size = qr.modules.size;
+    const box = 300;
+    const cell = Math.floor(box / (size + 4));
+    const side = cell * (size + 4);
+    const qx = (w - side) / 2, qy = 540;
+    ctx.fillStyle = cream; ctx.fillRect(qx, qy, side, side);
+    ctx.fillStyle = ground;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (qr.modules.get(r, c)) ctx.fillRect(qx + (c + 2) * cell, qy + (r + 2) * cell, cell, cell);
+    ctx.textAlign = "center";
+    ctx.fillStyle = gold; ctx.font = sans(700, 30);
+    ctx.fillText("NOZYWALLET.COM ↗", w / 2, qy + side + 64);
+    ctx.fillStyle = taupe; ctx.font = sans(400, 24);
+    ctx.fillText("Scan, or tap the screen.", w / 2, qy + side + 104);
+  });
+  return [one, two, three];
+}
+
+/** A slim standing screen for NozyWallet, a shielded-first Zcash wallet.
+ * Its three slides turn every few seconds; tapping it opens their site. */
+export function addNozyWalletDisplay(b: ExhibitionBuilder, hooks: InstallationHooks, x: number, z: number, faceX: number, faceZ: number): void {
+  const metal = b.material(new THREE.MeshStandardMaterial({ color: "#1b1a17", roughness: .35, metalness: .7 }));
+  const base = b.material(new THREE.MeshStandardMaterial({ color: "#0f0e0c", roughness: .8 }));
+  const gold = glow(b, "#d4af37");
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.atan2(faceX - x, faceZ - z);
+  b.scene.add(group);
+  // Plinth, a slim column and a portrait screen in a thin metal frame.
+  b.box(1.3, .12, .8, 0, .06, 0, base, group);
+  b.box(1.22, .02, .72, 0, .13, 0, gold, group).castShadow = false;
+  b.box(.12, 1.0, .12, 0, .64, -.05, metal, group);
+  b.box(1.36, 2.02, .1, 0, 2.08, 0, metal, group);
+  const slides = nozySlides(b);
+  const screenMaterial = b.material(new THREE.MeshBasicMaterial({ map: slides[0], toneMapped: false }));
+  const screen = b.plane(1.24, 1.86, screenMaterial, group);
+  screen.position.set(0, 2.08, .055);
+  b.box(1.36, .02, .02, 0, 3.1, .05, gold, group).castShadow = false;
+  // A small brass plate under the screen.
+  b.box(.7, .1, .03, 0, .98, .02, gold, group).castShadow = false;
+  const light = new THREE.PointLight("#f2d48a", .8, 5, 1.8);
+  light.position.set(0, 2.2, 1.1);
+  group.add(light);
+  let current = 0, last = 0;
+  hooks.tick.push((time) => {
+    if (time - last < 5200) return;
+    last = time;
+    current = (current + 1) % slides.length;
+    screenMaterial.map = slides[current];
+    screenMaterial.needsUpdate = true;
+  });
+  const hit = b.box(1.4, 3.1, .5, 0, 1.6, .15, b.material(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })));
+  hit.position.applyMatrix4(new THREE.Matrix4().makeRotationY(group.rotation.y)).add(new THREE.Vector3(x, 0, z));
+  hit.rotation.y = group.rotation.y;
+  hit.castShadow = false;
+  hit.userData.href = NOZY_WALLET_URL;
+  b.obstacles.push({ minX: x - .85, maxX: x + .85, minZ: z - .85, maxZ: z + .85 });
 }
 
 /** The Library: the rotunda plus walls of ZecHub learning scrolls. */

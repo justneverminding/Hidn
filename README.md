@@ -117,7 +117,7 @@ Where to look in the code:
 
 - **Phase 1:** the public Hermez Powers of Tau
   (`powersOfTau28_hez_final_15.ptau`). Its BLAKE2b hash matches the value
-  published in the snarkjs README, so it is byte-for-byte the official file.
+  published in the snarkjs README, and `snarkjs powersoftau verify` passes.
 - **Phase 2:** one HIDN contribution made with random entropy that was not
   kept, then a public beacon from Zcash mainnet block 3,518,070
   (`0000000000585c54…4e964611`). `snarkjs zkey verify` passes against the

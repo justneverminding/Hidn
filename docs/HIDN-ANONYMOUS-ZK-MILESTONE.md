@@ -61,8 +61,8 @@ again under a different scope; version 2 closes that.
 
 The trusted setup for the version 2 circuit: phase 1 is the public Hermez
 Powers of Tau (`powersOfTau28_hez_final_15.ptau`, 37,831,832 bytes, BLAKE2b
-checked against the value published in the snarkjs README, so it is the
-official file byte for byte). The official
+checked against the value published in the snarkjs README, and its
+contribution chain verified with `snarkjs powersoftau verify`). The official
 Hermez hosts no longer serve the file; it was fetched from a GitHub mirror
 and accepted only because its hash matches. Phase 2 has one HIDN contribution
 made with random entropy that was not kept, followed by a public beacon from
