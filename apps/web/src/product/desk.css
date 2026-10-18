@@ -354,3 +354,117 @@
   height: auto !important;
   min-height: 0 !important;
 }
+
+/* Side-card drawings: each card shows what it does. */
+.hidn-desk .hidn-desk__art {
+  display: block;
+  height: auto;
+  margin-bottom: 4px;
+  overflow: visible;
+  width: 100%;
+}
+
+.hidn-art__row { fill: rgba(93, 255, 143, 0.05); stroke: rgba(93, 255, 143, 0.22); stroke-width: 1; }
+.hidn-art__row--on { fill: rgba(93, 255, 143, 0.12); stroke: rgba(93, 255, 143, 0.7); }
+.hidn-art__dot { fill: rgba(143, 191, 152, 0.5); }
+.hidn-art__dot--on { fill: var(--hidn-signal); }
+.hidn-art__ink { fill: rgba(217, 234, 217, 0.32); }
+.hidn-art__ink--on { fill: rgba(217, 234, 217, 0.85); }
+.hidn-art__panel { fill: rgba(0, 0, 0, 0.35); stroke: rgba(93, 255, 143, 0.45); stroke-width: 1.2; }
+.hidn-art__chip { fill: rgba(93, 255, 143, 0.08); stroke: rgba(93, 255, 143, 0.6); stroke-width: 1.2; }
+.hidn-art__glyph { fill: none; stroke: var(--hidn-signal); stroke-linecap: round; stroke-width: 2; }
+.hidn-art__text { fill: var(--hidn-signal); font-family: var(--hidn-font-mono); font-size: 13px; letter-spacing: 0.5px; }
+.hidn-art__bubble { fill: rgba(217, 234, 217, 0.14); stroke: rgba(93, 255, 143, 0.55); stroke-width: 1; }
+
+/* Feed: the middle post lights, a tap pulses, the post opens in a panel. */
+.hidn-art-feed__tap { fill: none; stroke: rgba(217, 234, 217, 0.8); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: hidn-art-tap 3.2s ease-out infinite; }
+.hidn-art-feed__beam { fill: none; stroke: var(--hidn-signal); stroke-dasharray: 48; stroke-dashoffset: 48; stroke-width: 1.6; animation: hidn-art-beam 3.2s ease-in-out infinite; }
+.hidn-art-feed__line { opacity: 0; animation: hidn-art-fill 3.2s ease-out infinite; }
+.hidn-art-feed__line--2 { animation-delay: 0.08s; }
+.hidn-art-feed__line--3 { animation-delay: 0.16s; }
+.hidn-art-feed__line--4 { animation-delay: 0.24s; }
+.hidn-art-feed__line--5 { animation-delay: 0.32s; }
+
+@keyframes hidn-art-tap {
+  0%, 12% { opacity: 0; transform: scale(0.4); }
+  18% { opacity: 1; transform: scale(1); }
+  40%, 100% { opacity: 0; transform: scale(2.4); }
+}
+@keyframes hidn-art-beam {
+  0%, 20% { stroke-dashoffset: 48; }
+  38%, 86% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -48; }
+}
+@keyframes hidn-art-fill {
+  0%, 36% { opacity: 0; }
+  46%, 86% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Private link: messages drop into the inbox, one by one. */
+.hidn-art-link__arc { fill: none; stroke: rgba(93, 255, 143, 0.45); stroke-dasharray: 3 5; stroke-width: 1.4; animation: hidn-art-dash 1.6s linear infinite; }
+.hidn-art-link__tray { fill: rgba(93, 255, 143, 0.05); stroke: rgba(93, 255, 143, 0.6); stroke-width: 1.4; }
+.hidn-art-link__msg { animation: hidn-art-drop 4.2s ease-in-out infinite; opacity: 0; }
+.hidn-art-link__msg--2 { animation-delay: 0.7s; }
+.hidn-art-link__msg--3 { animation-delay: 1.4s; }
+
+@keyframes hidn-art-dash { to { stroke-dashoffset: -16; } }
+@keyframes hidn-art-drop {
+  0% { opacity: 0; transform: translateY(-14px); }
+  14% { opacity: 1; transform: translateY(0); }
+  70% { opacity: 1; transform: translateY(0); }
+  84%, 100% { opacity: 0; transform: translateY(8px); }
+}
+
+/* Zcash: a gold coin, turning slowly, beside the live figure. */
+.hidn-desk .hidn-desk__zec { align-items: center; display: flex; gap: 14px; }
+.hidn-desk .hidn-desk__coin { filter: drop-shadow(0 0 10px rgba(244, 183, 40, 0.35)); flex: none; height: 52px; width: 52px; }
+.hidn-desk__coin-spin { transform-box: fill-box; transform-origin: center; animation: hidn-coin-turn 6s ease-in-out infinite; }
+
+@keyframes hidn-coin-turn {
+  0%, 40% { transform: scaleX(1); }
+  50% { transform: scaleX(0.08); }
+  60%, 100% { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hidn-art-feed__tap, .hidn-art-feed__beam, .hidn-art-feed__line, .hidn-art-link__arc, .hidn-art-link__msg, .hidn-desk__coin-spin { animation: none; }
+  .hidn-art-feed__beam { stroke-dashoffset: 0; }
+  .hidn-art-feed__line, .hidn-art-link__msg { opacity: 1; }
+}
+.hidn-desk .hidn-desk__zec .zcash-status-carousel { align-self: center !important; }
+
+/* Cards keep their full height; on a short screen the column scrolls
+ * instead of squeezing (and clipping) them. */
+.hidn-desk .hidn-desk__panel > .hidn-desk__window,
+.hidn-desk .hidn-desk__rail > * { flex-shrink: 0; }
+.hidn-desk .hidn-desk__panel { scrollbar-width: thin; scrollbar-color: rgba(93, 255, 143, 0.25) transparent; padding-bottom: 8px; }
+
+/* Type in the side cards follows the rest of the room: body like a post,
+ * small text like the post actions and labels. */
+.hidn-desk .hidn-desk__window-body p {
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  line-height: 1.65;
+}
+.hidn-desk .hidn-desk__window-body .hidn-desk__muted {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+}
+.hidn-desk .hidn-desk__thread-text {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+.hidn-desk .hidn-desk__link,
+.hidn-desk .hidn-desk__link--strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.hidn-desk .hidn-desk__zec .zcash-status-carousel {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+.hidn-art__text { font-size: 11px; letter-spacing: 0.06em; }

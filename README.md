@@ -73,7 +73,7 @@ Inside the room (after getting a key at
 | --- | --- |
 | FEED | `/room/feed` (where members land) |
 | ROOMS | `/room/rooms`, one room at `/room/channel/<key>` |
-| MUSEUM | `/room/main`, hallway `/room/hall`, library `/room/library` |
+| LOBBY | `/room/main`, hallway `/room/hall`, library `/room/library` |
 | INBOX | `/room/inbox`: private-link messages and link settings |
 | ME | `/room/profile`: my posts, recovery key (shown for 20 seconds), settings |
 

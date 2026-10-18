@@ -3728,12 +3728,50 @@ function renderDeskPanel(): string {
     return `<aside class="hidn-desk__panel" aria-label="Open post">${renderDeskThread(post)}</aside>`;
   }
   return `<aside class="hidn-desk__panel" aria-label="More">
-    ${renderDeskWindow("hidn://open_a_post", `<p><span class="hidn-desk__prompt" aria-hidden="true">&gt;</span> tap any post to read its replies here and answer without leaving the feed.</p>`)}
-    ${renderDeskWindow("hidn://private_link", `<p><span class="hidn-desk__prompt" aria-hidden="true">&gt;</span> people send you messages. they never know it was you, you never know it was them.</p>
+    ${renderDeskWindow("hidn://open_a_post", `${DESK_ART_FEED}<p class="hidn-desk__muted">tap any post to read its replies here and answer without leaving the feed.</p>`)}
+    ${renderDeskWindow("hidn://private_link", `${DESK_ART_LINK}<p class="hidn-desk__muted">people send you messages. they never know it was you, you never know it was them.</p>
       <div class="hidn-desk__actions"><a class="hidn-desk__link hidn-desk__link--strong" href="/room/inbox">[ OPEN INBOX ]</a></div>`)}
-    ${renderDeskWindow("hidn://zcash", `${renderRoomZcashStatus()}<p class="hidn-desk__muted">tips go wallet to wallet. HIDN never holds the funds.</p>`)}
+    ${renderDeskWindow("hidn://zcash", `<div class="hidn-desk__zec">${DESK_ART_COIN}${renderRoomZcashStatus()}</div><p class="hidn-desk__muted">tips go wallet to wallet. HIDN never holds the funds.</p>`)}
   </aside>`;
 }
+
+/** Small drawings for the side cards, so each one shows what it does. */
+const DESK_ART_FEED = `<svg class="hidn-desk__art hidn-art-feed" viewBox="0 0 300 92" aria-hidden="true" focusable="false">
+  <g class="hidn-art-feed__rows">
+    <rect x="8" y="8" width="132" height="20" rx="3" class="hidn-art__row"/><circle cx="20" cy="18" r="3" class="hidn-art__dot"/><rect x="30" y="15" width="92" height="5" rx="2" class="hidn-art__ink"/>
+    <rect x="8" y="36" width="132" height="20" rx="3" class="hidn-art__row hidn-art__row--on"/><circle cx="20" cy="46" r="3" class="hidn-art__dot hidn-art__dot--on"/><rect x="30" y="43" width="80" height="5" rx="2" class="hidn-art__ink hidn-art__ink--on"/>
+    <rect x="8" y="64" width="132" height="20" rx="3" class="hidn-art__row"/><circle cx="20" cy="74" r="3" class="hidn-art__dot"/><rect x="30" y="71" width="100" height="5" rx="2" class="hidn-art__ink"/>
+  </g>
+  <circle cx="122" cy="46" r="6" class="hidn-art-feed__tap"/>
+  <path d="M142 46 C 160 46, 166 46, 186 46" class="hidn-art-feed__beam"/>
+  <rect x="188" y="8" width="104" height="76" rx="5" class="hidn-art__panel"/>
+  <rect x="198" y="18" width="70" height="5" rx="2" class="hidn-art__ink hidn-art__ink--on hidn-art-feed__line"/>
+  <rect x="198" y="34" width="84" height="4" rx="2" class="hidn-art__ink hidn-art-feed__line hidn-art-feed__line--2"/>
+  <rect x="208" y="46" width="64" height="4" rx="2" class="hidn-art__ink hidn-art-feed__line hidn-art-feed__line--3"/>
+  <rect x="208" y="58" width="52" height="4" rx="2" class="hidn-art__ink hidn-art-feed__line hidn-art-feed__line--4"/>
+  <rect x="198" y="70" width="84" height="8" rx="2" class="hidn-art__row hidn-art-feed__line hidn-art-feed__line--5"/>
+</svg>`;
+
+const DESK_ART_LINK = `<svg class="hidn-desk__art hidn-art-link" viewBox="0 0 300 92" aria-hidden="true" focusable="false">
+  <rect x="8" y="30" width="128" height="30" rx="15" class="hidn-art__chip"/>
+  <path d="M26 45 h10 M30 40 a5 5 0 0 0 0 10 M38 40 a5 5 0 0 1 0 10" class="hidn-art__glyph"/>
+  <text x="50" y="50" class="hidn-art__text">/to/•••••</text>
+  <path d="M138 45 C 170 10, 196 10, 214 30" class="hidn-art-link__arc"/>
+  <g class="hidn-art-link__msg hidn-art-link__msg--1"><rect x="214" y="22" width="56" height="12" rx="6" class="hidn-art__bubble"/></g>
+  <g class="hidn-art-link__msg hidn-art-link__msg--2"><rect x="222" y="40" width="48" height="12" rx="6" class="hidn-art__bubble"/></g>
+  <g class="hidn-art-link__msg hidn-art-link__msg--3"><rect x="214" y="58" width="62" height="12" rx="6" class="hidn-art__bubble"/></g>
+  <path d="M202 52 v28 a6 6 0 0 0 6 6 h76 a6 6 0 0 0 6 -6 v-28" class="hidn-art-link__tray"/>
+  <rect x="236" y="74" width="20" height="4" rx="2" class="hidn-art__ink hidn-art__ink--on"/>
+</svg>`;
+
+const DESK_ART_COIN = `<svg class="hidn-desk__coin" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <defs><radialGradient id="hidn-coin-face" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#ffe08a"/><stop offset=".55" stop-color="#f4b728"/><stop offset="1" stop-color="#8f6510"/></radialGradient></defs>
+  <g class="hidn-desk__coin-spin">
+    <circle cx="32" cy="32" r="28" fill="url(#hidn-coin-face)"/>
+    <circle cx="32" cy="32" r="22.5" fill="none" stroke="#1b1406" stroke-width="2.5"/>
+    <path d="M30.2 15h3.6v5.2h8.4v4.6L28.6 39.6h13.6V44h-8.4v5h-3.6v-5h-8.4v-4.6L35.4 24.8H21.8V20.2h8.4z" fill="#1b1406"/>
+  </g>
+</svg>`;
 
 /** The desktop room: rooms rail on the left, the feed (header, composer,
  * sort tabs, posts) in the middle, and the open post on the right. */
@@ -4888,7 +4926,7 @@ function renderRoomTabs(path: string): string {
   return `<nav class="hidn-tabs" aria-label="Room">
     ${item(MIXED_FEED_PATH, "FEED", path === MIXED_FEED_PATH || path.startsWith("/c/"))}
     ${item("/room/rooms", "ROOMS", path === "/room/rooms" || Boolean(roomChannelFeedFromPath(path)))}
-    ${item("/room/main", "MUSEUM", isMuseumPath(path))}
+    ${item("/room/main", "LOBBY", isMuseumPath(path))}
     ${item("/room/inbox", "INBOX", path === "/room/inbox", badge(inboxUnread))}
     ${item("/room/profile", "ME", path === "/room/profile", badge(meUnread))}
   </nav>`;
@@ -5410,7 +5448,7 @@ function renderHowItWorks(): RenderedProductRoute {
             <div class="hidn-how__cards">
               ${extra("Your private link", "Get your own link and share it. Anyone can send you an anonymous message through it, up to 120 a day. You read them in INBOX.")}
               ${extra("Tips in ZEC", "Love a post? Tip it in Zcash, straight from your wallet to theirs. HIDN never touches the money.")}
-              ${extra("The museum", "Walk a 3D gallery where real posts hang on the walls. Open MUSEUM and look around.")}
+              ${extra("The lobby", "Walk a 3D museum where real posts hang on the walls. Open LOBBY and look around.")}
             </div>
           </section>
 
