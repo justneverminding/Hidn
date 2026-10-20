@@ -2650,6 +2650,47 @@ async function listRoomPulse(request: Request, env: HidnWorkerEnv): Promise<Resp
   }, 200, "public, max-age=15");
 }
 
+// MARK: Room standings
+
+/** The week's competition starts Monday 00:00 UTC. */
+function weekStartUtc(now: number): number {
+  const d = new Date(now);
+  const day = (d.getUTCDay() + 6) % 7; // Monday = 0
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day);
+}
+
+/** Rooms compete, people don't: confession counts per room for this week
+ * and last week's winner. Only totals leave the database. */
+async function listRoomStandings(env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+  const now = Date.now();
+  const thisWeek = weekStartUtc(now);
+  const lastWeek = thisWeek - 7 * 24 * 60 * 60 * 1000;
+  const counts = async (from: number, to: number) => {
+    const result = await env.ROOM_DB!.prepare(
+      `SELECT channel, COUNT(*) AS posts
+       FROM hidn_threads
+       WHERE room_id = ? AND moderation_state = 'visible' AND created_at >= ? AND created_at < ?
+       GROUP BY channel`,
+    )
+      .bind(MAIN_ROOM_ID, new Date(from).toISOString(), new Date(to).toISOString())
+      .all<{ channel: string; posts: number }>();
+    const byChannel = new Map(result.results.map((row) => [row.channel, Number(row.posts)]));
+    return ROOM_CHANNELS.map((channel) => ({ channel, posts: byChannel.get(channel) ?? 0 }))
+      .sort((a, b) => b.posts - a.posts || ROOM_CHANNELS.indexOf(a.channel) - ROOM_CHANNELS.indexOf(b.channel));
+  };
+  const [current, previous] = await Promise.all([counts(thisWeek, now + 1), counts(lastWeek, thisWeek)]);
+  return jsonResponse({
+    weekStart: new Date(thisWeek).toISOString(),
+    resetsAt: new Date(thisWeek + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    rooms: current,
+    lastWeekWinner: previous[0] && previous[0].posts > 0 ? previous[0] : null,
+  }, 200, "public, max-age=60");
+}
+
 // MARK: Personal confession links
 
 const LINK_MESSAGE_MAX_LENGTH = 500;
@@ -3196,6 +3237,17 @@ const worker = {
         return await listLiveActivity(request, env);
       } catch {
         return jsonResponse({ error: "Live room activity could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/room/standings") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+      try {
+        return await listRoomStandings(env);
+      } catch {
+        return jsonResponse({ error: "The room standings are unavailable." }, 500);
       }
     }
 

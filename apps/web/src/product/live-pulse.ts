@@ -60,6 +60,8 @@ async function poll(): Promise<void> {
       // Each post waits its own random extra time before it can show.
       window.setTimeout(() => {
         ready.push(post);
+        // The room board listens for this to bump its numbers.
+        window.dispatchEvent(new CustomEvent("hidn:pulse-post", { detail: { channel: post.channel } }));
         showNext();
       }, Math.random() * EXTRA_DELAY_MS);
     }

@@ -468,3 +468,43 @@
   letter-spacing: 0.08em;
 }
 .hidn-art__text { font-size: 11px; letter-spacing: 0.06em; }
+
+/* The leaderboard card in the desktop side panel. */
+.hidn-desk .hidn-standings--compact { background: none; border: 0; gap: 10px; margin: 0; padding: 0; }
+.hidn-desk .hidn-standings--compact .hidn-stage__slides { height: 132px; }
+.hidn-desk .hidn-standings--compact .hidn-stage__slide { gap: 12px; padding: 14px; }
+.hidn-desk .hidn-standings--compact .hidn-stage__trophy { height: 54px; width: 54px; }
+.hidn-desk .hidn-standings--compact .hidn-stage__laurel { height: 44px; width: 70px; }
+.hidn-desk .hidn-standings--compact .hidn-stage__big { font-size: 0.95rem; }
+.hidn-desk .hidn-standings--compact .hidn-stage__small { font-size: 0.7rem; }
+.hidn-desk .hidn-standings--compact .hidn-stage__lane { gap: 7px; grid-template-columns: 1.2ch minmax(0, 6.5rem) minmax(0, 1fr) 3ch; }
+.hidn-desk .hidn-standings--compact .hidn-stage__lane-name { font-size: 0.66rem; }
+.hidn-desk .hidn-standings--compact .hidn-stage__foot { padding: 8px 12px; }
+.hidn-desk .hidn-standings--compact .hidn-stage__live { font-size: 0.66rem; }
+.hidn-desk .hidn-standings--compact .hidn-standings__list { gap: 2px; margin: 0; }
+.hidn-desk .hidn-standings--compact .hidn-standings__row { gap: 2px 10px; min-height: 34px; padding: 5px 8px; }
+.hidn-desk .hidn-standings--compact .hidn-standings__name { font-size: 0.7rem; }
+.hidn-desk .hidn-standings--compact .hidn-standings__count { font-size: 0.72rem; }
+.hidn-desk .hidn-standings--compact .hidn-standings__rank { font-size: 0.66rem; }
+.hidn-desk .hidn-standings--compact .hidn-standings__bar { height: 3px; }
+
+/* The full room list under the leaderboard opens on tap. */
+.hidn-desk .hidn-standings__more summary { list-style: none; }
+.hidn-desk .hidn-standings__more summary::-webkit-details-marker { display: none; }
+.hidn-desk .hidn-standings__toggle {
+  border: 1px solid rgba(93, 255, 143, 0.28);
+  border-radius: 6px;
+  color: var(--hidn-signal);
+  cursor: pointer;
+  font-family: var(--hidn-font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  padding: 10px 12px;
+  text-align: center;
+}
+.hidn-desk .hidn-standings__toggle:hover, .hidn-desk .hidn-standings__toggle:focus-visible { background: rgba(93, 255, 143, 0.06); outline: none; }
+.hidn-desk .hidn-standings__more [data-when="open"], .hidn-desk .hidn-standings__more[open] [data-when="closed"] { display: none; }
+.hidn-desk .hidn-standings__more[open] [data-when="open"] { display: inline; }
+.hidn-desk .hidn-standings__more[open] .hidn-standings__list { animation: hidn-board-open 0.35s ease; margin-top: 8px; }
+@keyframes hidn-board-open { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .hidn-desk .hidn-standings__more[open] .hidn-standings__list { animation: none; } }

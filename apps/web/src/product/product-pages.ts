@@ -82,6 +82,7 @@ import {
   takeRoomIntent,
   timeAgo,
 } from "./public-feed";
+import { mountStandingsStage, mountStandingsTicker, renderStandingsStage, renderStandingsTicker } from "./standings-stage";
 import { roomLinkByKey } from "./room-links";
 import {
   KEY_CREDENTIAL_NAME,
@@ -2529,6 +2530,7 @@ function renderMixedFeed(): RenderedProductRoute {
               ${TerminalLabel("FEED / EVERY ROOM")}
               <h1 class="type-display-lg hidn-glitch-title" data-text="THE FEED">THE FEED</h1>
               <p>Recent posts from every room, shuffled. No names, ever.</p>
+              ${roomStandings ? renderStandingsTicker(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label) : ""}
               <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/* · listening<span class="hidn-feed-log__caret">▌</span></p>
               ${renderKeyReminder(roomAccountRecoveryCode)}
               ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
@@ -3728,6 +3730,7 @@ function renderDeskPanel(): string {
     return `<aside class="hidn-desk__panel" aria-label="Open post">${renderDeskThread(post)}</aside>`;
   }
   return `<aside class="hidn-desk__panel" aria-label="More">
+    ${renderDeskWindow("hidn://leaderboard", renderRoomStandings(true), { label: "Loudest rooms this week" })}
     ${renderDeskWindow("hidn://open_a_post", `${DESK_ART_FEED}<p class="hidn-desk__muted">tap any post to read its replies here and answer without leaving the feed.</p>`)}
     ${renderDeskWindow("hidn://private_link", `${DESK_ART_LINK}<p class="hidn-desk__muted">people send you messages. they never know it was you, you never know it was them.</p>
       <div class="hidn-desk__actions"><a class="hidn-desk__link hidn-desk__link--strong" href="/room/inbox">[ OPEN INBOX ]</a></div>`)}
@@ -4283,6 +4286,106 @@ function renderRoomSpace(): string {
   );
 }
 
+// MARK: Room standings: rooms compete, people don't.
+
+interface RoomStanding { channel: string; posts: number }
+interface RoomStandings { resetsAt: string; rooms: RoomStanding[]; lastWeekWinner: RoomStanding | null }
+let roomStandings: RoomStandings | null = null;
+/** Whether the full room list under the desktop leaderboard is open. */
+let deskBoardOpen = false;
+let roomStandingsFetchedAt = 0;
+
+async function refreshRoomStandings(): Promise<void> {
+  if (Date.now() - roomStandingsFetchedAt < 60_000) return;
+  roomStandingsFetchedAt = Date.now();
+  try {
+    const response = await fetch("/api/room/standings", { headers: { Accept: "application/json" } });
+    if (!response.ok) return;
+    roomStandings = (await response.json()) as RoomStandings;
+    rerenderProductRoute();
+  } catch {
+    // The board is a bonus; the rooms work without it.
+  }
+}
+
+function resetsIn(iso: string): string {
+  const ms = Math.max(0, Date.parse(iso) - Date.now());
+  const days = Math.floor(ms / 86_400_000), hours = Math.floor((ms % 86_400_000) / 3_600_000);
+  return days > 0 ? `${days}d ${hours}h` : `${hours}h ${Math.floor((ms % 3_600_000) / 60_000)}m`;
+}
+
+function renderRoomStandings(compact = false): string {
+  if (!roomStandings) {
+    return compact
+      ? `<p class="hidn-desk__muted">counting the room…</p>`
+      : `<section class="hidn-standings" aria-label="Loudest rooms this week"><p class="hidn-standings__label">/// LOUDEST ROOMS THIS WEEK</p><p class="hidn-standings__quiet">&gt; counting the room…</p></section>`;
+  }
+  const rooms = roomStandings.rooms;
+  const top = Math.max(1, ...rooms.map((room) => room.posts));
+  const quiet = rooms.every((room) => room.posts === 0);
+  const winner = roomStandings.lastWeekWinner;
+  if (compact) {
+    return `<div class="hidn-standings hidn-standings--compact">
+      ${renderStandingsStage(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label)}
+      <details class="hidn-standings__more" data-standings-more${deskBoardOpen ? " open" : ""}>
+      <summary class="hidn-standings__toggle"><span data-when="closed">[ SEE ALL ${rooms.length} ROOMS ▾ ]</span><span data-when="open">[ HIDE ROOMS ▴ ]</span></summary>
+      <ol class="hidn-standings__list">
+        ${rooms.map((room, index) => {
+          const option = roomChannelOption(room.channel as RoomChannel);
+          const width = Math.round((room.posts / top) * 100);
+          return `<li><button class="hidn-standings__row${index === 0 && !quiet ? " hidn-standings__row--lead" : ""}" type="button" data-room-channel="${escapeHtml(room.channel)}" aria-label="${escapeHtml(option.label)}: ${room.posts} confessions this week. Open the room.">
+            <span class="hidn-standings__rank">${String(index + 1).padStart(2, "0")}</span>
+            <span class="hidn-standings__name">${escapeHtml(option.label)}</span>
+            <span class="hidn-standings__count" data-standing-count="${escapeHtml(room.channel)}">${room.posts}</span>
+            <span class="hidn-standings__bar" aria-hidden="true"><i data-standing-bar="${escapeHtml(room.channel)}" style="width: ${width}%"></i></span>
+          </button></li>`;
+        }).join("")}
+      </ol>
+      </details>
+      <p class="hidn-desk__muted">rooms compete, people don't. resets in ${escapeHtml(resetsIn(roomStandings.resetsAt))}.</p>
+    </div>`;
+  }
+  return `<section class="hidn-standings" aria-label="Loudest rooms this week">
+    <div class="hidn-standings__head">
+      <p class="hidn-standings__label">/// LOUDEST ROOMS THIS WEEK</p>
+      <p class="hidn-standings__reset">resets in ${escapeHtml(resetsIn(roomStandings.resetsAt))}</p>
+    </div>
+    <p class="hidn-standings__line">rooms compete. people don't. every post counts for its room, nobody's name is on the board.</p>
+    ${renderStandingsStage(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label)}
+    ${quiet ? `<p class="hidn-standings__quiet">&gt; quiet week so far. put your room on the board.</p>` : ""}
+    <ol class="hidn-standings__list">
+      ${rooms.map((room, index) => {
+        const option = roomChannelOption(room.channel as RoomChannel);
+        const width = Math.round((room.posts / top) * 100);
+        return `<li>
+          <button class="hidn-standings__row${index === 0 && !quiet ? " hidn-standings__row--lead" : ""}" type="button" data-room-channel="${escapeHtml(room.channel)}" aria-label="${escapeHtml(option.label)}: ${room.posts} confessions this week. Open the room.">
+            <span class="hidn-standings__rank">${String(index + 1).padStart(2, "0")}</span>
+            <span class="hidn-standings__name">${escapeHtml(option.label)}${index === 0 && !quiet ? ` <b>LEADING</b>` : ""}</span>
+            <span class="hidn-standings__count" data-standing-count="${escapeHtml(room.channel)}">${room.posts}</span>
+            <span class="hidn-standings__bar" aria-hidden="true"><i data-standing-bar="${escapeHtml(room.channel)}" style="width: ${width}%"></i></span>
+          </button>
+        </li>`;
+      }).join("")}
+    </ol>
+    ${winner ? `<p class="hidn-standings__past">last week: <strong>${escapeHtml(roomChannelOption(winner.channel as RoomChannel).label)}</strong> won with ${winner.posts}.</p>` : ""}
+  </section>`;
+}
+
+/** Inside a room: where it stands this week. */
+function renderRoomStandingChip(channel: string): string {
+  if (!roomStandings) return "";
+  const index = roomStandings.rooms.findIndex((room) => room.channel === channel);
+  if (index < 0) return "";
+  const room = roomStandings.rooms[index];
+  const lead = index === 0 && room.posts > 0;
+  const ahead = index > 0 ? roomStandings.rooms[index - 1] : undefined;
+  const aheadName = ahead ? escapeHtml(roomChannelOption(ahead.channel as RoomChannel).label) : "";
+  const status = room.posts === 0
+    ? "no confessions yet · be the first"
+    : `${room.posts} ${room.posts === 1 ? "confession" : "confessions"}${lead ? " · leading" : ahead && ahead.posts === room.posts ? ` · tied with ${aheadName}` : ahead ? ` · ${ahead.posts - room.posts + 1} more to pass ${aheadName}` : ""}`;
+  return `<p class="hidn-standing-chip${lead ? " hidn-standing-chip--lead" : ""}"><a href="/room/rooms">#${index + 1} this week</a> · ${status}</p>`;
+}
+
 function renderMobileRoomIndex(): string {
   const signalMode = activeHidnTheme() === "signal";
   const rooms = visibleRoomChannelOptions()
@@ -4305,6 +4408,7 @@ function renderMobileRoomIndex(): string {
           <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
           ${renderMobilePostSurface()}
         </header>
+        ${isRoomDesktopViewport() ? "" : renderRoomStandings()}
         <section class="room-mobile-index__list" aria-label="Private rooms">
           ${rooms}
         </section>
@@ -4361,6 +4465,7 @@ function renderExplore(path = "/room"): string {
         `<p class="hidn-desk__label">/// ROOM</p>
           <h1 id="room-channel-title" class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
+          ${renderRoomStandingChip(channel.key)}
           ${care ? `<p class="room-channel-care">${escapeHtml(care)}</p>` : ""}
           ${renderKeyReminder(roomAccountRecoveryCode)}`,
         `<section class="explore-feed" aria-labelledby="room-channel-title">
@@ -4382,6 +4487,7 @@ function renderExplore(path = "/room"): string {
           <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(roomLinkByKey(channel.key)?.slug ?? channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
+          ${isChannelRoute ? renderRoomStandingChip(channel.key) : ""}
           ${channelKey && roomLinkByKey(channelKey)?.note ? `<p class="room-channel-care">${escapeHtml(roomLinkByKey(channelKey)!.note!)}</p>` : ""}
           ${renderKeyReminder(roomAccountRecoveryCode)}
           ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
@@ -7244,6 +7350,15 @@ export function bindProductRoute(root: ParentNode = document): void {
   });
   if (normalizePath(window.location.pathname) === MIXED_FEED_PATH) {
     void refreshMixedFeed();
+  }
+  {
+    const path = normalizePath(window.location.pathname);
+    if (path === "/room/rooms" || path === MIXED_FEED_PATH || roomChannelFeedFromPath(path) || roomChannelFromPath(path)) void refreshRoomStandings();
+    mountStandingsTicker(root, (channel) => roomChannelOption(channel as RoomChannel).label);
+    root.querySelector<HTMLDetailsElement>("[data-standings-more]")?.addEventListener("toggle", (event) => {
+      deskBoardOpen = (event.currentTarget as HTMLDetailsElement).open;
+    });
+    if (roomStandings && root.querySelector("[data-standings-stage]")) mountStandingsStage(root, roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label);
   }
   root.querySelectorAll<HTMLButtonElement>("[data-feed-more]").forEach((button) => {
     button.addEventListener("click", () => {
