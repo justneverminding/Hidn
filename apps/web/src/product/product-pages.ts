@@ -5077,10 +5077,10 @@ function navigateIntoRoom(path = ROOM_HOME_PATH, options: { portal?: boolean } =
 
 function renderRoomAccessChooser(): string {
   return `<div class="hidn-access" data-hidn-type-panel>
-    <p class="hidn-access__code" data-hidn-type>/// ACCESS</p>
-    <h1 data-hidn-type data-text="CROSS THE THRESHOLD.">CROSS THE THRESHOLD.</h1>
-    <p class="hidn-access__line" data-hidn-type>&gt; No email. No username. One tap and you get a private key.</p>
-    <p class="hidn-access__line" data-hidn-type>&gt; That key is your account. Save it and you can always come back.</p>
+    <p class="hidn-access__code">/// ACCESS</p>
+    <h1 data-text="CROSS THE THRESHOLD.">CROSS THE THRESHOLD.</h1>
+    <p class="hidn-access__line">&gt; No email. No username. One tap and you get a private key.</p>
+    <p class="hidn-access__line">&gt; That key is your account. Save it and you can always come back.</p>
     ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
     <div class="hidn-access__actions" data-hidn-type-reveal>
       ${SecondaryButton({ label: roomAnonymousSubmitting ? "[ MAKING YOUR KEY... ]" : "[ GET MY KEY ]", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
@@ -5106,9 +5106,9 @@ function renderRoomCreate(): string {
 
 function renderRoomLogin(): string {
   return `<div class="hidn-access" data-hidn-type-panel>
-    <p class="hidn-access__code" data-hidn-type>/// ACCESS / RECOVER</p>
-    <h1 data-hidn-type data-text="RETURN TO THE ROOM.">RETURN TO THE ROOM.</h1>
-    <p class="hidn-access__line" data-hidn-type>&gt; Tap the box: if you saved your key to passwords, it fills itself in. Or paste it.</p>
+    <p class="hidn-access__code">/// ACCESS / RECOVER</p>
+    <h1 data-text="RETURN TO THE ROOM.">RETURN TO THE ROOM.</h1>
+    <p class="hidn-access__line">&gt; Tap the box: if you saved your key to passwords, it fills itself in. Or paste it.</p>
     ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
     <form class="room-login-card hidn-access__form" data-room-login-form action="/room/access" method="post" autocomplete="on" novalidate>
       <input class="hidn-key__sr" type="text" name="username" autocomplete="username" value="${KEY_CREDENTIAL_NAME}" readonly tabindex="-1" aria-hidden="true" />
