@@ -19044,6 +19044,29 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 .hidn-standings__row--lead .hidn-standings__rank { color: var(--hidn-warning, #f4b728); }
 .hidn-standings__row--lead .hidn-standings__bar i { background: var(--hidn-warning, #f4b728); box-shadow: 0 0 10px rgba(244, 183, 40, 0.5); }
 
+/* Phone ROOMS page: the ranking folds under the stage and opens on tap. */
+.hidn-standings--fold { gap: 12px; margin: 4px 0 18px; padding: 14px 14px 12px; }
+.hidn-standings--fold .hidn-standings__more summary { list-style: none; }
+.hidn-standings--fold .hidn-standings__more summary::-webkit-details-marker { display: none; }
+.hidn-standings--fold .hidn-standings__toggle {
+  border: 1px solid rgba(93, 255, 143, 0.28);
+  border-radius: 6px;
+  color: var(--hidn-signal);
+  cursor: pointer;
+  display: block;
+  font-family: var(--hidn-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  min-height: 44px;
+  padding: 13px 12px;
+  text-align: center;
+}
+.hidn-standings--fold .hidn-standings__toggle:hover, .hidn-standings--fold .hidn-standings__toggle:focus-visible { background: rgba(93, 255, 143, 0.06); outline: none; }
+.hidn-standings--fold .hidn-standings__more [data-when="open"], .hidn-standings--fold .hidn-standings__more[open] [data-when="closed"] { display: none; }
+.hidn-standings--fold .hidn-standings__more[open] [data-when="open"] { display: inline; }
+.hidn-standings--fold .hidn-standings__more[open] .hidn-standings__list { margin-top: 8px; }
+.hidn-standings--fold .hidn-standings__more .hidn-standings__past { margin-top: 10px; }
+
 .hidn-standing-chip { color: #8fbf98; font-family: var(--hidn-font-mono); font-size: 0.75rem; letter-spacing: 0.06em; margin: 0; text-transform: none; }
 .hidn-standing-chip a { color: var(--hidn-signal); text-decoration: none; }
 .hidn-standing-chip a:hover { text-decoration: underline; }

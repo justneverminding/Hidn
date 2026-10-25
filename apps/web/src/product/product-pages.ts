@@ -4345,29 +4345,33 @@ function renderRoomStandings(compact = false): string {
       <p class="hidn-desk__muted">rooms compete, people don't. resets in ${escapeHtml(resetsIn(roomStandings.resetsAt))}.</p>
     </div>`;
   }
-  return `<section class="hidn-standings" aria-label="Loudest rooms this week">
+  // Phone ROOMS page: one card (head, the live stage, the ranking folded away)
+  // so the board doesn't push the room list down or repeat every room twice.
+  return `<section class="hidn-standings hidn-standings--fold" aria-label="Loudest rooms this week">
     <div class="hidn-standings__head">
       <p class="hidn-standings__label">/// LOUDEST ROOMS THIS WEEK</p>
       <p class="hidn-standings__reset">resets in ${escapeHtml(resetsIn(roomStandings.resetsAt))}</p>
     </div>
-    <p class="hidn-standings__line">rooms compete. people don't. every post counts for its room, nobody's name is on the board.</p>
     ${renderStandingsStage(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label)}
     ${quiet ? `<p class="hidn-standings__quiet">&gt; quiet week so far. put your room on the board.</p>` : ""}
-    <ol class="hidn-standings__list">
-      ${rooms.map((room, index) => {
-        const option = roomChannelOption(room.channel as RoomChannel);
-        const width = Math.round((room.posts / top) * 100);
-        return `<li>
-          <button class="hidn-standings__row${index === 0 && !quiet ? " hidn-standings__row--lead" : ""}" type="button" data-room-channel="${escapeHtml(room.channel)}" aria-label="${escapeHtml(option.label)}: ${room.posts} confessions this week. Open the room.">
-            <span class="hidn-standings__rank">${String(index + 1).padStart(2, "0")}</span>
-            <span class="hidn-standings__name">${escapeHtml(option.label)}${index === 0 && !quiet ? ` <b>LEADING</b>` : ""}</span>
-            <span class="hidn-standings__count" data-standing-count="${escapeHtml(room.channel)}">${room.posts}</span>
-            <span class="hidn-standings__bar" aria-hidden="true"><i data-standing-bar="${escapeHtml(room.channel)}" style="width: ${width}%"></i></span>
-          </button>
-        </li>`;
-      }).join("")}
-    </ol>
-    ${winner ? `<p class="hidn-standings__past">last week: <strong>${escapeHtml(roomChannelOption(winner.channel as RoomChannel).label)}</strong> won with ${winner.posts}.</p>` : ""}
+    <details class="hidn-standings__more" data-standings-more${deskBoardOpen ? " open" : ""}>
+      <summary class="hidn-standings__toggle"><span data-when="closed">[ SEE THE RANKING ▾ ]</span><span data-when="open">[ HIDE THE RANKING ▴ ]</span></summary>
+      <ol class="hidn-standings__list">
+        ${rooms.map((room, index) => {
+          const option = roomChannelOption(room.channel as RoomChannel);
+          const width = Math.round((room.posts / top) * 100);
+          return `<li>
+            <button class="hidn-standings__row${index === 0 && !quiet ? " hidn-standings__row--lead" : ""}" type="button" data-room-channel="${escapeHtml(room.channel)}" aria-label="${escapeHtml(option.label)}: ${room.posts} confessions this week. Open the room.">
+              <span class="hidn-standings__rank">${String(index + 1).padStart(2, "0")}</span>
+              <span class="hidn-standings__name">${escapeHtml(option.label)}${index === 0 && !quiet ? ` <b>LEADING</b>` : ""}</span>
+              <span class="hidn-standings__count" data-standing-count="${escapeHtml(room.channel)}">${room.posts}</span>
+              <span class="hidn-standings__bar" aria-hidden="true"><i data-standing-bar="${escapeHtml(room.channel)}" style="width: ${width}%"></i></span>
+            </button>
+          </li>`;
+        }).join("")}
+      </ol>
+      ${winner ? `<p class="hidn-standings__past">last week: <strong>${escapeHtml(roomChannelOption(winner.channel as RoomChannel).label)}</strong> won with ${winner.posts}.</p>` : ""}
+    </details>
   </section>`;
 }
 
