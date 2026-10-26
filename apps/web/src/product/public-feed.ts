@@ -1,6 +1,6 @@
 import { escapeHtml } from "@hidn/ui";
 import { fetchAnonymousPosts, type RoomPost } from "./room-api";
-import { roomLinkByKey, roomLinkBySlug, roomLinkPath, type RoomLink } from "./room-links";
+import { roomLinkByKey, roomLinkBySlug, roomLinkPath, roomNote, type RoomLink } from "./room-links";
 
 // Read before joining: a public, read-only window into the room at /read,
 // and a live ticker of real posts on the homepage. Anything that writes
@@ -14,6 +14,7 @@ const READ_CHANNELS: Array<{ key: string; label: string }> = [
   { key: "wildest", label: "WILDEST THING YOU'VE DONE" },
   { key: "students", label: "STUDENT SECRETS" },
   { key: "crypto", label: "CRYPTO CONFESSIONS" },
+  { key: "haunted", label: "THINGS THAT HAUNT ME" },
 ];
 
 function rerender(): void {
@@ -275,7 +276,7 @@ export function renderRoomLinkBody(room: RoomLink, signedIn: boolean): string {
     <p class="hidn-read__code">/// ROOM</p>
     <h1 class="hidn-read__title" data-text="${escapeHtml(room.title)}">${escapeHtml(room.title)}</h1>
     <p class="hidn-read__line">&gt; ${escapeHtml(room.description)}. No names, ever.</p>
-    ${room.note ? `<p class="room-channel-care">${escapeHtml(room.note)}</p>` : ""}
+    ${roomNote(room) ? `<p class="room-channel-care">${escapeHtml(roomNote(room)!)}</p>` : ""}
     <div class="hidn-room-link__actions">
       <button class="hidn-read__btn hidn-read__btn--primary" type="button" data-room-say="${room.key}">[ ✎ SAY IT IN THIS ROOM ]</button>
       <button class="hidn-read__btn" type="button" data-room-share="${room.key}">[ ↗ SHARE THIS ROOM ]</button>

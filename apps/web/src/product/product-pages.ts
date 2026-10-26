@@ -83,7 +83,7 @@ import {
   timeAgo,
 } from "./public-feed";
 import { mountStandingsStage, mountStandingsTicker, renderStandingsStage, renderStandingsTicker } from "./standings-stage";
-import { roomLinkByKey } from "./room-links";
+import { roomLinkByKey, roomNote } from "./room-links";
 import { bindMaskPage, MASK_PATH, maskEntry, renderMaskBody } from "./mask";
 import {
   KEY_CREDENTIAL_NAME,
@@ -144,7 +144,7 @@ export interface RenderedProductRoute {
 
 type FeedTab = "latest" | "random" | "felt";
 type HidnTheme = "quiet" | "signal";
-type RoomChannel = "general" | "love" | "ragebait" | "underground" | "wildest" | "students" | "crypto";
+type RoomChannel = "general" | "love" | "ragebait" | "underground" | "wildest" | "students" | "crypto" | "haunted";
 type RoomAccessMode = "choose" | "create" | "login" | "ready";
 type RoomRecoveryRevealMode = "hidden" | "prompt" | "visible";
 type ShareCardType = "THREAD" | "REPLY" | "TEXT" | "BATCH";
@@ -334,6 +334,7 @@ const roomChannelOptions: Array<{
   { key: "wildest", label: "THE WILDEST THING YOU'VE DONE", description: "no names. no judgment. just tell it", categories: ["JOY", "IDENTITY", "UNCERTAINTY"] },
   { key: "students", label: "STUDENT SECRETS", description: "school, uni, everything in between", categories: ["IDENTITY", "FEAR", "UNCERTAINTY"] },
   { key: "crypto", label: "CRYPTO CONFESSIONS", description: "wins, losses, things you'd never tweet", categories: ["REGRET", "JOY", "UNCERTAINTY"] },
+  { key: "haunted", label: "THINGS THAT HAUNT ME", description: "halloween only. say what keeps you up at night", categories: ["FEAR", "REGRET", "LONELINESS"] },
 ];
 
 const ROOM_CHANNEL_KEYS: RoomChannel[] = roomChannelOptions.map((channel) => channel.key);
@@ -346,6 +347,7 @@ const museumThemeByChannel: Record<RoomChannel, MuseumTheme> = {
   wildest: { accent: "#ecc29b", glow: "#d9874a", trim: "#714a31", wall: "#241811", floor: "#2d211a" },
   students: { accent: "#a9c4ec", glow: "#6f95d1", trim: "#3d5274", wall: "#141b26", floor: "#1f2633" },
   crypto: { accent: "#f4d38a", glow: "#d9a63a", trim: "#6e5626", wall: "#211c10", floor: "#2a2416" },
+  haunted: { accent: "#f5a54a", glow: "#e3731c", trim: "#6b3a14", wall: "#1c120a", floor: "#241810" },
 };
 
 interface HomeAmbientAudioSession {
@@ -4462,7 +4464,8 @@ function renderExplore(path = "/room"): string {
   }
 
   if (isChannelRoute && isRoomDesktopViewport()) {
-    const care = channelKey ? roomLinkByKey(channelKey)?.note : undefined;
+    const careRoom = channelKey ? roomLinkByKey(channelKey) : undefined;
+    const care = careRoom ? roomNote(careRoom) : undefined;
     return publicFrame(
       path,
       renderDeskRoom(
@@ -4493,7 +4496,7 @@ function renderExplore(path = "/room"): string {
           <p>${escapeHtml(headerCopy)}</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(roomLinkByKey(channel.key)?.slug ?? channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
           ${isChannelRoute ? renderRoomStandingChip(channel.key) : ""}
-          ${channelKey && roomLinkByKey(channelKey)?.note ? `<p class="room-channel-care">${escapeHtml(roomLinkByKey(channelKey)!.note!)}</p>` : ""}
+          ${channelKey && roomLinkByKey(channelKey) && roomNote(roomLinkByKey(channelKey)!) ? `<p class="room-channel-care">${escapeHtml(roomNote(roomLinkByKey(channelKey)!)!)}</p>` : ""}
           ${renderKeyReminder(roomAccountRecoveryCode)}
           ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}

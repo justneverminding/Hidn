@@ -47,6 +47,7 @@ Built on Zcash. Runs on a Cloudflare Worker with a D1 database
 | The Wildest Thing You've Done | no names. no judgment. just tell it | [/r/wildest-thing](https://hidnroom.com/r/wildest-thing) |
 | Student Secrets | school, uni, everything in between | [/r/student-secrets](https://hidnroom.com/r/student-secrets) |
 | Crypto Confessions | wins, losses, things you'd never tweet | [/r/crypto-confessions](https://hidnroom.com/r/crypto-confessions) |
+| Things That Haunt Me | Halloween only; read-only after Nov 1 | [/r/haunted](https://hidnroom.com/r/haunted) |
 
 The room list lives in
 [`apps/web/src/product/room-links.ts`](apps/web/src/product/room-links.ts),

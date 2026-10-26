@@ -10,6 +10,10 @@ export interface RoomLink {
   description: string;
   /** A short note shown at the top of the room, for rooms that need one. */
   note?: string;
+  /** For limited rooms: when posting opens and closes (ISO, UTC). Outside
+   * that window the room can be read but not posted in. */
+  opensAt?: string;
+  closesAt?: string;
 }
 
 export const ROOM_LINKS: readonly RoomLink[] = [
@@ -38,6 +42,16 @@ export const ROOM_LINKS: readonly RoomLink[] = [
     description: "wins, losses, things you'd never tweet",
     note: "No shilling, no links. Stories, not advice.",
   },
+  {
+    key: "haunted",
+    slug: "haunted",
+    title: "THINGS THAT HAUNT ME",
+    description: "halloween only. say what keeps you up at night",
+    note: "Open until Halloween ends. No real names, and nothing that points to a real person.",
+    opensAt: "2026-10-29T20:00:00Z",
+    // Halloween has ended everywhere (midnight at UTC-12).
+    closesAt: "2026-11-01T12:00:00Z",
+  },
 ];
 
 export function roomLinkBySlug(slug: string): RoomLink | undefined {
@@ -46,6 +60,22 @@ export function roomLinkBySlug(slug: string): RoomLink | undefined {
 
 export function roomLinkByKey(key: string): RoomLink | undefined {
   return ROOM_LINKS.find((room) => room.key === key);
+}
+
+/** Why a limited room isn't taking posts right now, or null when it is. */
+export function roomClosedReason(room: RoomLink, now = Date.now()): string | null {
+  if (room.opensAt && now < Date.parse(room.opensAt)) {
+    return "This room opens Thursday 29 October at 20:00 UTC. Nothing can be posted until then.";
+  }
+  if (room.closesAt && now >= Date.parse(room.closesAt)) {
+    return "Halloween is over. This room is closed to new posts, but you can still read it.";
+  }
+  return null;
+}
+
+/** The note shown at the top of a room: its open/closed state, else its usual note. */
+export function roomNote(room: RoomLink, now = Date.now()): string | undefined {
+  return roomClosedReason(room, now) ?? room.note;
 }
 
 export function roomLinkPath(key: string): string {
