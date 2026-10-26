@@ -38,7 +38,6 @@ let cards = [
   Card(file: "student-secrets", path: "/r/student-secrets", label: "/// ROOM", title: "STUDENT SECRETS", subtitle: "school, uni, everything in between", accent: "#a9c4ec"),
   Card(file: "crypto-confessions", path: "/r/crypto-confessions", label: "/// ROOM", title: "CRYPTO CONFESSIONS", subtitle: "wins, losses, things you'd never tweet", accent: "#f4d38a"),
   Card(file: "haunted", path: "/r/haunted", label: "/// HALLOWEEN ONLY", title: "THINGS THAT HAUNT ME", subtitle: "say what keeps you up at night", accent: "#f5a54a"),
-  Card(file: "mask", path: "/mask", label: "/// GO ANON", title: "NO NAME. NO FACE.", subtitle: "make your profile picture a hidn one", accent: "#a9e6b4"),
   Card(file: "personal-link", path: "/to/…", label: "/// SOMEONE OPENED A ROOM FOR YOU", title: "SAY IT. NO NAMES.", subtitle: "they'll never know it was you", accent: "#a9e6b4"),
 ]
 

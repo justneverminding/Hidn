@@ -3110,8 +3110,8 @@ function sharePreviewFor(pathname: string): SharePreview | null {
     return {
       title: "Go anonymous · 12 masks for your pfp",
       description: "Neon eyes, CCTV, thermal, glitch and more. Made on your device: your photo is never uploaded or stored.",
-      image: "/brand/rooms/mask.png",
-      imageAlt: "HIDN: no name. no face.",
+      image: "/brand/rooms/mask-share.jpg",
+      imageAlt: "Go anonymous: six of the twelve profile picture masks, from HIDN and neon eyes to CCTV and thermal.",
     };
   }
   if (/^\/to\/[a-z2-9]{8}\/?$/.test(pathname)) {
