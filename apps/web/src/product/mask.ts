@@ -51,9 +51,7 @@ const state: MaskState = {
 
 /** Where to send people from elsewhere on the site, and what to call it. */
 export function maskEntry(now = Date.now()): { href: string; label: string } {
-  return now < HALLOWEEN_ENDS_AT
-    ? { href: `${MASK_PATH}?style=haunted`, label: "haunted pfp for halloween" }
-    : { href: MASK_PATH, label: "make your pfp anon" };
+  return { href: now < HALLOWEEN_ENDS_AT ? `${MASK_PATH}?style=haunted` : MASK_PATH, label: "make your pfp anon" };
 }
 
 let styleFromLink = false;
