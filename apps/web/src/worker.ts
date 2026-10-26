@@ -9,7 +9,7 @@ import {
   parseField,
 } from "@hidn/anonymous-zk";
 import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
-import { roomLinkBySlug } from "./product/room-links";
+import { roomClosedReason, roomLinkByKey, roomLinkBySlug } from "./product/room-links";
 import anonymousVerifierWasm from "../../../packages/anonymous-zk/wasm/bn128.wasm";
 
 // Keep the edge verifier bundle fresh when its shared anonymous-zk runtime changes.
@@ -48,7 +48,7 @@ const AMBIENT_ROOM_THREAD_IDS = new Set([
   "00408",
 ]);
 
-type RoomChannel = "general" | "love" | "ragebait" | "underground" | "wildest" | "students" | "crypto";
+type RoomChannel = "general" | "love" | "ragebait" | "underground" | "wildest" | "students" | "crypto" | "haunted";
 type ActivityAction = "JUST OPENED" | "JUST RETURNED" | "JUST POSTED" | "JUST REPLIED";
 type ActivitySubject = "A ROOM KEY" | "TO THE ROOM" | "A THOUGHT" | "A THREAD";
 type NotificationEventType = "reaction" | "reply";
@@ -260,7 +260,7 @@ const REPORT_REASONS: readonly ReportReason[] = [
   "self_harm",
   "other",
 ];
-const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "ragebait", "underground", "wildest", "students", "crypto"];
+const ROOM_CHANNELS: readonly RoomChannel[] = ["general", "love", "ragebait", "underground", "wildest", "students", "crypto", "haunted"];
 const ROOM_POST_CATEGORIES = new Set([
   "REGRET",
   "CAREER",
@@ -1315,6 +1315,11 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   }
   if (!isRoomChannel(channel)) {
     return jsonResponse({ error: "Choose a valid room channel." }, 400);
+  }
+  const closedRoom = roomLinkByKey(channel);
+  const closedReason = closedRoom ? roomClosedReason(closedRoom) : null;
+  if (closedReason) {
+    return jsonResponse({ error: closedReason, code: "ROOM_CLOSED" }, 400);
   }
   if (!ROOM_POST_CATEGORIES.has(category)) {
     return jsonResponse({ error: "Choose a valid post category." }, 400);
@@ -3060,6 +3065,29 @@ async function routeLinkApi(url: URL, request: Request, env: HidnWorkerEnv): Pro
 
 interface SharePreview { title: string; description: string; image: string; imageAlt: string }
 
+const INFO_IMAGE = "/brand/hidn-og-terminal.png";
+const INFO_IMAGE_ALT = "HIDN — Welcome to HIDN. Are you sure you're in the right place?";
+const INFO_PAGES: Record<string, SharePreview> = {
+  "/how-it-works": {
+    title: "How HIDN works · anonymous posts with zero-knowledge proofs",
+    description: "No account, no email, no name. Your browser keeps a secret and proves you're a member without saying which one. Here's how HIDN keeps you anonymous.",
+    image: INFO_IMAGE,
+    imageAlt: INFO_IMAGE_ALT,
+  },
+  "/manifesto": {
+    title: "The HIDN manifesto · a room without names",
+    description: "Why HIDN exists: a place to say what you can't say anywhere else, where nobody, not even us, knows it was you.",
+    image: INFO_IMAGE,
+    imageAlt: INFO_IMAGE_ALT,
+  },
+  "/privacy": {
+    title: "HIDN privacy · what we can and can't see",
+    description: "What HIDN stores, what it never sees, and where its privacy limits are today. Plain answers about anonymous posts, links and tips.",
+    image: INFO_IMAGE,
+    imageAlt: INFO_IMAGE_ALT,
+  },
+};
+
 /** Chat apps and social sites read a link's preview from the HTML without
  * running the page, so shared rooms and personal links get theirs here. */
 function sharePreviewFor(pathname: string): SharePreview | null {
@@ -3074,6 +3102,10 @@ function sharePreviewFor(pathname: string): SharePreview | null {
       imageAlt: `${link.title} on HIDN: ${link.description}.`,
     };
   }
+  // The public info pages each need their own title, description and
+  // canonical, or search engines fold them into the homepage.
+  const info = INFO_PAGES[pathname.replace(/\/+$/, "")];
+  if (info) return info;
   if (/^\/mask\/?$/.test(pathname)) {
     return {
       title: "Go anon · HIDN",
@@ -3098,8 +3130,10 @@ function escapeAttribute(value: string): string {
 }
 
 function withSharePreview(html: string, preview: SharePreview, url: URL): string {
-  const absoluteUrl = `${url.origin}${url.pathname}`;
-  const image = `${url.origin}${preview.image}?v=1`;
+  // Canonical URLs always name the production origin, without a trailing slash.
+  const path = url.pathname === "/" ? "/" : url.pathname.replace(/\/+$/, "");
+  const absoluteUrl = `${CANONICAL_ORIGIN}${path}`;
+  const image = `${CANONICAL_ORIGIN}${preview.image}?v=1`;
   const set = (text: string, pattern: RegExp, value: string): string =>
     text.replace(pattern, (_match, before: string, after: string) => `${before}${escapeAttribute(value)}${after}`);
   let out = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeAttribute(preview.title)}</title>`);
