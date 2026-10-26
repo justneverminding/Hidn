@@ -3074,6 +3074,14 @@ function sharePreviewFor(pathname: string): SharePreview | null {
       imageAlt: `${link.title} on HIDN: ${link.description}.`,
     };
   }
+  if (/^\/mask\/?$/.test(pathname)) {
+    return {
+      title: "Go anon · HIDN",
+      description: "Turn your profile picture into a HIDN one. Your photo never leaves your device.",
+      image: "/brand/rooms/mask.png",
+      imageAlt: "HIDN: no name. no face.",
+    };
+  }
   if (/^\/to\/[a-z2-9]{8}\/?$/.test(pathname)) {
     return {
       title: "Someone opened a room for you · HIDN",
@@ -3109,7 +3117,7 @@ function withSharePreview(html: string, preview: SharePreview, url: URL): string
   return out;
 }
 
-const INDEXABLE_PUBLIC_PATHS = new Set(["/", "/how-it-works", "/manifesto", "/privacy"]);
+const INDEXABLE_PUBLIC_PATHS = new Set(["/", "/how-it-works", "/manifesto", "/privacy", "/mask"]);
 
 function crawlerPolicyForHtmlPath(pathname: string): string {
   const normalizedPath = pathname === "/" ? "/" : pathname.replace(/\/+$/, "");

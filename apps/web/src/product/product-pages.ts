@@ -84,6 +84,7 @@ import {
 } from "./public-feed";
 import { mountStandingsStage, mountStandingsTicker, renderStandingsStage, renderStandingsTicker } from "./standings-stage";
 import { roomLinkByKey } from "./room-links";
+import { bindMaskPage, MASK_PATH, renderMaskBody } from "./mask";
 import {
   KEY_CREDENTIAL_NAME,
   bindKeyReminder,
@@ -2304,7 +2305,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   const isAdminPage = normalizedPath === "/admin" || normalizedPath.startsWith("/admin/");
   const isRoomSurface = normalizedPath === "/room/feed" || normalizedPath === "/room/inbox" || normalizedPath === "/room" || normalizedPath === "/room/main" || normalizedPath === "/room/library" || normalizedPath === "/room/rooms" || normalizedPath === "/explore" || normalizedPath === "/room/orb" || normalizedPath === "/room/profile" || normalizedPath === "/room/hall" || Boolean(roomChannelSurfaceFromPath(normalizedPath)) || normalizedPath.startsWith("/c/");
   // Reading pages stay fully lit; the flashlight would hide the posts.
-  const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/") || normalizedPath.startsWith("/r/");
+  const isPublicRead = normalizedPath === "/read" || normalizedPath.startsWith("/read/") || normalizedPath.startsWith("/to/") || normalizedPath.startsWith("/r/") || normalizedPath === "/mask";
   const isPointerSurface = !isHome && !isRoomCreation && !isRoomSurface && !isAdminPage && !isPublicRead;
   const themeClass = activeHidnTheme() === "signal" ? " public-page--theme-signal" : "";
   const footerLinks = isAdminPage
@@ -5458,6 +5459,26 @@ function renderLinkSendRoute(path: string, slug: string): RenderedProductRoute {
   };
 }
 
+function renderMaskRoute(): RenderedProductRoute {
+  const description = "Turn your profile picture into a HIDN one: redacted, watcher eyes or terminal glow. Your photo never leaves your device.";
+  return {
+    metadata: {
+      ...HOME_METADATA,
+      title: "HIDN — Go anon",
+      description,
+      canonicalPath: MASK_PATH,
+      structuredData: webPageStructuredData("HIDN — Go anon", description, MASK_PATH),
+    },
+    html: publicFrame(
+      MASK_PATH,
+      `<main id="main-content" class="public-main room-main hidn-term-main">
+        ${terminalWindow("hidn@room: ~/mask", renderMaskBody(), "hidn-term--access hidn-term--link hidn-term--mask")}
+      </main>`,
+      "public-page--room public-page--public-read",
+    ),
+  };
+}
+
 function renderRoomAccess(): RenderedProductRoute {
   restoreRoomAccountState();
   const content =
@@ -5914,6 +5935,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room/access") {
     return renderRoomAccess();
+  }
+
+  if (normalizedPath === MASK_PATH) {
+    return renderMaskRoute();
   }
 
   if (normalizedPath === "/admin") {
@@ -7400,6 +7425,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   bindRoomTipAddressInteractions(root);
   bindRoomPostComposerInteractions(root);
   bindLinkSendPage(root);
+  bindMaskPage(root);
   if (normalizePath(window.location.pathname) === "/room/inbox" && roomAnonymousIdentity) {
     const identity = roomAnonymousIdentity;
     bindLinkInbox(root, {

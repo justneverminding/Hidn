@@ -19220,3 +19220,62 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 @keyframes hidn-ticker-flash { 0% { border-color: var(--hidn-signal); box-shadow: 0 0 18px rgba(93, 255, 143, 0.45); } 100% { box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) { .hidn-ticker__line { transition: none; } .hidn-ticker__tag i { animation: none; } }
 .public-page .hidn-ticker { align-self: stretch; box-sizing: border-box; max-width: 560px; width: 100%; }
+
+/* /mask: profile picture maker. The photo is edited in the browser only. */
+.hidn-term--mask { max-width: 980px; }
+.hidn-mask__grid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; margin-top: 8px; }
+.hidn-mask__stage { display: grid; gap: 10px; }
+.hidn-mask__drop {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  border: 1px solid rgba(77, 255, 110, .35);
+  background: #010201;
+  cursor: pointer;
+  overflow: hidden;
+}
+.hidn-mask__drop.has-photo { cursor: grab; touch-action: none; }
+.hidn-mask__drop.has-photo:active { cursor: grabbing; }
+.hidn-mask__drop.is-over { border-color: #4dff6e; box-shadow: 0 0 0 1px #4dff6e, 0 0 24px rgba(77, 255, 110, .25); }
+.hidn-mask__canvas { display: block; width: 100%; height: 100%; }
+.hidn-mask__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+  color: #4dff6e;
+  font-size: 15px;
+  letter-spacing: .08em;
+  pointer-events: none;
+}
+.hidn-mask__empty em { color: #8fd9a0; font-size: 12px; font-style: normal; letter-spacing: .04em; }
+.hidn-mask__controls { display: grid; gap: 14px; }
+.hidn-mask__styles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.hidn-mask__style {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid rgba(77, 255, 110, .3);
+  background: rgba(77, 255, 110, .03);
+  color: #b9f7c4;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hidn-mask__style b { color: #4dff6e; font-size: 13px; font-weight: 600; letter-spacing: .1em; }
+.hidn-mask__style span { color: #8fd9a0; font-size: 11px; letter-spacing: .03em; }
+.hidn-mask__style:hover, .hidn-mask__style:focus-visible { border-color: #4dff6e; outline: none; }
+.hidn-mask__style.is-active { border-color: #4dff6e; background: rgba(77, 255, 110, .12); box-shadow: inset 0 0 0 1px #4dff6e; }
+.hidn-mask__style[data-mask-style="haunted"] b { color: #ff8a1f; }
+.hidn-mask__style[data-mask-style="haunted"].is-active { border-color: #ff8a1f; background: rgba(255, 138, 31, .1); box-shadow: inset 0 0 0 1px #ff8a1f; }
+.hidn-mask__range { display: grid; gap: 8px; }
+.hidn-mask__range input { width: 100%; accent-color: #4dff6e; }
+.hidn-mask__next { display: grid; gap: 8px; margin-top: 8px; padding-top: 14px; border-top: 1px dashed rgba(77, 255, 110, .25); }
+@media (max-width: 760px) {
+  .hidn-mask__grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* Kept in the layout so switching styles doesn't make the page jump. */
+.hidn-mask__range.is-unused, .hidn-mask__unused { visibility: hidden; }
