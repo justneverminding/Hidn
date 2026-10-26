@@ -5472,7 +5472,7 @@ function renderLinkSendRoute(path: string, slug: string): RenderedProductRoute {
 }
 
 function renderMaskRoute(): RenderedProductRoute {
-  const description = "Turn your profile picture into a HIDN one: redacted, watcher eyes or terminal glow. Your photo never leaves your device.";
+  const description = "Go anonymous: 12 masks for your profile picture, from neon eyes to CCTV. Made on your device; your photo is never uploaded or stored.";
   return {
     metadata: {
       ...HOME_METADATA,
@@ -5483,9 +5483,7 @@ function renderMaskRoute(): RenderedProductRoute {
     },
     html: publicFrame(
       MASK_PATH,
-      `<main id="main-content" class="public-main room-main hidn-term-main">
-        ${terminalWindow("hidn@room: ~/mask", renderMaskBody(), "hidn-term--access hidn-term--link hidn-term--mask")}
-      </main>`,
+      `<main id="main-content" class="public-main mask-main">${renderMaskBody()}</main>`,
       "public-page--room public-page--public-read",
     ),
   };

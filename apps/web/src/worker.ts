@@ -3108,8 +3108,8 @@ function sharePreviewFor(pathname: string): SharePreview | null {
   if (info) return info;
   if (/^\/mask\/?$/.test(pathname)) {
     return {
-      title: "Go anon · HIDN",
-      description: "Turn your profile picture into a HIDN one. Your photo never leaves your device.",
+      title: "Go anonymous · 12 masks for your pfp",
+      description: "Neon eyes, CCTV, thermal, glitch and more. Made on your device: your photo is never uploaded or stored.",
       image: "/brand/rooms/mask.png",
       imageAlt: "HIDN: no name. no face.",
     };
