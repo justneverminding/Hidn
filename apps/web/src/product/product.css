@@ -19279,3 +19279,30 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 }
 /* Kept in the layout so switching styles doesn't make the page jump. */
 .hidn-mask__range.is-unused, .hidn-mask__unused { visibility: hidden; }
+/* Ways into /mask: a quiet line on the welcome card, a card on the ME tab. */
+.hidn-welcome__mask {
+  /* The welcome panel lets drags through to the museum; this link takes clicks. */
+  pointer-events: auto;
+  justify-self: center;
+  width: fit-content;
+  text-align: center;
+  margin-top: .9em;
+  color: #4dff6e;
+  font-family: var(--hidn-font-mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(77, 255, 110, .45);
+  padding-bottom: 2px;
+}
+.hidn-welcome__mask:hover, .hidn-welcome__mask:focus-visible { color: #c4f7cc; border-bottom-color: #c4f7cc; outline: none; }
+.hidn-me__pfp-link {
+  justify-self: start;
+  border: 1px solid rgba(77, 255, 110, .55);
+  color: #4dff6e;
+  font-size: 12px;
+  letter-spacing: .08em;
+  padding: 10px 14px;
+  text-decoration: none;
+}
+.hidn-me__pfp-link:hover, .hidn-me__pfp-link:focus-visible { background: #4dff6e; color: #010201; outline: none; }

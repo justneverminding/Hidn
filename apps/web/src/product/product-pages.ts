@@ -84,7 +84,7 @@ import {
 } from "./public-feed";
 import { mountStandingsStage, mountStandingsTicker, renderStandingsStage, renderStandingsTicker } from "./standings-stage";
 import { roomLinkByKey } from "./room-links";
-import { bindMaskPage, MASK_PATH, renderMaskBody } from "./mask";
+import { bindMaskPage, MASK_PATH, maskEntry, renderMaskBody } from "./mask";
 import {
   KEY_CREDENTIAL_NAME,
   bindKeyReminder,
@@ -5344,6 +5344,15 @@ function renderProfileActivity(posts: DeviceSignalPost[], comments: RoomComment[
   </section>`;
 }
 
+function renderProfilePfp(): string {
+  const entry = maskEntry();
+  return `<section class="hidn-me__panel hidn-me__pfp">
+    <p class="hidn-me__label">&gt; YOUR HIDN PFP</p>
+    <p class="hidn-me__note">Turn your profile picture into a HIDN one: redacted, watcher eyes or terminal glow. Your photo is edited on this device and never uploaded.</p>
+    <a class="hidn-me__pfp-link" href="${entry.href}">[ ${escapeHtml(entry.label.toUpperCase())} → ]</a>
+  </section>`;
+}
+
 function renderProfileBody(
   profileLabel: string,
   profileStats: ReturnType<typeof deviceSignalStats>,
@@ -5365,7 +5374,7 @@ function renderProfileBody(
           <p class="hidn-me__note">A private ZEC payment will unlock extra features. Coming soon.</p>
           ${GhostButton({ label: "[ VERIFY WITH ZEC ]", dataAction: "room-open-verification" })}
         </section>`
-      : renderProfileActivity(posts, comments);
+      : `${renderProfilePfp()}${renderProfileActivity(posts, comments)}`;
   return `<header class="hidn-me">
       <p class="hidn-access__code">/// ME</p>
       <div class="hidn-me__who">
@@ -5728,6 +5737,7 @@ function renderTerminalHomePage(): RenderedProductRoute {
             <a class="hidn-welcome__enter hidn-welcome__enter--ready hidn-welcome__enter--ghost" href="/read">[ READ FIRST ]</a>
           </div>
           <p class="hidn-welcome__free">PRIVATE · NO NAME · NO USERNAME</p>
+          <a class="hidn-welcome__mask" href="${maskEntry().href}">&gt; new: ${maskEntry().label} →</a>
         </div>
         <figure class="hidn-welcome__ticker" data-home-ticker hidden aria-live="off">
           <blockquote data-home-ticker-text></blockquote>

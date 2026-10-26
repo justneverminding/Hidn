@@ -5,6 +5,8 @@ import { escapeHtml } from "@hidn/ui";
 // visitor's device. Nothing is uploaded and nothing is stored.
 
 export const MASK_PATH = "/mask";
+// Until Halloween ends everywhere, links into /mask open on the haunted style.
+const HALLOWEEN_ENDS_AT = Date.parse("2026-11-01T12:00:00Z");
 const SIZE = 1024;
 const SHARE_TEXT = "I'm anon now. Get yours at hidnroom.com/mask";
 
@@ -47,7 +49,22 @@ const state: MaskState = {
   saved: false,
 };
 
+/** Where to send people from elsewhere on the site, and what to call it. */
+export function maskEntry(now = Date.now()): { href: string; label: string } {
+  return now < HALLOWEEN_ENDS_AT
+    ? { href: `${MASK_PATH}?style=haunted`, label: "haunted pfp for halloween" }
+    : { href: MASK_PATH, label: "make your pfp anon" };
+}
+
+let styleFromLink = false;
+
 export function renderMaskBody(): string {
+  // A link can choose the starting style, e.g. /mask?style=haunted.
+  if (!styleFromLink) {
+    styleFromLink = true;
+    const requested = new URLSearchParams(window.location.search).get("style");
+    if (requested && requested in STYLES) state.style = requested as MaskStyle;
+  }
   const styleButtons = STYLE_ORDER.map((key) => {
     const spec = STYLES[key];
     const active = key === state.style;
