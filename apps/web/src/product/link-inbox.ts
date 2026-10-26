@@ -36,6 +36,11 @@ function button(label: string, action: string, options: { primary?: boolean; dis
   return `<button class="hidn-link__btn${options.primary ? " hidn-link__btn--primary" : ""}" type="${options.type ?? "button"}" data-link-action="${action}"${options.disabled ? " disabled" : ""}>[ ${escapeHtml(label)} ]</button>`;
 }
 
+/** The owner's inbox (a room page) speaks in sentence case, without brackets. */
+function ownerButton(label: string, action: string, options: { primary?: boolean; disabled?: boolean; type?: "button" | "submit" } = {}): string {
+  return `<button class="hidn-link__btn hidn-link__btn--plain${options.primary ? " hidn-link__btn--primary" : ""}" type="${options.type ?? "button"}" data-link-action="${action}"${options.disabled ? " disabled" : ""}>${escapeHtml(label)}</button>`;
+}
+
 function formatWhen(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -363,27 +368,27 @@ function renderLinkCard(link: LinkInbox): string {
   const url = linkUrl(link.slug);
   const open = link.status === "open";
   return `<section class="hidn-link__card">
-    <p class="hidn-link__label">&gt; YOUR LINK / ${open ? "OPEN" : "CLOSED"}</p>
+    <p class="hidn-link__label">Your link · ${open ? "open" : "closed"}</p>
     <code class="hidn-link__url">${escapeHtml(url)}</code>
     <div class="hidn-link__actions">
-      ${button(inbox.feedback === "copied" ? "COPIED" : "COPY LINK", "copy-link", { primary: true })}
-      ${"share" in navigator ? button("SHARE", "share-link") : ""}
-      <a class="hidn-link__btn" href="/to/${escapeHtml(link.slug)}" target="_blank" rel="noopener">[ PREVIEW ↗ ]</a>
+      ${ownerButton(inbox.feedback === "copied" ? "Copied" : "Copy link", "copy-link", { primary: true })}
+      ${"share" in navigator ? ownerButton("Share", "share-link") : ""}
+      <a class="hidn-link__btn hidn-link__btn--plain" href="/to/${escapeHtml(link.slug)}" target="_blank" rel="noopener">Preview ↗</a>
     </div>
     <form class="hidn-link__settings" data-link-settings-form novalidate>
       <label class="hidn-link__input">
-        <span>&gt; PROMPT / WHAT VISITORS SEE (OPTIONAL)</span>
+        <span>What visitors see (optional)</span>
         <input type="text" data-link-prompt maxlength="${LINK_PROMPT_MAX_LENGTH}" value="${escapeHtml(inbox.promptDraft)}" placeholder="${DEFAULT_PROMPT}" autocomplete="off" />
       </label>
       <label class="hidn-link__input">
-        <span>&gt; ZEC TIPS / SHIELDED ADDRESS (OPTIONAL)</span>
+        <span>Your shielded address for ZEC tips (optional)</span>
         <input type="text" data-link-tip maxlength="500" value="${escapeHtml(inbox.tipDraft)}" placeholder="u1... leave empty for no tips" autocomplete="off" spellcheck="false" />
       </label>
       <p class="hidn-link__note">Tips go straight from the sender's wallet to yours. Each tipped message shows a code; the same code arrives in the payment memo.</p>
       <div class="hidn-link__actions">
-        ${button(inbox.busy === "save" ? "SAVING..." : "SAVE", "save", { type: "submit", disabled: Boolean(inbox.busy) })}
-        ${button(open ? "CLOSE LINK" : "REOPEN LINK", open ? "close" : "reopen", { disabled: Boolean(inbox.busy) })}
-        ${button("NEW LINK ADDRESS · ZEC", "rotate-paid", { disabled: Boolean(inbox.busy) })}
+        ${ownerButton(inbox.busy === "save" ? "Saving…" : "Save", "save", { type: "submit", disabled: Boolean(inbox.busy) })}
+        ${ownerButton(open ? "Close link" : "Reopen link", open ? "close" : "reopen", { disabled: Boolean(inbox.busy) })}
+        ${ownerButton("New link address · ZEC", "rotate-paid", { disabled: Boolean(inbox.busy) })}
       </div>
     </form>
   </section>`;
@@ -407,7 +412,7 @@ function renderPaidAddressPrompt(): string {
         <p class="hidn-soon__title" data-text="COMING SOON">COMING SOON</p>
         <p class="hidn-link__note">HIDN is finishing the part that confirms payments. Until then nothing can be paid here and nothing is charged.</p>
       </div>
-      <div class="hidn-link__actions">${button("CLOSE", "paid-close", { primary: true })}</div>
+      <div class="hidn-link__actions">${ownerButton("Close", "paid-close", { primary: true })}</div>
     </section>
   </div>`;
 }
@@ -417,52 +422,52 @@ function renderMessages(data: LinkInboxResponse): string {
     const isNew = inbox.unreadIds.has(message.id);
     const status = inbox.shareStatus.get(message.id) ?? "";
     return `<article class="hidn-link__msg${isNew ? " hidn-link__msg--new" : ""}">
-      <header><span>${isNew ? "● NEW" : "ANONYMOUS"}</span><time>${escapeHtml(formatWhen(message.createdAt))}</time></header>
+      <header><span>${isNew ? "● new" : "anonymous"}</span><time>${escapeHtml(formatWhen(message.createdAt))}</time></header>
       <p>${escapeHtml(message.text)}</p>
-      ${message.tipCode ? `<p class="hidn-link__tipcode">ZEC TIP · CODE ${escapeHtml(message.tipCode)} · CHECK YOUR WALLET MEMOS</p>` : ""}
+      ${message.tipCode ? `<p class="hidn-link__tipcode">ZEC tip · code ${escapeHtml(message.tipCode)} · check your wallet memos</p>` : ""}
       <div class="hidn-link__msg-bar" role="group" aria-label="Message actions">
-        <button class="hidn-link__seg" type="button" data-link-action="share-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↗</span> SHARE</button>
-        <button class="hidn-link__seg" type="button" data-link-action="save-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↓</span> SAVE</button>
-        <button class="hidn-link__seg hidn-link__seg--danger" type="button" data-link-action="delete" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">✕</span> DELETE</button>
+        <button class="hidn-link__seg" type="button" data-link-action="share-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↗</span> Share</button>
+        <button class="hidn-link__seg" type="button" data-link-action="save-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↓</span> Save</button>
+        <button class="hidn-link__seg hidn-link__seg--danger" type="button" data-link-action="delete" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">✕</span> Delete</button>
       </div>
       ${status ? `<p class="hidn-link__msg-status" role="status">&gt; ${escapeHtml(status)}</p>` : ""}
     </article>`;
   }).join("");
   return `<section class="hidn-link__inbox">
     <header class="hidn-link__inbox-head">
-      <p class="hidn-link__label">&gt; ${data.messages.length} ${data.messages.length === 1 ? "MESSAGE" : "MESSAGES"}</p>
-      ${button(inbox.status === "loading" ? "READING..." : "REFRESH", "refresh")}
+      <p class="hidn-link__label">${data.messages.length} ${data.messages.length === 1 ? "message" : "messages"}</p>
+      ${ownerButton(inbox.status === "loading" ? "Reading…" : "Refresh", "refresh")}
     </header>
     ${items || `<p class="hidn-link__empty">&gt; nothing yet. share your link and wait in the dark.<span class="hidn-link__caret">▌</span></p>
-      <div class="hidn-link__actions">${button("GET MY LINK", "view-link", { primary: true })}</div>`}
+      <div class="hidn-link__actions">${ownerButton("Get my link", "view-link", { primary: true })}</div>`}
   </section>`;
 }
 
 export function renderLinkInboxBody(): string {
-  const head = `<p class="hidn-link__code-line">/// INBOX</p>
-    <h1 class="hidn-link__title" data-text="WHAT THEY CAN'T SAY TO YOUR FACE.">WHAT THEY CAN'T SAY TO YOUR FACE.</h1>
-    <p class="hidn-link__line">&gt; Share your link anywhere. Anyone can leave you a message without a name. You read them here.</p>`;
+  const head = `<p class="hidn-link__code-line">hidn://inbox</p>
+    <h1 class="hidn-link__title" data-text="What they can't say to your face.">What they can't say to your face.</h1>
+    <p class="hidn-link__line">Share your link anywhere. Anyone can leave you a message without a name. You read them here.</p>`;
   if (inbox.status === "idle" || (inbox.status === "loading" && !inbox.data)) {
     return `<div class="hidn-link">${head}<p class="hidn-link__log">&gt; opening inbox...<span class="hidn-link__caret">▌</span></p></div>`;
   }
   if (inbox.status === "error" && !inbox.data) {
     return `<div class="hidn-link">${head}
       <p class="hidn-link__error" role="alert">&gt; ${escapeHtml(inbox.error)}</p>
-      <div class="hidn-link__actions">${button("TRY AGAIN", "refresh")}</div>
+      <div class="hidn-link__actions">${ownerButton("Try again", "refresh")}</div>
     </div>`;
   }
 
   const data = inbox.data!;
   const error = inbox.error ? `<p class="hidn-link__error" role="alert">&gt; ${escapeHtml(inbox.error)}</p>` : "";
-  const status = inbox.feedback && inbox.feedback !== "copied" ? `<p class="hidn-link__ok" role="status">&gt; ${escapeHtml(inbox.feedback)}</p>` : "";
+  const status = inbox.feedback && inbox.feedback !== "copied" ? `<p class="hidn-link__ok" role="status">${escapeHtml(inbox.feedback)}</p>` : "";
   if (!data.link) {
     return `<div class="hidn-link">${head}
       <section class="hidn-link__card">
-        <p class="hidn-link__label">&gt; YOUR LINK / NOT CREATED</p>
+        <p class="hidn-link__label">Your link · not created yet</p>
         <p class="hidn-link__note">One link per member. It never shows your alias or anything you post in the room. Opening it proves you are a member without saying which one.</p>
         ${inbox.busy === "create" ? `<p class="hidn-link__log">&gt; proving membership... forging link<span class="hidn-link__caret">▌</span></p>` : ""}
         ${error}
-        <div class="hidn-link__actions">${button(inbox.busy === "create" ? "FORGING..." : "CREATE MY LINK", "create", { primary: true, disabled: Boolean(inbox.busy) })}</div>
+        <div class="hidn-link__actions">${ownerButton(inbox.busy === "create" ? "Creating…" : "Create my link", "create", { primary: true, disabled: Boolean(inbox.busy) })}</div>
       </section>
     </div>`;
   }
@@ -474,10 +479,10 @@ export function renderLinkInboxBody(): string {
   const tab = (view: "messages" | "link", label: string): string =>
     `<button class="hidn-link__tab${inbox.view === view ? " hidn-link__tab--active" : ""}" type="button" role="tab" aria-selected="${inbox.view === view}" data-link-action="view-${view === "messages" ? "messages" : "link"}">${label}</button>`;
   return `<div class="hidn-link">
-    <p class="hidn-link__code-line">/// INBOX</p>
+    <p class="hidn-link__code-line">hidn://inbox</p>
     <div class="hidn-link__tabs" role="tablist" aria-label="Inbox">
-      ${tab("messages", `MESSAGES${unread ? ` <b>${unread} NEW</b>` : count ? ` (${count})` : ""}`)}
-      ${tab("link", "MY LINK")}
+      ${tab("messages", `Messages${unread ? ` <b>${unread} new</b>` : count ? ` (${count})` : ""}`)}
+      ${tab("link", "My link")}
     </div>
     ${error}${status}
     ${inbox.view === "messages" ? renderMessages(data) : renderLinkCard(data.link)}
@@ -574,7 +579,7 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
       inbox.data = { link: created, messages: inbox.data?.messages ?? [], unreadCount: 0 };
       inbox.promptDraft = created.prompt;
       inbox.tipDraft = created.tipAddress ?? "";
-      inbox.feedback = "LINK CREATED. COPY IT AND SHARE IT ANYWHERE.";
+      inbox.feedback = "Link created. Copy it and share it anywhere.";
       inbox.view = "link";
     } else if (action === "save" || action === "close" || action === "reopen" || action === "rotate") {
       const tip = inbox.tipDraft.trim().toLowerCase();

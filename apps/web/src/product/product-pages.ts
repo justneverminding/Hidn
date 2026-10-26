@@ -184,7 +184,7 @@ function roomPostLimitCopy(): string {
 }
 
 function roomReplyLimitCopy(): string {
-  return `UP TO ${roomReplyCharacterLimit()} CHARACTERS.`;
+  return `Up to ${roomReplyCharacterLimit()} characters.`;
 }
 
 function activeHidnTheme(): HidnTheme {
@@ -957,7 +957,7 @@ function renderTransmissionRow(
     : "";
   const threadId = transmission.id;
   const tipAction = threadId && transmission.tipAddress
-    ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(threadId)}">TIP WITH ZEC</button>`
+    ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(threadId)}">Tip in ZEC</button>`
     : "";
   const shareTextAttributes = threadId
     ? `data-share-text data-share-id="${escapeHtml(threadId)}" data-share-kind="thread" data-share-label="${escapeHtml(transmission.reference ?? "ANONYMOUS THREAD")}" data-share-category="${escapeHtml(transmission.category ?? "IDENTITY")}" data-share-time="${escapeHtml(transmission.time)}"`
@@ -966,9 +966,9 @@ function renderTransmissionRow(
   const action = options.href && threadId
     ? `<div class="transmission-row__actions">
         <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(threadId)}" aria-pressed="${roomLikedIds.has(threadId)}"${hasRoomSession() ? "" : " disabled"}>♡ ${reactionCountForThread(threadId, transmission.reactions)}</button>
-        <a class="room-message__action" href="${escapeHtml(options.href)}">↳ ${replyCount ? `${replyCount} ${replyCount === 1 ? "REPLY" : "REPLIES"}` : "REPLY"}</a>
-        <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">SHARE</button>
-        <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">SAVE</button>
+        <a class="room-message__action" href="${escapeHtml(options.href)}">${replyCount ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}</a>
+        <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(threadId)}">Share</button>
+        <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(threadId)}">Save</button>
         ${tipAction}
         <span class="thread-share-status" data-share-status="${escapeHtml(threadId)}" role="status" aria-live="polite"></span>
       </div>`
@@ -981,10 +981,11 @@ function renderTransmissionRow(
   const openClass = threadId && threadId === deskOpenThreadId ? " transmission-row--open" : "";
   return `<article class="transmission-row${className}${openClass}"${openAttribute}>
     <div class="transmission-row__meta">
-      <span>ANONYMOUS${options.roomLabel ? ` · IN ${escapeHtml(options.roomLabel)}` : ""}</span>
+      <span class="transmission-row__room">${options.roomLabel ? escapeHtml(roomDisplayName(options.roomLabel)) : "Anonymous"}</span>
       <time datetime="${escapeHtml(transmission.time)}">${escapeHtml(threadId ? timeAgo(transmission.time) || formatTransmissionTime(transmission.time) : formatTransmissionTime(transmission.time))}</time>
+      <span class="transmission-row__signed" role="img" aria-label="Signed: name withheld"></span>
     </div>
-    <p class="transmission-row__thought" ${shareTextAttributes}>“${escapeHtml(transmission.text)}”</p>
+    <p class="transmission-row__thought" ${shareTextAttributes}>${escapeHtml(transmission.text)}</p>
     <footer class="transmission-row__footer">
       ${threadId ? "" : category}
       ${action}
@@ -2323,7 +2324,9 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
         ]
     : [{ label: "HOW IT WORKS", href: "/how-it-works" }];
 
-  return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
+  // room-v2: the 2026-10 redesign (room-v2.css). Remove to restore the old look.
+  const redesignClass = isRoomSurface ? " room-v2" : "";
+  return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
     ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
@@ -2499,9 +2502,9 @@ function mixedFeedRows(): string {
 
 function renderMixedFeed(): RenderedProductRoute {
   const tabs: Array<{ key: MixedFeedTab; label: string }> = [
-    { key: "mixed", label: "MIXED" },
-    { key: "latest", label: "LATEST" },
-    { key: "felt", label: "FELT" },
+    { key: "mixed", label: "Mixed" },
+    { key: "latest", label: "Latest" },
+    { key: "felt", label: "Felt" },
   ];
   return {
     metadata: { ...EXPLORE_METADATA, title: "HIDN — Feed", canonicalPath: MIXED_FEED_PATH },
@@ -2512,9 +2515,9 @@ function renderMixedFeed(): RenderedProductRoute {
         MIXED_FEED_PATH,
         renderDeskRoom(
           "feed",
-          `<p class="hidn-desk__label">/// FEED</p>
-            <h1 class="type-display-lg hidn-glitch-title" data-text="THE FEED">THE FEED</h1>
-            <p>Recent posts from every room. Tap any post to open it.</p>
+          `<p class="hidn-desk__label">hidn://feed</p>
+            <h1 class="type-display-lg hidn-desk__title">Every room</h1>
+            <p>Newest confessions from every room. Tap one to open it.</p>
             ${renderKeyReminder(roomAccountRecoveryCode)}`,
           `<section class="explore-feed" aria-label="Posts from every room">
             <div class="explore-tabs" role="tablist" aria-label="Feed order">
@@ -2530,10 +2533,10 @@ function renderMixedFeed(): RenderedProductRoute {
         `<main id="main-content" class="public-main explore-main">
           <div class="hidn-container--wide explore-page">
             <header class="explore-header">
-              ${TerminalLabel("FEED / EVERY ROOM")}
-              <h1 class="type-display-lg hidn-glitch-title" data-text="THE FEED">THE FEED</h1>
-              <p>Recent posts from every room, shuffled. No names, ever.</p>
-              ${roomStandings ? renderStandingsTicker(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label) : ""}
+              ${TerminalLabel("hidn://feed")}
+              <h1 class="type-display-lg hidn-desk__title">Every room</h1>
+              <p>Newest confessions from every room. No names, ever.</p>
+              ${roomStandings ? renderStandingsTicker(roomStandings, (channel) => roomDisplayName(roomChannelOption(channel as RoomChannel).label)) : ""}
               <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/* · listening<span class="hidn-feed-log__caret">▌</span></p>
               ${renderKeyReminder(roomAccountRecoveryCode)}
               ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
@@ -2630,9 +2633,9 @@ async function loadMoreRoomFeed(): Promise<void> {
 
 function renderExploreTabs(): string {
   const tabs: Array<{ key: FeedTab; label: string }> = [
-    { key: "latest", label: "LATEST" },
-    { key: "random", label: "RANDOM" },
-    { key: "felt", label: "FELT" },
+    { key: "latest", label: "Latest" },
+    { key: "random", label: "Random" },
+    { key: "felt", label: "Felt" },
   ];
 
   return `<div class="explore-tabs" role="tablist" aria-label="Confession order">
@@ -3185,7 +3188,7 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
       time: new Date().toISOString(),
       status: "visible",
     };
-    repliesForThread(threadId).push({ text: content, time: "JUST NOW" });
+    repliesForThread(threadId).push({ text: content, time: "just now" });
     roomLocalComments = [localComment, ...roomLocalComments];
     rememberDeviceSignalComment(localComment);
     rerenderProductRoute();
@@ -3194,7 +3197,7 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
 
   roomReplySubmitting = true;
   roomPostError = "";
-  roomChannelNotice = "TRANSMITTING / PRIVATE THREAD";
+  roomChannelNotice = "Sending your reply…";
   rerenderProductRoute();
 
   try {
@@ -3211,13 +3214,16 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
     roomLocalComments = [response.comment, ...roomLocalComments.filter((comment) => comment.id !== response.comment.id)];
     rememberDeviceSignalComment(response.comment);
     if (response.status === "created") {
-      repliesForThread(threadId).push({ text: response.comment.text, time: "JUST NOW" });
+      repliesForThread(threadId).push({ text: response.comment.text, time: "just now" });
       roomPosts = roomPosts.map((post) => post.id === threadId ? { ...post, replies: post.replies + 1 } : post);
-      roomPostsLoadedChannel = undefined;
-      void refreshRoomPosts();
-      roomChannelNotice = "REPLY SAVED / PRIVATE HISTORY UPDATED";
+      // A thread opened by direct link can sit outside the loaded room; refreshing would drop it.
+      if (roomPosts.find((post) => post.id === threadId)?.channel === activeRoomChannel) {
+        roomPostsLoadedChannel = undefined;
+        void refreshRoomPosts();
+      }
+      roomChannelNotice = "Reply sent.";
     } else {
-      roomChannelNotice = "YOU'VE SAID THAT ALREADY / REPLY NOT SENT TWICE";
+      roomChannelNotice = "You've said that already, so it wasn't sent twice.";
     }
   } catch (error) {
     roomPostError = error instanceof Error ? error.message : "The reply could not be created.";
@@ -3235,23 +3241,23 @@ function renderRoomEyeWatcher(extraClass = ""): string {
 function renderRoomPostTipControls(): string {
   if (!roomPostTipsEnabled) {
     return `<fieldset class="room-post-tips">
-      <legend>OPTIONAL / DIRECT TIPS</legend>
+      <legend>Tips</legend>
       <label class="room-post-tips__toggle">
         <input id="room-post-allow-tips" type="checkbox" />
-        <span>ALLOW TIPS ON THIS POST</span>
+        <span>Allow tips on this post</span>
       </label>
-      <p class="room-post-tips__note">Let readers support this post directly with any amount of mainnet ZEC.</p>
+      <p class="room-post-tips__note">Readers can send you shielded ZEC, straight to your wallet.</p>
     </fieldset>`;
   }
 
   return `<fieldset class="room-post-tips room-post-tips--enabled">
-    <legend>OPTIONAL / DIRECT TIPS</legend>
+    <legend>Tips</legend>
     <label class="room-post-tips__toggle">
       <input id="room-post-allow-tips" type="checkbox" checked />
-      <span>ALLOW TIPS ON THIS POST</span>
+      <span>Allow tips on this post</span>
     </label>
     <label class="ui-field room-post-tips__address-field" for="room-post-tip-address">
-      <span class="ui-field__label">SHIELDED MAINNET ADDRESS / THIS POST</span>
+      <span class="ui-field__label">Your shielded address for this post</span>
       <input id="room-post-tip-address" type="text" value="${escapeHtml(roomPostTipAddressDraft)}" placeholder="u1..." autocomplete="off" spellcheck="false" maxlength="500" />
     </label>
     <p class="room-post-tips__note">Use your saved default address or enter a different public shielded mainnet address for this post.</p>
@@ -3285,7 +3291,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     </div>
     <h2 class="hidn-glitch-title" data-text="CHOOSE A R&nbsp;&nbsp;M.">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
-    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`}
+    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "Say it here", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -3318,14 +3324,14 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
             ? `<form class="room-post-composer" data-room-post-composer novalidate>
                 ${renderRoomPostChannelPicker()}
                 <label class="ui-field room-post-composer__field" for="room-post-content">
-                  <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
-                  <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+                  <span class="ui-field__label room-post-composer__prompt">hidn@room:~$ <b>say it</b><span class="room-post-composer__room"> · ${escapeHtml(roomDisplayName(activeChannel.label))}</span></span>
+                  <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Say the thing you can't say out loud.">${escapeHtml(roomPostText)}</textarea>
                 </label>
                 <p class="room-post-composer__note">${roomPostLimitCopy()} Your post is stored without a public name.</p>
                 ${renderRoomPostTipControls()}
                 <div class="room-post-composer__actions">
-                  ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
-                  ${SecondaryButton({ label: roomPostSubmitting ? "[ TRANSMITTING… ]" : "[ TRANSMIT ]", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+                  ${GhostButton({ label: "Cancel", dataAction: "room-post-cancel" })}
+                  ${SecondaryButton({ label: roomPostSubmitting ? "Proving and sending…" : "Transmit", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
                 </div>
               </form>`
             : ""}
@@ -3681,13 +3687,12 @@ function openDeskThread(threadId: string): void {
 
 function renderDeskRail(current: string): string {
   const channels = visibleRoomChannelOptions();
-  const item = (title: string, description: string) =>
-    `<span class="hidn-desk__rail-title">${escapeHtml(title)}</span><span class="hidn-desk__rail-desc">${escapeHtml(description)}</span>`;
+  const lead = roomStandings && roomStandings.rooms[0]?.posts ? roomStandings.rooms[0].channel : "";
+  const rank = (key: string) => (key === lead ? `<span class="hidn-desk__rail-rank">1st</span>` : "");
   return `<nav class="hidn-desk__rail" aria-label="Feed and rooms">
-    <p class="hidn-desk__label">/// WHERE TO</p>
-    <a class="hidn-desk__rail-item${current === "feed" ? " hidn-desk__rail-item--active" : ""}" href="${MIXED_FEED_PATH}"${current === "feed" ? ` aria-current="page"` : ""}>${item("FEED", "every room, newest first")}</a>
-    <p class="hidn-desk__label">/// ROOMS</p>
-    ${channels.map((channel) => `<button class="hidn-desk__rail-item${current === channel.key ? " hidn-desk__rail-item--active" : ""}" type="button" data-room-channel="${channel.key}"${current === channel.key ? ` aria-current="page"` : ""}>${item(channel.label, channel.description)}</button>`).join("")}
+    <p class="hidn-desk__label">Rooms</p>
+    <a class="hidn-desk__rail-item${current === "feed" ? " hidn-desk__rail-item--active" : ""}" href="${MIXED_FEED_PATH}"${current === "feed" ? ` aria-current="page"` : ""}><span class="hidn-desk__rail-title">Every room</span></a>
+    ${channels.map((channel) => `<button class="hidn-desk__rail-item${current === channel.key ? " hidn-desk__rail-item--active" : ""}" type="button" data-room-channel="${channel.key}" title="${escapeHtml(channel.description)}"${current === channel.key ? ` aria-current="page"` : ""}><span class="hidn-desk__rail-title">${escapeHtml(roomDisplayName(channel.label))}</span>${rank(channel.key)}</button>`).join("")}
   </nav>`;
 }
 
@@ -3709,20 +3714,20 @@ function renderDeskThread(post: RoomPost): string {
   const reference = post.id.replace(/^THR-/, "").slice(0, 8).toLowerCase();
   const room = roomChannelOption(post.channel as RoomChannel).label;
   const body = `
-    <p class="hidn-desk__meta">// ${escapeHtml(room)} · ANONYMOUS · ${escapeHtml((timeAgo(post.time) || formatTransmissionTime(post.time)).toUpperCase())} · ♡ ${reactionCountForThread(post.id, post.reactions)}</p>
-    <p class="hidn-desk__thread-text"><span class="hidn-desk__prompt" aria-hidden="true">&gt;</span> “${escapeHtml(post.text)}”</p>
+    <p class="hidn-desk__meta"><span class="hidn-desk__meta-room">${escapeHtml(roomDisplayName(room))}</span> · ${escapeHtml(timeAgo(post.time) || formatTransmissionTime(post.time))} · ♡ ${reactionCountForThread(post.id, post.reactions)}</p>
+    <p class="hidn-desk__thread-text">${escapeHtml(post.text)}</p>
     <div class="hidn-desk__replies">
-      <p class="hidn-desk__label">&gt;&gt; REPLIES · ${replyCount}</p>
-      ${replies.map((reply) => `<div class="hidn-desk__reply"><span class="hidn-desk__reply-mark" aria-hidden="true">↳</span><div><p>${escapeHtml(reply.text)}</p><span>ANONYMOUS · ${escapeHtml(reply.time)}</span></div></div>`).join("")}
+      <p class="hidn-desk__card-title">Replies · ${replyCount}</p>
+      ${replies.map((reply) => `<div class="hidn-desk__reply"><span class="hidn-desk__reply-mark" aria-hidden="true">↳</span><div><p>${escapeHtml(reply.text)}</p><span>anonymous · ${escapeHtml(reply.time)}</span></div></div>`).join("")}
       ${loading && !replies.length && replyCount ? `<p class="hidn-desk__muted">&gt; loading replies…</p>` : ""}
       ${error ? `<p class="hidn-desk__muted">!! ${escapeHtml(error)}</p>` : ""}
       ${!replyCount && !loading ? `<p class="hidn-desk__muted">&gt; no replies yet. say something back.</p>` : ""}
     </div>
-    <label class="hidn-desk__label" for="desk-reply-${escapeHtml(post.id)}">&gt; REPLY · NO NAMES</label>
-    <textarea class="hidn-desk__input" id="desk-reply-${escapeHtml(post.id)}" rows="3" maxlength="${roomReplyCharacterLimit()}" placeholder="say it back_" data-thread-input></textarea>
+    <label class="hidn-desk__card-title" for="desk-reply-${escapeHtml(post.id)}">Reply without a name</label>
+    <textarea class="hidn-desk__input" id="desk-reply-${escapeHtml(post.id)}" rows="3" maxlength="${roomReplyCharacterLimit()}" placeholder="Say it back." data-thread-input></textarea>
     <div class="hidn-desk__actions">
-      ${SecondaryButton({ label: roomReplySubmitting ? "[ TRANSMITTING… ]" : "[ REPLY ANONYMOUSLY ]", disabled: roomReplySubmitting, dataAction: "thread-reply" })}
-      <a class="hidn-desk__link" href="/c/${encodeURIComponent(post.id)}">[ FULL PAGE · QUOTE · REPORT ]</a>
+      ${SecondaryButton({ label: roomReplySubmitting ? "Proving and sending…" : "Reply", disabled: roomReplySubmitting, dataAction: "thread-reply" })}
+      <a class="hidn-desk__link" href="/c/${encodeURIComponent(post.id)}">Full page · quote · report</a>
     </div>`;
   return renderDeskWindow(`hidn://thread/${reference}`, body, { close: true, className: "hidn-desk__thread", label: "Open post", root: post.id });
 }
@@ -3734,10 +3739,17 @@ function renderDeskPanel(): string {
   }
   return `<aside class="hidn-desk__panel" aria-label="More">
     ${renderDeskWindow("hidn://leaderboard", renderRoomStandings(true), { label: "Loudest rooms this week" })}
-    ${renderDeskWindow("hidn://open_a_post", `${DESK_ART_FEED}<p class="hidn-desk__muted">tap any post to read its replies here and answer without leaving the feed.</p>`)}
-    ${renderDeskWindow("hidn://private_link", `${DESK_ART_LINK}<p class="hidn-desk__muted">people send you messages. they never know it was you, you never know it was them.</p>
-      <div class="hidn-desk__actions"><a class="hidn-desk__link hidn-desk__link--strong" href="/room/inbox">[ OPEN INBOX ]</a></div>`)}
-    ${renderDeskWindow("hidn://zcash", `<div class="hidn-desk__zec">${DESK_ART_COIN}${renderRoomZcashStatus()}</div><p class="hidn-desk__muted">tips go wallet to wallet. HIDN never holds the funds.</p>`)}
+    ${renderDeskWindow("hidn://you", `<p class="hidn-desk__card-title">What the room knows about you</p>
+      <dl class="hidn-desk__knows">
+        <dt>Your name</dt><dd>never asked</dd>
+        <dt>Your email</dt><dd>never asked</dd>
+        <dt>Your key</dt><dd>on this device</dd>
+        <dt>Who posted</dt><dd>a member, not which</dd>
+      </dl>
+      <a class="hidn-desk__link" href="/how-it-works">How the proof works →</a>`, { label: "What the room knows about you" })}
+    ${renderDeskWindow("hidn://private_link", `<p class="hidn-desk__card-title">Your private link</p><p class="hidn-desk__muted">Anyone can message you. Neither side learns who the other is.</p>
+      <div class="hidn-desk__actions"><a class="hidn-desk__link hidn-desk__link--strong" href="/room/inbox">Open inbox →</a></div>`, { label: "Your private link" })}
+    ${renderDeskWindow("hidn://zcash", `<div class="hidn-desk__zec">${DESK_ART_COIN}${renderRoomZcashStatus()}</div><p class="hidn-desk__muted">Tips go wallet to wallet. HIDN never holds the funds.</p>`, { label: "Zcash" })}
   </aside>`;
 }
 
@@ -4150,20 +4162,20 @@ function renderRoomNotifications(): string {
 function renderRoomShareControl(): string {
   const key = roomChannelSurfaceFromPath(window.location.pathname);
   return key && roomLinkByKey(key)
-    ? `<button class="room-channel-share" type="button" data-room-share="${key}" aria-label="Share this room">↗ SHARE</button>`
+    ? `<button class="room-channel-share" type="button" data-room-share="${key}" aria-label="Share this room">Share room</button>`
     : "";
 }
 
 function renderRoomPostChannelPicker(): string {
   const fixed = roomChannelSurfaceFromPath(window.location.pathname);
   if (fixed) {
-    return `<p class="room-post-channel room-post-channel--fixed">&gt; POSTING TO /${escapeHtml(roomChannelOption(fixed).label)}</p>`;
+    return `<p class="room-post-channel room-post-channel--fixed">Posting to ${escapeHtml(roomDisplayName(roomChannelOption(fixed).label))}</p>`;
   }
   return `<fieldset class="room-post-channel">
-    <legend>&gt; SEND TO ROOM</legend>
+    <legend>Room</legend>
     <div class="room-post-channel__options">
       ${visibleRoomChannelOptions()
-        .map((channel) => `<button type="button" class="room-post-channel__option" data-room-post-channel="${channel.key}" aria-pressed="${channel.key === activeRoomChannel}">/${escapeHtml(channel.label)}</button>`)
+        .map((channel) => `<button type="button" class="room-post-channel__option" data-room-post-channel="${channel.key}" aria-pressed="${channel.key === activeRoomChannel}">${escapeHtml(roomDisplayName(channel.label))}</button>`)
         .join("")}
     </div>
   </fieldset>`;
@@ -4175,17 +4187,17 @@ function renderMobilePostSurface(): string {
     ? `<form class="room-post-composer room-mobile-index__composer" data-room-post-composer novalidate>
         ${renderRoomPostChannelPicker()}
         <label class="ui-field room-post-composer__field" for="room-post-content">
-          <span class="ui-field__label">POST WITHOUT A NAME / ${escapeHtml(activeChannel.label)}</span>
-        <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Leave a thought in the room...">${escapeHtml(roomPostText)}</textarea>
+          <span class="ui-field__label room-post-composer__prompt">hidn@room:~$ <b>say it</b><span class="room-post-composer__room"> · ${escapeHtml(roomDisplayName(activeChannel.label))}</span></span>
+        <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Say the thing you can't say out loud.">${escapeHtml(roomPostText)}</textarea>
       </label>
         <p class="room-post-composer__note">${roomPostLimitCopy()}</p>
         ${renderRoomPostTipControls()}
         <div class="room-post-composer__actions">
-          ${GhostButton({ label: "CANCEL", dataAction: "room-post-cancel" })}
-          ${SecondaryButton({ label: roomPostSubmitting ? "[ TRANSMITTING… ]" : "[ TRANSMIT ]", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
+          ${GhostButton({ label: "Cancel", dataAction: "room-post-cancel" })}
+          ${SecondaryButton({ label: roomPostSubmitting ? "Proving and sending…" : "Transmit", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
         </div>
       </form>`
-    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "> SAY IT HERE", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
+    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "Say it here", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
 
   return `<div class="room-mobile-index__create">
     ${content}
@@ -4329,16 +4341,16 @@ function renderRoomStandings(compact = false): string {
   const winner = roomStandings.lastWeekWinner;
   if (compact) {
     return `<div class="hidn-standings hidn-standings--compact">
-      ${renderStandingsStage(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label)}
+      ${renderStandingsStage(roomStandings, (channel) => roomDisplayName(roomChannelOption(channel as RoomChannel).label))}
       <details class="hidn-standings__more" data-standings-more${deskBoardOpen ? " open" : ""}>
-      <summary class="hidn-standings__toggle"><span data-when="closed">[ SEE ALL ${rooms.length} ROOMS ▾ ]</span><span data-when="open">[ HIDE ROOMS ▴ ]</span></summary>
+      <summary class="hidn-standings__toggle"><span data-when="closed">See all ${rooms.length} rooms ▾</span><span data-when="open">Hide rooms ▴</span></summary>
       <ol class="hidn-standings__list">
         ${rooms.map((room, index) => {
           const option = roomChannelOption(room.channel as RoomChannel);
           const width = Math.round((room.posts / top) * 100);
           return `<li><button class="hidn-standings__row${index === 0 && !quiet ? " hidn-standings__row--lead" : ""}" type="button" data-room-channel="${escapeHtml(room.channel)}" aria-label="${escapeHtml(option.label)}: ${room.posts} confessions this week. Open the room.">
             <span class="hidn-standings__rank">${String(index + 1).padStart(2, "0")}</span>
-            <span class="hidn-standings__name">${escapeHtml(option.label)}</span>
+            <span class="hidn-standings__name">${escapeHtml(roomDisplayName(option.label))}</span>
             <span class="hidn-standings__count" data-standing-count="${escapeHtml(room.channel)}">${room.posts}</span>
             <span class="hidn-standings__bar" aria-hidden="true"><i data-standing-bar="${escapeHtml(room.channel)}" style="width: ${width}%"></i></span>
           </button></li>`;
@@ -4352,13 +4364,13 @@ function renderRoomStandings(compact = false): string {
   // so the board doesn't push the room list down or repeat every room twice.
   return `<section class="hidn-standings hidn-standings--fold" aria-label="Loudest rooms this week">
     <div class="hidn-standings__head">
-      <p class="hidn-standings__label">/// LOUDEST ROOMS THIS WEEK</p>
+      <p class="hidn-standings__label">This week's race</p>
       <p class="hidn-standings__reset">resets in ${escapeHtml(resetsIn(roomStandings.resetsAt))}</p>
     </div>
-    ${renderStandingsStage(roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label)}
+    ${renderStandingsStage(roomStandings, (channel) => roomDisplayName(roomChannelOption(channel as RoomChannel).label))}
     ${quiet ? `<p class="hidn-standings__quiet">&gt; quiet week so far. put your room on the board.</p>` : ""}
     <details class="hidn-standings__more" data-standings-more${deskBoardOpen ? " open" : ""}>
-      <summary class="hidn-standings__toggle"><span data-when="closed">[ SEE THE RANKING ▾ ]</span><span data-when="open">[ HIDE THE RANKING ▴ ]</span></summary>
+      <summary class="hidn-standings__toggle"><span data-when="closed">See the ranking ▾</span><span data-when="open">Hide the ranking ▴</span></summary>
       <ol class="hidn-standings__list">
         ${rooms.map((room, index) => {
           const option = roomChannelOption(room.channel as RoomChannel);
@@ -4366,7 +4378,7 @@ function renderRoomStandings(compact = false): string {
           return `<li>
             <button class="hidn-standings__row${index === 0 && !quiet ? " hidn-standings__row--lead" : ""}" type="button" data-room-channel="${escapeHtml(room.channel)}" aria-label="${escapeHtml(option.label)}: ${room.posts} confessions this week. Open the room.">
               <span class="hidn-standings__rank">${String(index + 1).padStart(2, "0")}</span>
-              <span class="hidn-standings__name">${escapeHtml(option.label)}${index === 0 && !quiet ? ` <b>LEADING</b>` : ""}</span>
+              <span class="hidn-standings__name">${escapeHtml(roomDisplayName(option.label))}${index === 0 && !quiet ? ` <b>leading</b>` : ""}</span>
               <span class="hidn-standings__count" data-standing-count="${escapeHtml(room.channel)}">${room.posts}</span>
               <span class="hidn-standings__bar" aria-hidden="true"><i data-standing-bar="${escapeHtml(room.channel)}" style="width: ${width}%"></i></span>
             </button>
@@ -4386,7 +4398,7 @@ function renderRoomStandingChip(channel: string): string {
   const room = roomStandings.rooms[index];
   const lead = index === 0 && room.posts > 0;
   const ahead = index > 0 ? roomStandings.rooms[index - 1] : undefined;
-  const aheadName = ahead ? escapeHtml(roomChannelOption(ahead.channel as RoomChannel).label) : "";
+  const aheadName = ahead ? escapeHtml(roomDisplayName(roomChannelOption(ahead.channel as RoomChannel).label)) : "";
   const status = room.posts === 0
     ? "no confessions yet · be the first"
     : `${room.posts} ${room.posts === 1 ? "confession" : "confessions"}${lead ? " · leading" : ahead && ahead.posts === room.posts ? ` · tied with ${aheadName}` : ahead ? ` · ${ahead.posts - room.posts + 1} more to pass ${aheadName}` : ""}`;
@@ -4398,7 +4410,7 @@ function renderMobileRoomIndex(): string {
   const rooms = visibleRoomChannelOptions()
     .map((channel) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
       <span class="room-mobile-index__number" aria-hidden="true">ᙇ</span>
-      <span class="room-mobile-index__copy"><strong>${escapeHtml(channel.label)}</strong><small>${escapeHtml(channel.description)}</small></span>
+      <span class="room-mobile-index__copy"><strong>${escapeHtml(roomDisplayName(channel.label))}</strong><small>${escapeHtml(channel.description)}</small></span>
       <span class="room-mobile-index__arrow" aria-hidden="true">→</span>
     </button>`)
     .join("");
@@ -4409,8 +4421,8 @@ function renderMobileRoomIndex(): string {
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
           ${TerminalLabel(signalMode ? "PRIVATE ROOM / INDEX" : "PRIVATE ROOM")}
-          <h1 class="hidn-glitch-title" data-text="CHOOSE A R&nbsp;&nbsp;M.">CHOOSE A R<span class="room-directory-title__double-o">OO${renderRoomEyeWatcher("room-directory-title__watcher")}</span>M.</h1>
-          <p>Read quietly or leave a thought without a public name.</p>
+          <h1 class="hidn-glitch-title" data-text="Choose a r&nbsp;&nbsp;m">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m</h1>
+          <p>Read quietly, or leave a thought without a name.</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; ls /rooms · ${visibleRoomChannelOptions().length} open · listening<span class="hidn-feed-log__caret">▌</span></p>
           <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
           ${renderMobilePostSurface()}
@@ -4449,10 +4461,10 @@ function renderExplore(path = "/room"): string {
   const headerLabel = signalMode
     ? (isChannelRoute ? `${channel.label} / PRIVATE CHANNEL` : "PRIVATE ROOM / OPEN THREADS")
     : (isChannelRoute ? "CURRENT ROOM / ANONYMOUS THREADS" : "PRIVATE ROOM / OPEN THREADS");
-  const headerTitle = isChannelRoute ? channel.label : "THE ROOM";
+  const headerTitle = isChannelRoute ? roomDisplayName(channel.label) : "The room";
   // Inside a room: just its own line. Everyone already knows there are no names.
   const headerCopy = isChannelRoute
-    ? channel.description
+    ? channel.description.charAt(0).toUpperCase() + channel.description.slice(1) + "."
     : "Thoughts move through the room without names. Follow one thread or leave one behind.";
 
   if (!hasRoomSession()) {
@@ -4470,8 +4482,8 @@ function renderExplore(path = "/room"): string {
       path,
       renderDeskRoom(
         channel.key,
-        `<p class="hidn-desk__label">/// ROOM</p>
-          <h1 id="room-channel-title" class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
+        `<p class="hidn-desk__label">hidn://rooms/${escapeHtml(roomLinkByKey(channel.key)?.slug ?? channel.key)}</p>
+          <h1 id="room-channel-title" class="type-display-lg hidn-desk__title">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
           ${renderRoomStandingChip(channel.key)}
           ${care ? `<p class="room-channel-care">${escapeHtml(care)}</p>` : ""}
@@ -4490,9 +4502,9 @@ function renderExplore(path = "/room"): string {
     `<main id="main-content" class="public-main explore-main">
       <div class="hidn-container--wide explore-page">
         <header class="explore-header">
-          ${isChannelRoute ? `<a class="room-channel-back" href="/room/rooms">← BACK TO ROOMS</a>` : ""}
+          ${isChannelRoute ? `<a class="room-channel-back" href="/room/rooms">← All rooms</a>` : ""}
           ${isChannelRoute ? "" : TerminalLabel(headerLabel)}
-          <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg hidn-glitch-title" data-text="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</h1>
+          <h1${isChannelRoute ? ` id="room-channel-title"` : ""} class="type-display-lg hidn-desk__title">${escapeHtml(headerTitle)}</h1>
           <p>${escapeHtml(headerCopy)}</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/${escapeHtml(roomLinkByKey(channel.key)?.slug ?? channel.key)} · listening<span class="hidn-feed-log__caret">▌</span></p>
           ${isChannelRoute ? renderRoomStandingChip(channel.key) : ""}
@@ -4532,37 +4544,35 @@ function renderThreadRoom(id: string, quotedText = ""): string {
     ? visibleReplies
         .map(
           ({ reply, index }) => `<article class="thread-room__message">
-            <header><span>ANONYMOUS / ${String(index + 1).padStart(2, "0")}</span><time>${escapeHtml(reply.time)}</time></header>
+            <header><span>reply ${String(index + 1).padStart(2, "0")}</span><time>${escapeHtml(reply.time)}</time></header>
             <p data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="reply" data-share-index="${index}" data-share-label="${escapeHtml(`REPLY / ${String(index + 1).padStart(2, "0")}`)}" data-share-category="IDENTITY" data-share-time="${escapeHtml(reply.time)}">${escapeHtml(reply.text)}</p>
             <footer class="thread-room__message-actions">
-              <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SAVE IMAGE</button>
-              <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">SHARE IMAGE</button>
-              <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="reply" data-report-target-id="${escapeHtml(`${id}:reply:${index}`)}" data-report-target-label="REPLY / ${String(index + 1).padStart(2, "0")}" data-report-target-excerpt="${escapeHtml(reply.text)}">REPORT</button>
+              <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">Save image</button>
+              <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(id)}" data-reply-index="${index}">Share image</button>
+              <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="reply" data-report-target-id="${escapeHtml(`${id}:reply:${index}`)}" data-report-target-label="REPLY / ${String(index + 1).padStart(2, "0")}" data-report-target-excerpt="${escapeHtml(reply.text)}">Report</button>
               <span class="thread-share-status" data-share-status="${escapeHtml(`${id}:reply:${index}`)}" role="status" aria-live="polite"></span>
             </footer>
           </article>`,
         )
         .join("")
-    : `<p class="thread-room__empty">No replies yet. Leave the first signal in the room.</p>`;
+    : `<p class="thread-room__empty">No replies yet. Say something back.</p>`;
 
   return `<section class="thread-room" data-thread-root="${escapeHtml(id)}" aria-labelledby="thread-room-title">
     <header class="thread-room__header">
       <div>
-        ${TerminalLabel("THREAD / WITHOUT NAMES")}
-        <h2 id="thread-room-title">&gt;&gt; REPLIES</h2>
+        <h2 id="thread-room-title">Replies${replyCount ? ` · ${replyCount}` : ""}</h2>
       </div>
-      <span class="thread-room__signal"><i aria-hidden="true"></i> ${replyCount ? `RECEIVING / ${replyCount}` : "OPEN CHANNEL"}</span>
     </header>
     ${quotedText ? `<blockquote class="thread-room__quote" data-share-text data-share-id="${escapeHtml(id)}" data-share-kind="thread" data-share-label="ORIGINAL THREAD" data-share-category="IDENTITY" data-share-time="NOW">“${escapeHtml(quotedText)}”</blockquote>` : ""}
     <div class="thread-room__messages" aria-live="polite">${messages}</div>
     <form class="thread-room__composer${roomAccess ? "" : " thread-room__composer--locked"}" novalidate>
       <label class="ui-field thread-room__field" for="thread-reply-${escapeHtml(id)}">
-        <span class="ui-field__label">&gt; REPLY WITHOUT A NAME</span>
-        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" maxlength="${roomReplyCharacterLimit()}" placeholder="${roomAccess ? "Add your thought to the thread..." : "Enter the room to reply anonymously."}"${roomAccess ? "" : " disabled"}></textarea>
+        <span class="ui-field__label">Reply without a name</span>
+        <textarea id="thread-reply-${escapeHtml(id)}" data-thread-input rows="4" maxlength="${roomReplyCharacterLimit()}" placeholder="${roomAccess ? "Say it back." : "Enter the room to reply anonymously."}"${roomAccess ? "" : " disabled"}></textarea>
       </label>
       <div class="thread-room__composer-footer">
-        <span>${roomAccess ? "NAMELESS / NO TRAIL" : "ROOM ACCESS REQUIRED"}</span>
-        ${SecondaryButton({ label: roomReplySubmitting ? "[ TRANSMITTING… ]" : roomAccess ? "[ TRANSMIT ]" : "[ ENTER THE ROOM FIRST ]", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
+        <span>${roomAccess ? "no name · no trail" : "room access required"}</span>
+        ${SecondaryButton({ label: roomReplySubmitting ? "Proving and sending…" : roomAccess ? "Reply" : "Enter the room first", disabled: !roomAccess || roomReplySubmitting, dataAction: "thread-reply" })}
       </div>
     </form>
     ${roomChannelNotice ? `<p class="thread-room__feedback" role="status">${escapeHtml(roomChannelNotice)}</p>` : ""}
@@ -4649,14 +4659,14 @@ function renderDetail(id: string): RenderedProductRoute {
         `<main id="main-content" class="public-main detail-main">
         <div class="hidn-container--reading detail-page">
           <header class="detail-header">
-            ${livePost ? `<a class="hidn-detail__back" href="/room/channel/${escapeHtml(livePost.channel)}/feed">&lt; cd ..</a>` : ""}
+            ${livePost ? `<a class="hidn-detail__back" href="/room/channel/${escapeHtml(livePost.channel)}/feed">← ${escapeHtml(roomDisplayName(roomChannelOption(livePost.channel as RoomChannel).label))}</a>` : ""}
             <p class="hidn-detail__log">hidn@room:~$ cat /rooms/${escapeHtml(livePost?.channel ?? "archive")}/${escapeHtml(confession.reference.replace(/^\/\/\s*/, "").toLowerCase())}.txt</p>
-            <h1 class="detail-page__title hidn-detail__title" data-text="ANONYMOUS CONFESSION">ANONYMOUS CONFESSION</h1>
+            <h1 class="detail-page__title hidn-detail__title" data-text="Anonymous confession">Anonymous confession</h1>
             <div class="detail-header__meta"><span>[rx] ${escapeHtml(confession.reference)}</span><time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></div>
           </header>
           <article class="detail-card" aria-labelledby="detail-thought">
-            <p class="hidn-detail__signed" aria-label="Signed: name withheld">&gt; SIGNED: <span class="hidn-detail__redact" aria-hidden="true"></span></p>
-            <p id="detail-thought" class="detail-card__thought" data-share-text data-share-id="${escapeHtml(confession.id)}" data-share-kind="thread" data-share-label="${escapeHtml(confession.reference)}" data-share-category="${escapeHtml(confession.category)}" data-share-time="${escapeHtml(confession.time)}">“${escapeHtml(confession.text)}”</p>
+            <p class="hidn-detail__signed" aria-label="Signed: name withheld">signed <span class="hidn-detail__redact" aria-hidden="true"></span> name withheld</p>
+            <p id="detail-thought" class="detail-card__thought" data-share-text data-share-id="${escapeHtml(confession.id)}" data-share-kind="thread" data-share-label="${escapeHtml(confession.reference)}" data-share-category="${escapeHtml(confession.category)}" data-share-time="${escapeHtml(confession.time)}">${escapeHtml(confession.text)}</p>
             <div class="detail-card__footer">
               ${CategoryTag(confession.category)}
               ${PrivacyBadge("NO IDENTITY")}
@@ -4669,19 +4679,19 @@ function renderDetail(id: string): RenderedProductRoute {
           </div>
           <div class="detail-actions" aria-label="Confession actions">
             <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasRoomSession() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
-            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">COMMENTS ${escapeHtml(String(detailReplyCount))}</a>
-            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">QUOTE</a>
-            <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">SAVE IMAGE</button>
-            <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">SHARE IMAGE</button>
-            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">TIP WITH ZEC</button>` : ""}
-            <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">X / POST</button>
-            <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">REPORT</button>
+            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">${detailReplyCount ? `${detailReplyCount} ${detailReplyCount === 1 ? "reply" : "replies"}` : "Reply"}</a>
+            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">Quote</a>
+            <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">Save image</button>
+            <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">Share image</button>
+            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">Tip in ZEC</button>` : ""}
+            <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">Post to X</button>
+            <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">Report</button>
           </div>
           <p class="thread-share-status thread-share-status--detail" data-share-status="${escapeHtml(confession.id)}" role="status" aria-live="polite"></p>
           ${roomReportNotice ? `<p class="thread-share-status thread-share-status--detail" role="status">${escapeHtml(roomReportNotice)}</p>` : ""}
           ${renderThreadRoom(confession.id)}
 
-          ${actionLink("BACK TO THE ROOM", "/room", "ghost", "detail-back")}
+          ${actionLink("Back to the room", "/room", "ghost", "detail-back")}
         </div>
         ${renderReportDialog()}
       </main>`,
@@ -5035,15 +5045,25 @@ function renderRoomTabs(path: string): string {
   const inboxUnread = linkInboxUnreadCount();
   const meUnread = roomNotifications?.unreadCount ?? 0;
   const badge = (count: number): string => (count > 0 ? `<b class="hidn-tabs__badge" aria-label="${count} new">${count > 99 ? "99+" : count}</b>` : "");
-  const item = (href: string, label: string, active: boolean, extra = ""): string =>
-    `<a class="hidn-tabs__item${active ? " hidn-tabs__item--active" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}><span>${label}</span>${extra}</a>`;
+  const icon = (d: string): string => `<svg class="hidn-tabs__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
+  const item = (href: string, label: string, active: boolean, d: string, extra = "", className = ""): string =>
+    `<a class="hidn-tabs__item${className}${active ? " hidn-tabs__item--active" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}>${icon(d)}<span>${label}</span>${extra}</a>`;
+  // On phones the tabs become a bottom dock with "say it" in the middle;
+  // the lobby is reached from ROOMS there, so its tab is desktop-only.
   return `<nav class="hidn-tabs" aria-label="Room">
-    ${item(MIXED_FEED_PATH, "FEED", path === MIXED_FEED_PATH || path.startsWith("/c/"))}
-    ${item("/room/rooms", "ROOMS", path === "/room/rooms" || Boolean(roomChannelFeedFromPath(path)))}
-    ${item("/room/main", "LOBBY", isMuseumPath(path))}
-    ${item("/room/inbox", "INBOX", path === "/room/inbox", badge(inboxUnread))}
-    ${item("/room/profile", "ME", path === "/room/profile", badge(meUnread))}
+    ${item(MIXED_FEED_PATH, "Feed", path === MIXED_FEED_PATH || path.startsWith("/c/"), "M4 6h16M4 12h16M4 18h10")}
+    ${item("/room/rooms", "Rooms", path === "/room/rooms" || Boolean(roomChannelFeedFromPath(path)), "M5 3h14v18H5zM15 12h.01")}
+    <button class="hidn-tabs__say" type="button" data-action="room-dock-say" aria-label="Say it">&gt;_</button>
+    ${item("/room/main", "Lobby", isMuseumPath(path), "M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6", "", " hidn-tabs__item--lobby")}
+    ${item("/room/inbox", "Inbox", path === "/room/inbox", "M3 6h18v12H3zM3 7l9 6 9-6", badge(inboxUnread))}
+    ${item("/room/profile", "Me", path === "/room/profile", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6", badge(meUnread))}
   </nav>`;
+}
+
+/** "THINGS I'VE NEVER TOLD ANYONE" → "Things I've never told anyone". */
+function roomDisplayName(label: string): string {
+  const lower = label.toLowerCase().replace(/\bi\b/g, "I").replace(/\bzec\b/g, "ZEC");
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 /** Where members land: the feed, so reading and posting come first. The 3D
@@ -5218,25 +5238,25 @@ function renderRoomReady(): string {
 function renderProfileTipAddress(): string {
   if (!roomTipAddressLoaded) {
     return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title" aria-busy="true">
-      ${TerminalLabel("ZEC TIPS / OPTIONAL")}
-      <h2 id="room-profile-tips-title">DIRECT SUPPORT</h2>
-      <p class="room-profile-card__note">READING YOUR MAINNET DESTINATION...</p>
+      ${TerminalLabel("zec tips · optional")}
+      <h2 id="room-profile-tips-title">Get tipped in ZEC</h2>
+      <p class="room-profile-card__note">Reading your tip address…</p>
     </section>`;
   }
 
   return `<section class="room-profile-card room-profile-card--tips" aria-labelledby="room-profile-tips-title">
-    ${TerminalLabel("ZEC TIPS / OPTIONAL")}
-    <h2 id="room-profile-tips-title">LET THE ROOM SUPPORT YOU.</h2>
-    <p class="room-profile-card__note">Want people to be able to tip your posts? Paste a private (shielded) Zcash address from your wallet. Your new posts get a TIP WITH ZEC button, and tips go straight to you. HIDN never holds any money.</p>
+    ${TerminalLabel("zec tips · optional")}
+    <h2 id="room-profile-tips-title">Get tipped in ZEC</h2>
+    <p class="room-profile-card__note">Paste a private (shielded) Zcash address from your wallet. Your new posts get a "Tip in ZEC" button, and tips go straight to you. HIDN never holds any money.</p>
     <form class="room-tip-address-form" data-room-tip-address-form novalidate>
       <label class="ui-field" for="room-tip-address">
-        <span class="ui-field__label">SHIELDED MAINNET ADDRESS / OPTIONAL</span>
+        <span class="ui-field__label">Your shielded address (optional)</span>
         <input id="room-tip-address" type="text" value="${escapeHtml(roomTipAddressDraft)}" placeholder="u1..." autocomplete="off" spellcheck="false" maxlength="500" />
       </label>
       <p class="room-tip-address-form__hint">Only shielded mainnet addresses beginning with <code>u1</code> or <code>zs1</code> are accepted. Leave it empty to turn tips off for future posts.</p>
       ${roomTipAddressError ? `<p class="room-tip-address-form__feedback room-tip-address-form__feedback--error" role="alert">${escapeHtml(roomTipAddressError)}</p>` : ""}
       ${roomTipAddressFeedback ? `<p class="room-tip-address-form__feedback" role="status">${escapeHtml(roomTipAddressFeedback)}</p>` : ""}
-      ${SecondaryButton({ label: roomTipAddressSaving ? "SAVING DESTINATION..." : "SAVE MAINNET DESTINATION →", type: "submit", disabled: roomTipAddressSaving, dataAction: "room-tip-address-save" })}
+      ${SecondaryButton({ label: roomTipAddressSaving ? "Saving…" : "Save tip address", type: "submit", disabled: roomTipAddressSaving, dataAction: "room-tip-address-save" })}
     </form>
   </section>`;
 }
@@ -5256,17 +5276,17 @@ function contentStatusLabel(status: RoomComment["status"]): string {
 
 function renderProfilePost(post: DeviceSignalPost): string {
   return `<article class="room-profile-history__item">
-    <header><span>${escapeHtml(post.reference)} / ${escapeHtml(post.channel.toUpperCase())}</span><time>${escapeHtml(formatTransmissionTime(post.time))}</time></header>
+    <header><span>${escapeHtml(roomDisplayName(roomChannelOption(post.channel as RoomChannel).label))}</span><time>${escapeHtml(formatTransmissionTime(post.time))}</time></header>
     <p>${escapeHtml(post.text)}</p>
-    <footer><span>POST</span><span>${escapeHtml(contentStatusLabel(post.status))}</span></footer>
+    <footer><span>post</span><span>${escapeHtml(contentStatusLabel(post.status).toLowerCase())}</span></footer>
   </article>`;
 }
 
 function renderProfileComment(comment: RoomComment): string {
   return `<article class="room-profile-history__item">
-    <header><span>THREAD / ${escapeHtml(comment.threadId.replace(/^THR-/, "").slice(0, 8))}</span><time>${escapeHtml(formatTransmissionTime(comment.time))}</time></header>
+    <header><span>reply in ${escapeHtml(roomDisplayName(roomChannelOption(comment.channel as RoomChannel).label))}</span><time>${escapeHtml(formatTransmissionTime(comment.time))}</time></header>
     <p>${escapeHtml(comment.text)}</p>
-    <footer><span>${escapeHtml(comment.channel.toUpperCase())}</span><span>${escapeHtml(contentStatusLabel(comment.status))}</span></footer>
+    <footer><span>reply</span><span>${escapeHtml(contentStatusLabel(comment.status).toLowerCase())}</span></footer>
   </article>`;
 }
 
@@ -5309,7 +5329,7 @@ let profileHistoryView: "posts" | "comments" = "posts";
 function renderProfileKey(): string {
   if (!roomAccountRecoveryCode) {
     return `<section class="hidn-me__panel">
-      <p class="hidn-me__label">&gt; YOUR KEY / NOT IN THIS SESSION</p>
+      <p class="hidn-me__label">Your key · not in this session</p>
       <p class="hidn-me__note">Your key isn't stored in this tab. Leave the room and sign back in with the key you saved, and it will show here.</p>
     </section>`;
   }
@@ -5319,28 +5339,28 @@ function renderProfileKey(): string {
   }
   if (roomRecoveryRevealMode === "visible") {
     return `<section class="hidn-me__panel hidn-me__panel--key" aria-live="polite">
-      <p class="hidn-me__label">&gt; YOUR KEY / VISIBLE FOR 20 SECONDS</p>
-      <button class="hidn-me__key" type="button" data-action="room-copy-recovery-key" aria-label="Copy your key"><code>${escapeHtml(roomAccountRecoveryCode)}</code><span>TAP TO COPY</span></button>
+      <p class="hidn-me__label">Your key · visible for 20 seconds</p>
+      <button class="hidn-me__key" type="button" data-action="room-copy-recovery-key" aria-label="Copy your key"><code>${escapeHtml(roomAccountRecoveryCode)}</code><span>tap to copy</span></button>
       <div class="hidn-me__countdown" aria-hidden="true"><i></i></div>
       <p class="hidn-me__note">Make sure nobody is looking at your screen. It hides itself again.</p>
     </section>`;
   }
   return `<section class="hidn-me__panel">
-    <p class="hidn-me__label">&gt; YOUR KEY / HIDDEN</p>
+    <p class="hidn-me__label">Your key · hidden</p>
     <p class="hidn-me__note">Your key is your account. Show it only when nobody is looking.</p>
-    ${SecondaryButton({ label: "[ SHOW MY KEY · 20 SEC ]", dataAction: "room-key-show" })}
+    ${SecondaryButton({ label: "Show my key for 20 seconds", dataAction: "room-key-show" })}
   </section>`;
 }
 
 function renderProfileActivity(posts: DeviceSignalPost[], comments: RoomComment[]): string {
   const showPosts = profileHistoryView === "posts";
   const list = showPosts
-    ? (posts.length ? posts.map(renderProfilePost).join("") : `<p class="room-profile-history__empty">&gt; nothing posted from this device yet.</p>`)
-    : (comments.length ? comments.map(renderProfileComment).join("") : `<p class="room-profile-history__empty">&gt; no replies from this device yet.</p>`);
+    ? (posts.length ? posts.map(renderProfilePost).join("") : `<p class="room-profile-history__empty">Nothing posted from this device yet.</p>`)
+    : (comments.length ? comments.map(renderProfileComment).join("") : `<p class="room-profile-history__empty">No replies from this device yet.</p>`);
   return `<section class="hidn-me__panel">
     <div class="hidn-me__switch" role="tablist" aria-label="History">
-      <button type="button" role="tab" aria-selected="${showPosts}" data-action="profile-history" data-view="posts">POSTS (${posts.length})</button>
-      <button type="button" role="tab" aria-selected="${!showPosts}" data-action="profile-history" data-view="comments">COMMENTS (${comments.length})</button>
+      <button type="button" role="tab" aria-selected="${showPosts}" data-action="profile-history" data-view="posts">Posts (${posts.length})</button>
+      <button type="button" role="tab" aria-selected="${!showPosts}" data-action="profile-history" data-view="comments">Replies (${comments.length})</button>
     </div>
     <div class="room-profile-history__list">${list}</div>
     <p class="hidn-me__note">Kept on this device only.</p>
@@ -5350,9 +5370,9 @@ function renderProfileActivity(posts: DeviceSignalPost[], comments: RoomComment[
 function renderProfilePfp(): string {
   const entry = maskEntry();
   return `<section class="hidn-me__panel hidn-me__pfp">
-    <p class="hidn-me__label">&gt; YOUR HIDN PFP</p>
+    <p class="hidn-me__label">Your HIDN profile picture</p>
     <p class="hidn-me__note">Turn your profile picture into a HIDN one: redacted, watcher eyes or terminal glow. Your photo is edited on this device and never uploaded.</p>
-    <a class="hidn-me__pfp-link" href="${entry.href}">[ ${escapeHtml(entry.label.toUpperCase())} → ]</a>
+    <a class="hidn-me__pfp-link" href="${entry.href}">${escapeHtml(entry.label.charAt(0).toUpperCase() + entry.label.slice(1).toLowerCase())} →</a>
   </section>`;
 }
 
@@ -5373,24 +5393,24 @@ function renderProfileBody(
     : profileView === "settings"
       ? `${renderProfileTipAddress()}
         <section class="hidn-me__panel">
-          <p class="hidn-me__label">&gt; VERIFY WITH ZEC</p>
+          <p class="hidn-me__label">Verify with ZEC</p>
           <p class="hidn-me__note">A private ZEC payment will unlock extra features. Coming soon.</p>
-          ${GhostButton({ label: "[ VERIFY WITH ZEC ]", dataAction: "room-open-verification" })}
+          ${GhostButton({ label: "Verify with ZEC", dataAction: "room-open-verification" })}
         </section>`
       : `${renderProfilePfp()}${renderProfileActivity(posts, comments)}`;
   return `<header class="hidn-me">
-      <p class="hidn-access__code">/// ME</p>
+      <p class="hidn-access__code">hidn://me</p>
       <div class="hidn-me__who">
         <h1>${escapeHtml(profileLabel)}</h1>
-        ${StatusIndicator("SIGNED IN", "online", true)}
+        ${StatusIndicator("Signed in", "online", true)}
       </div>
       <p class="hidn-me__sub">today's name · changes every visit</p>
-      <p class="hidn-me__stats">${profileStats.posts} ${profileStats.posts === 1 ? "POST" : "POSTS"} · ${profileStats.comments} ${profileStats.comments === 1 ? "COMMENT" : "COMMENTS"} · ${profileStats.likes} ${profileStats.likes === 1 ? "LIKE" : "LIKES"}</p>
+      <p class="hidn-me__stats">${profileStats.posts} ${profileStats.posts === 1 ? "post" : "posts"} · ${profileStats.comments} ${profileStats.comments === 1 ? "reply" : "replies"} · ${profileStats.likes} ${profileStats.likes === 1 ? "like" : "likes"}</p>
     </header>
     <div class="hidn-me__tabs" role="tablist" aria-label="Me">
-      ${tab("posts", "MY POSTS")}
-      ${tab("key", "MY KEY", keyUnsaved)}
-      ${tab("settings", "SETTINGS")}
+      ${tab("posts", "My posts")}
+      ${tab("key", "My key", keyUnsaved)}
+      ${tab("settings", "Settings")}
     </div>
     ${panel}`;
 }
@@ -7145,6 +7165,18 @@ function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
     case "room-copy-recovery-key":
       void copyRoomRecoveryKey(button);
       break;
+    case "room-dock-say": {
+      // The dock's say-it button: open the composer here, or go to the feed and open it there.
+      const here = document.querySelector<HTMLButtonElement>('[data-action="room-create-post"]');
+      if (here) {
+        here.click();
+        window.setTimeout(() => document.querySelector<HTMLTextAreaElement>("#room-post-content")?.focus(), 60);
+      } else {
+        openComposerOnArrival = true;
+        navigateProductRoute(MIXED_FEED_PATH);
+      }
+      break;
+    }
     case "room-create-post":
       if (!hasRoomSession()) {
         navigateProductRoute("/room/access");
@@ -7378,6 +7410,12 @@ export function bindProductRoute(root: ParentNode = document): void {
     openComposerOnArrival = false;
     const key = roomChannelFeedFromPath(normalizePath(window.location.pathname))!;
     window.setTimeout(() => openComposerIn(key), 120);
+  } else if (openComposerOnArrival && normalizePath(window.location.pathname) === MIXED_FEED_PATH) {
+    openComposerOnArrival = false;
+    window.setTimeout(() => {
+      document.querySelector<HTMLButtonElement>('[data-action="room-create-post"]')?.click();
+      window.setTimeout(() => document.querySelector<HTMLTextAreaElement>("#room-post-content")?.focus(), 60);
+    }, 120);
   }
   bindKeySaveCard(root, roomAccountRecoveryCode);
   bindKeyReminder(root);
@@ -7394,11 +7432,11 @@ export function bindProductRoute(root: ParentNode = document): void {
   {
     const path = normalizePath(window.location.pathname);
     if (path === "/room/rooms" || path === MIXED_FEED_PATH || roomChannelFeedFromPath(path) || roomChannelFromPath(path)) void refreshRoomStandings();
-    mountStandingsTicker(root, (channel) => roomChannelOption(channel as RoomChannel).label);
+    mountStandingsTicker(root, (channel) => roomDisplayName(roomChannelOption(channel as RoomChannel).label));
     root.querySelector<HTMLDetailsElement>("[data-standings-more]")?.addEventListener("toggle", (event) => {
       deskBoardOpen = (event.currentTarget as HTMLDetailsElement).open;
     });
-    if (roomStandings && root.querySelector("[data-standings-stage]")) mountStandingsStage(root, roomStandings, (channel) => roomChannelOption(channel as RoomChannel).label);
+    if (roomStandings && root.querySelector("[data-standings-stage]")) mountStandingsStage(root, roomStandings, (channel) => roomDisplayName(roomChannelOption(channel as RoomChannel).label));
   }
   root.querySelectorAll<HTMLButtonElement>("[data-feed-more]").forEach((button) => {
     button.addEventListener("click", () => {
