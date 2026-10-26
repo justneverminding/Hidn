@@ -19260,6 +19260,9 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 .mask__ctl { display: grid; gap: 8px; }
 .mask__ctl p { margin: 0; color: #8b8b93; font: 700 11px var(--hidn-font-mono); letter-spacing: .12em; }
 .mask__ctl input[type="range"] { width: 100%; accent-color: #4dff6e; }
+.mask__ctl p { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mask__reset { border: 0; border-radius: 999px; padding: 4px 9px; background: #1c1c21; color: #b4b4bb; font: 700 10px var(--hidn-font-mono); letter-spacing: .08em; cursor: pointer; }
+.mask__reset:hover, .mask__reset:focus-visible { background: #2a2a31; color: #fff; outline: none; }
 .mask__swatches, .mask__chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .mask__swatch { width: 36px; height: 36px; border-radius: 50%; border: 3px solid #0b0b0e; box-shadow: 0 0 0 2px #2c2c33; cursor: pointer; padding: 0; }
 .mask__swatch.is-on { box-shadow: 0 0 0 2px #fff; }
@@ -19279,7 +19282,7 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 /* The site theme sets every text element to mono with !important; this page
    uses a sans for its copy and keeps mono only for small labels. */
 .public-page .mask :is(h1, h2, p, a, button, span, label) { font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif !important; }
-.public-page .mask :is(.mask__eyebrow, .mask__ctl p, .mask__badge, .mask__pick span, .mask__privacy button) { font-family: var(--hidn-font-mono) !important; }
+.public-page .mask :is(.mask__eyebrow, .mask__ctl p, .mask__badge, .mask__pick span, .mask__privacy button, .mask__reset) { font-family: var(--hidn-font-mono) !important; }
 @media (max-width: 820px) {
   .mask-main { padding-top: 18px; }
   .mask__layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }

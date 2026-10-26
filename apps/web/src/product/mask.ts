@@ -116,10 +116,10 @@ const MASKS: Record<MaskKey, MaskSpec> = {
     defaults: { word: "CLASSIFIED" },
   },
   neon: {
-    label: "NEON", positioned: true, sizeLabel: "LASER WIDTH",
+    label: "NEON", positioned: true, sizeLabel: "VISOR SIZE",
     controls: [
       { kind: "swatch", key: "colors", label: "COLOURS", options: ["#7a00ff|#7ff9ff", "#ff2bd6|#ffb000", "#00b4ff|#4dff6e", "#ff2a3d|#ffe14d"] },
-      { kind: "toggle", key: "laser", label: "LASER LINE" },
+      { kind: "toggle", key: "laser", label: "NEON VISOR" },
     ],
     defaults: { colors: "#7a00ff|#7ff9ff", laser: true },
   },
@@ -128,8 +128,9 @@ const ORDER: MaskKey[] = ["hidn", "eyes", "anon", "haunted", "cctv", "thermal", 
 
 // MARK: State (memory only)
 
-/** Where the eyes are, as fractions of the picture, plus the size and spacing sliders. */
-interface Placement { x: number; y: number; size: number; spread: number }
+/** Where the eyes are, as fractions of the picture, plus the size, spacing
+ * and tilt (radians, for photos where the head isn't straight). */
+interface Placement { x: number; y: number; size: number; spread: number; tilt: number }
 
 interface Sized { canvas: HTMLCanvasElement; lum: Float32Array; backdrop?: Uint8Array }
 
@@ -152,8 +153,8 @@ interface MaskState {
   dragged: boolean;
 }
 
-const PHOTO_PLACE: Placement = { x: 0.5, y: 0.42, size: 1, spread: 1 };
-const DEMO_PLACE: Placement = { x: 0.5, y: 0.585, size: 1, spread: 1 };
+const PHOTO_PLACE: Placement = { x: 0.5, y: 0.42, size: 1, spread: 1, tilt: 0 };
+const DEMO_PLACE: Placement = { x: 0.5, y: 0.585, size: 1, spread: 1, tilt: 0 };
 
 const state: MaskState = {
   style: "hidn",
@@ -284,6 +285,9 @@ function renderControls(): string {
   if (spec.spacing) {
     rows.push(`<label class="mask__ctl"><p>EYE SPACING</p><input type="range" min="0.6" max="1.5" step="0.01" value="${state.place.spread}" data-mask-range="spread" /></label>`);
   }
+  if (spec.positioned) {
+    rows.push(`<label class="mask__ctl"><p>TILT <button type="button" class="mask__reset" data-mask-straighten>STRAIGHTEN</button></p><input type="range" min="-0.6" max="0.6" step="0.005" value="${state.place.tilt}" data-mask-range="tilt" /></label>`);
+  }
   return rows.join("");
 }
 
@@ -333,6 +337,15 @@ export function bindMaskPage(root: ParentNode): void {
   });
   const controls = page.querySelector<HTMLElement>("[data-mask-controls]")!;
   controls.addEventListener("click", (event) => {
+    if ((event.target as HTMLElement).closest("[data-mask-straighten]")) {
+      event.preventDefault();
+      state.place.tilt = 0;
+      const range = controls.querySelector<HTMLInputElement>('[data-mask-range="tilt"]');
+      if (range) range.value = "0";
+      drawHero(page);
+      scheduleThumbs(page);
+      return;
+    }
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-mask-set], [data-mask-toggle]");
     if (!target) return;
     const opts = state.options[state.style];
@@ -342,7 +355,7 @@ export function bindMaskPage(root: ParentNode): void {
   });
   controls.addEventListener("input", (event) => {
     const input = event.target as HTMLInputElement;
-    const key = input.dataset.maskRange as "size" | "spread" | undefined;
+    const key = input.dataset.maskRange as "size" | "spread" | "tilt" | undefined;
     if (!key) return;
     state.place[key] = Number(input.value);
     state.saved = false;
@@ -583,6 +596,7 @@ interface Kit {
   eye: { x: number; y: number };
   size: number;
   spread: number;
+  tilt: number;
   face: { x: number; y: number; w: number; h: number };
   opts: Record<string, string | boolean>;
   rand: () => number;
@@ -594,12 +608,12 @@ function renderMask(key: MaskKey, S: number): HTMLCanvasElement | null {
   if (!entry) return null;
   const out = canvasOf(S);
   const x = out.getContext("2d")!;
-  const { size, spread } = state.place;
+  const { size, spread, tilt } = state.place;
   const eye = { x: state.place.x * S, y: state.place.y * S };
   const fw = S * 0.56 * size, fh = S * 0.62 * size;
   let seed = state.seed >>> 0 || 1;
   const kit: Kit = {
-    x, S, u: S / 512, src: entry.canvas, lum: entry.lum, eye, size, spread,
+    x, S, u: S / 512, src: entry.canvas, lum: entry.lum, eye, size, spread, tilt,
     face: { x: eye.x - fw / 2, y: eye.y - S * 0.025 * size - fh / 2, w: fw, h: fh },
     opts: state.options[key],
     rand: () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; },
@@ -666,12 +680,13 @@ function vignette(k: Kit, alpha: number): void {
 }
 
 /** Centred text, shrunk to fit when a preset word is long for its bar. */
-function centeredText(k: Kit, text: string, cx: number, cy: number, font: string, color: string, glow = 0, maxWidth = Infinity): void {
+function centeredText(k: Kit, text: string, cx: number, cy: number, font: string, color: string, glow = 0, maxWidth = Infinity, angle = 0): void {
   k.x.save();
   k.x.font = font;
   const w = k.x.measureText(text).width;
   const scale = w > maxWidth ? maxWidth / w : 1;
   k.x.translate(cx, cy);
+  k.x.rotate(angle);
   k.x.scale(scale, scale);
   k.x.textAlign = "center";
   k.x.textBaseline = "middle";
@@ -681,10 +696,11 @@ function centeredText(k: Kit, text: string, cx: number, cy: number, font: string
   k.x.restore();
 }
 
-/** A black bar across the eyes, with an optional outline. */
+/** A black bar across the eyes, tilted with the head, with an optional outline. */
 function eyeBar(k: Kit, w: number, h: number, outline: string | null): void {
   k.x.save();
   k.x.translate(k.eye.x, k.eye.y);
+  k.x.rotate(k.tilt);
   k.x.shadowColor = "rgba(0, 0, 0, 0.6)";
   k.x.shadowBlur = 24 * k.u;
   k.x.fillStyle = "#040404";
@@ -705,7 +721,7 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     vignette(k, 0.5);
     const w = k.S * 0.74 * k.size, h = 86 * k.u * k.size;
     eyeBar(k, w, h, null);
-    centeredText(k, "H I D N", k.eye.x, k.eye.y + 3 * k.u * k.size, `800 ${60 * k.u * k.size}px ${SANS}`, String(k.opts.color), 22, w * 0.86);
+    centeredText(k, "H I D N", k.eye.x, k.eye.y, `800 ${60 * k.u * k.size}px ${SANS}`, String(k.opts.color), 22, w * 0.86, k.tilt);
   },
   eyes(k) {
     const col = hexRgb(String(k.opts.color));
@@ -715,8 +731,11 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     const glow = 1.35 * k.size, half = k.S * 0.091 * k.spread * k.size;
     k.x.save();
     k.x.globalCompositeOperation = "lighter";
-    for (const cx of [k.eye.x - half, k.eye.x + half]) {
-      const ey = k.eye.y;
+    // Drawn in the head's frame: centred on the eyes and tilted with them.
+    k.x.translate(k.eye.x, k.eye.y);
+    k.x.rotate(k.tilt);
+    for (const cx of [-half, half]) {
+      const ey = 0;
       if (k.opts.streak) {
         const st = k.x.createLinearGradient(cx - k.S * 0.6, 0, cx + k.S * 0.6, 0);
         st.addColorStop(0, rgba(col, 0)); st.addColorStop(0.5, core); st.addColorStop(1, rgba(col, 0));
@@ -745,7 +764,7 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     bloom(k, 0.35, 8);
     const w = k.S * 0.6 * k.size, h = k.S * 0.13 * k.size;
     eyeBar(k, w, h, "rgba(77, 255, 110, 0.6)");
-    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y + k.u, `700 ${30 * k.u * k.size}px ${k.mono}`, "#4dff6e", 14, w * 0.86);
+    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y, `700 ${30 * k.u * k.size}px ${k.mono}`, "#4dff6e", 14, w * 0.86, k.tilt);
     scanlines(k, 0.22, 4);
     grain(k, 0.12);
     vignette(k, 0.62);
@@ -757,7 +776,7 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     vignette(k, 0.6);
     const w = k.S * 0.7 * k.size, h = 62 * k.u * k.size;
     eyeBar(k, w, h, "rgba(77, 255, 110, 0.6)");
-    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y + k.u, `700 ${24 * k.u * k.size}px ${k.mono}`, "#4dff6e", 12, w * 0.88);
+    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y, `700 ${24 * k.u * k.size}px ${k.mono}`, "#4dff6e", 12, w * 0.88, k.tilt);
     k.x.font = `700 ${18 * k.u}px ${k.mono}`;
     k.x.fillStyle = "#ff8a1f";
     k.x.fillText("31.10 // HALLOWEEN", 24 * k.u, 40 * k.u);
@@ -768,6 +787,10 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     scanlines(k, 0.25, 4);
     vignette(k, 0.6);
     const { x, y, w, h } = k.face, len = 34 * k.u * k.size;
+    k.x.save();
+    k.x.translate(k.eye.x, k.eye.y);
+    k.x.rotate(k.tilt);
+    k.x.translate(-k.eye.x, -k.eye.y);
     k.x.strokeStyle = "#ffffff";
     k.x.lineWidth = 3 * k.u;
     k.x.beginPath();
@@ -775,6 +798,7 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
       k.x.moveTo(cx, cy + dy * len); k.x.lineTo(cx, cy); k.x.lineTo(cx + dx * len, cy);
     }
     k.x.stroke();
+    k.x.restore();
     const label = String(k.opts.word);
     k.x.font = `700 ${17 * k.u}px ${k.mono}`;
     const lw = Math.min(k.S - 16 * k.u, k.x.measureText(label).width + 20 * k.u);
@@ -816,7 +840,10 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     const stops = palettes[String(k.opts.palette)] ?? palettes.IRON;
     gradientMap(k, stops, heat);
     if (k.opts.sight) {
-      const r = 60 * k.u * k.size, { x: cx, y: cy } = k.eye;
+      const r = 60 * k.u * k.size, cx = 0, cy = 0;
+      k.x.save();
+      k.x.translate(k.eye.x, k.eye.y);
+      k.x.rotate(k.tilt);
       k.x.strokeStyle = "rgba(255, 255, 255, 0.9)";
       k.x.lineWidth = 2 * k.u;
       k.x.beginPath();
@@ -824,6 +851,7 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
       k.x.moveTo(cx - r * 1.5, cy); k.x.lineTo(cx - r / 2, cy); k.x.moveTo(cx + r / 2, cy); k.x.lineTo(cx + r * 1.5, cy);
       k.x.moveTo(cx, cy - r * 1.5); k.x.lineTo(cx, cy - r / 2); k.x.moveTo(cx, cy + r / 2); k.x.lineTo(cx, cy + r * 1.5);
       k.x.stroke();
+      k.x.restore();
     }
     k.x.fillStyle = "#fff";
     k.x.font = `700 ${20 * k.u}px ${k.mono}`;
@@ -858,11 +886,11 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     const w = k.S * 0.66 * k.size, h = 74 * k.u * k.size;
     k.x.save();
     k.x.translate(k.eye.x, k.eye.y);
-    k.x.rotate(-0.05);
+    k.x.rotate(k.tilt - 0.05);
     k.x.fillStyle = "#111";
     k.x.fillRect(-w / 2, -h / 2, w, h);
     k.x.restore();
-    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y + 3 * k.u * k.size, `400 ${52 * k.u * k.size}px ${IMPACT}`, "#fff", 0, w * 0.86);
+    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y, `400 ${52 * k.u * k.size}px ${IMPACT}`, "#fff", 0, w * 0.86, k.tilt - 0.05);
     k.x.save();
     k.x.translate(k.S - 92 * k.u, 92 * k.u);
     k.x.rotate(0.2);
@@ -906,8 +934,12 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     k.x.drawImage(snap, 0, k.eye.y - band / 2, k.S, band, 46 * k.u * k.size, k.eye.y - band / 2, k.S, band);
     wipe(snap);
     if (k.opts.line) {
+      k.x.save();
+      k.x.translate(k.eye.x, k.eye.y);
+      k.x.rotate(k.tilt);
       k.x.fillStyle = "rgba(255, 0, 64, 0.85)";
-      k.x.fillRect(0, k.eye.y - 8 * k.u, k.S, 3 * k.u);
+      k.x.fillRect(-k.S, -8 * k.u, k.S * 2, 3 * k.u);
+      k.x.restore();
     }
     scanlines(k, 0.3, 3);
     k.x.font = `700 ${18 * k.u}px ${k.mono}`;
@@ -929,7 +961,7 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     const { x, y, w, h } = k.face;
     k.x.save();
     k.x.beginPath();
-    k.x.ellipse(x + w / 2, y + h / 2, w * 0.52, h * 0.5, 0, 0, Math.PI * 2);
+    k.x.ellipse(x + w / 2, y + h / 2, w * 0.52, h * 0.5, k.tilt, 0, Math.PI * 2);
     k.x.clip();
     k.x.imageSmoothingEnabled = false;
     k.x.drawImage(tiny, 0, 0, cells, cells, 0, 0, k.S, k.S);
@@ -979,8 +1011,12 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     const ex = ((k.eye.x - crop.x) / crop.w) * half * 2 - half;
     const ey = ((k.eye.y - crop.y) / crop.w) * half * 2 + top;
     const bw = 340 * k.u * k.size, bh = 46 * k.u * k.size;
-    k.x.fillStyle = "#0c0c0c";
-    k.x.fillRect(ex - bw / 2, ey - bh / 2, bw, bh);
+    k.x.save();
+    k.x.translate(ex, ey);
+    k.x.rotate(k.tilt);
+    k.x.fillStyle = "#0a0a0a";
+    k.x.fillRect(-bw / 2, -bh / 2, bw, bh);
+    k.x.restore();
     k.x.restore();
     wipe(photo);
     k.x.save();
@@ -1007,16 +1043,32 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     gradientMap(k, [[0, "#12002e"], [0.45, a], [0.75, mix(a, b)], [1, b]]);
     bloom(k, 0.55, 14);
     if (k.opts.laser) {
-      const w = k.S * 0.6 * k.size;
+      // A neon visor over the eyes: a wide glow, a solid band, a white-hot core.
+      const w = k.S * 0.66 * k.size, h = 34 * k.u * k.size;
+      const [r, g, bl] = hexRgb(b);
       k.x.save();
-      k.x.strokeStyle = b;
+      k.x.translate(k.eye.x, k.eye.y);
+      k.x.rotate(k.tilt);
+      k.x.globalCompositeOperation = "lighter";
+      const haze = k.x.createLinearGradient(0, -h * 2.4, 0, h * 2.4);
+      haze.addColorStop(0, `rgba(${r}, ${g}, ${bl}, 0)`);
+      haze.addColorStop(0.5, `rgba(${r}, ${g}, ${bl}, 0.55)`);
+      haze.addColorStop(1, `rgba(${r}, ${g}, ${bl}, 0)`);
+      k.x.fillStyle = haze;
+      k.x.fillRect(-w * 0.62, -h * 2.4, w * 1.24, h * 4.8);
+      k.x.globalCompositeOperation = "source-over";
       k.x.shadowColor = b;
-      k.x.shadowBlur = 18 * k.u;
-      k.x.lineWidth = 6 * k.u;
+      k.x.shadowBlur = 30 * k.u;
+      k.x.fillStyle = b;
       k.x.beginPath();
-      k.x.moveTo(k.eye.x - w / 2, k.eye.y);
-      k.x.lineTo(k.eye.x + w / 2, k.eye.y);
-      k.x.stroke();
+      k.x.roundRect(-w / 2, -h / 2, w, h, h / 2);
+      k.x.fill();
+      k.x.shadowBlur = 12 * k.u;
+      k.x.shadowColor = "#ffffff";
+      k.x.fillStyle = "rgba(255, 255, 255, 0.92)";
+      k.x.beginPath();
+      k.x.roundRect(-w * 0.44, -h * 0.17, w * 0.88, h * 0.34, h * 0.17);
+      k.x.fill();
       k.x.restore();
     }
     vignette(k, 0.45);
@@ -1028,6 +1080,19 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
 function bindDrag(canvas: HTMLCanvasElement, page: HTMLElement): void {
   let dragging = false;
   let frame = 0;
+  // Two fingers on the picture: twist to tilt, pinch to resize.
+  const touches = new Map<number, { x: number; y: number }>();
+  let gesture: { angle: number; dist: number; tilt: number; size: number } | null = null;
+  const pair = () => {
+    const [a, b] = [...touches.values()];
+    return { angle: Math.atan2(b.y - a.y, b.x - a.x), dist: Math.hypot(b.x - a.x, b.y - a.y) || 1 };
+  };
+  const syncSliders = () => {
+    const tilt = page.querySelector<HTMLInputElement>('[data-mask-range="tilt"]');
+    const size = page.querySelector<HTMLInputElement>('[data-mask-range="size"]');
+    if (tilt) tilt.value = String(state.place.tilt);
+    if (size) size.value = String(state.place.size);
+  };
   const move = (event: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
     state.place.x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
@@ -1038,6 +1103,14 @@ function bindDrag(canvas: HTMLCanvasElement, page: HTMLElement): void {
   };
   canvas.addEventListener("pointerdown", (event) => {
     if (!hasOwnPhoto() || !MASKS[state.style].positioned) return;
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touches.size === 2) {
+      const now = pair();
+      gesture = { angle: now.angle, dist: now.dist, tilt: state.place.tilt, size: state.place.size };
+      dragging = false;
+      canvas.setPointerCapture(event.pointerId);
+      return;
+    }
     dragging = true;
     // They've found the drag; the hint would only cover the mask's corner text.
     state.dragged = true;
@@ -1045,8 +1118,28 @@ function bindDrag(canvas: HTMLCanvasElement, page: HTMLElement): void {
     canvas.setPointerCapture(event.pointerId);
     move(event);
   });
-  canvas.addEventListener("pointermove", (event) => { if (dragging) move(event); });
-  const end = () => {
+  canvas.addEventListener("pointermove", (event) => {
+    if (touches.has(event.pointerId)) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (gesture && touches.size === 2) {
+      const now = pair();
+      let turn = now.angle - gesture.angle;
+      if (turn > Math.PI) turn -= Math.PI * 2;
+      if (turn < -Math.PI) turn += Math.PI * 2;
+      state.place.tilt = Math.min(0.6, Math.max(-0.6, gesture.tilt + turn));
+      state.place.size = Math.min(1.7, Math.max(0.5, gesture.size * (now.dist / gesture.dist)));
+      state.saved = false;
+      syncSliders();
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; drawHero(page); });
+      return;
+    }
+    if (dragging) move(event);
+  });
+  const end = (event: PointerEvent) => {
+    touches.delete(event.pointerId);
+    if (gesture) {
+      if (touches.size < 2) { gesture = null; scheduleThumbs(page); }
+      return;
+    }
     if (!dragging) return;
     dragging = false;
     scheduleThumbs(page);
