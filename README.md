@@ -29,8 +29,9 @@ post, reply and like then carries a **zero-knowledge proof**: maths that shows
 That is the same kind of proof Zcash uses to keep payments private, applied to
 words.
 
-> **Status:** HIDN is live and pre-release (`0.0.0`). It hasn't had an
-> independent security audit yet; see [Known limits and what's next](#known-limits-and-whats-next).
+> **Want your network address hidden too?** Open HIDN in
+> [Tor Browser](https://www.torproject.org/) at the **Standard** security level.
+> HIDN hides *who* wrote it; Tor hides *where* you're connecting from.
 
 ## Try it
 
@@ -120,20 +121,24 @@ In short: **HIDN can check that you're a member, but never which member.**
 | Server checks, replay protection, rate limits, link blocking | [`apps/web/src/worker.ts`](apps/web/src/worker.ts) |
 | Public proving files | [`public/anonymous-zk/v2/`](public/anonymous-zk/v2/) |
 
-### Known limits and what's next
+### Going further with Tor
 
-Privacy tools should say exactly what they protect. Here's where HIDN is today,
-and what comes next:
+HIDN proves you're a member without saying which one, and stores nothing that
+ties your posts together. The one thing a website can't hide by itself is the
+network address you connect from. **Tor Browser closes that gap:** use it at the
+**Standard** security level (the Safer and Safest levels turn off the
+WebAssembly that HIDN uses to make proofs in your browser).
 
-| Today | Next |
+### What's next
+
+| Now | Next |
 | --- | --- |
-| **Network address and timing** aren't hidden: requests reach Cloudflare directly. | An optional relay or Tor route. |
-| **Private-link messages and notifications** are stored as plain text, so the operator could read them. | End-to-end encryption for link messages. |
-| **Trusted setup:** proofs use the public Hermez Powers of Tau plus one HIDN contribution ([details](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md)). | Move to PLONK, which needs no HIDN-run ceremony, then to **Halo 2**, Zcash's own proof system, which needs no trusted setup at all. |
-| **No independent review yet** of the circuit and protocol. | An outside security audit. |
+| Membership proofs use a public Powers of Tau setup plus one HIDN contribution ([details](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md)). | **PLONK**, which needs no HIDN-run ceremony, then **Halo 2**, Zcash's own proof system, which needs no trusted setup at all. |
+| Private-link messages and notifications are stored by the server. | **End-to-end encryption**, so only the recipient can read link messages. |
+| Tor Browser hides your network address. | A built-in relay option for people who don't use Tor. |
 
-The words you post are, by design, visible to the server and to readers. What
-stays hidden is **who** wrote them.
+The words you post are, by design, visible to readers. What stays hidden is
+**who** wrote them.
 
 ## What HIDN measures (and doesn't)
 
