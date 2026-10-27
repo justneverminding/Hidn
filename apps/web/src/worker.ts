@@ -3138,9 +3138,9 @@ function sharePreviewFor(pathname: string): SharePreview | null {
   if (/^\/mask\/?$/.test(pathname)) {
     return {
       title: "Go anonymous · HIDN",
-      description: "12 masks for your profile picture: neon eyes, CCTV, thermal, glitch and more. Made on your device; your photo is never uploaded or stored.",
-      image: "/brand/rooms/mask-share.jpg",
-      imageAlt: "Go anonymous: six of the twelve profile picture masks, from HIDN and neon eyes to CCTV and thermal.",
+      description: "12 masks for your profile picture that wipe your whole face, not just your eyes. Made on your device; your photo is never uploaded or stored.",
+      image: OG("mask"),
+      imageAlt: "Go anonymous: six of the twelve profile picture masks, each with the whole face wiped.",
     };
   }
   if (/^\/to\/[a-z2-9]{8}\/?$/.test(pathname)) {

@@ -66,17 +66,17 @@ const MASKS: Record<MaskKey, MaskSpec> = {
     defaults: { word: "[ ANON ]" },
   },
   haunted: {
-    label: "HAUNTED", positioned: true, sizeLabel: "BAR SIZE",
-    controls: [{ kind: "choice", key: "word", label: "BAR SAYS", options: ["[ FACE WITHHELD ]", "[ BOO ]", "[ NOBODY HOME ]"] }],
+    label: "HAUNTED", positioned: true, sizeLabel: "FACE SIZE",
+    controls: [{ kind: "choice", key: "word", label: "CAPTION", options: ["[ FACE WITHHELD ]", "[ BOO ]", "[ NOBODY HOME ]"] }],
     defaults: { word: "[ FACE WITHHELD ]" },
   },
   cctv: {
-    label: "CCTV", positioned: true, sizeLabel: "BOX SIZE",
+    label: "CCTV", positioned: true, sizeLabel: "FACE SIZE",
     controls: [
-      { kind: "choice", key: "word", label: "LABEL", options: ["ID: UNKNOWN · MATCH 0%", "ID: NOT FOUND", "SUBJECT: ANON"] },
+      { kind: "choice", key: "word", label: "LABEL", options: ["FACE NOT FOUND", "ID: UNKNOWN · MATCH 0%", "SUBJECT: ANON"] },
       { kind: "toggle", key: "rec", label: "● REC" },
     ],
-    defaults: { word: "ID: UNKNOWN · MATCH 0%", rec: true },
+    defaults: { word: "FACE NOT FOUND", rec: true },
   },
   thermal: {
     label: "THERMAL", positioned: true, sizeLabel: "SIGHT SIZE",
@@ -106,12 +106,12 @@ const MASKS: Record<MaskKey, MaskSpec> = {
     defaults: { tag: true },
   },
   ascii: {
-    label: "ASCII", positioned: false,
+    label: "ASCII", positioned: true, sizeLabel: "FACE SIZE",
     controls: [{ kind: "swatch", key: "color", label: "COLOUR", options: ["#ffb347", "#4dff6e", "#f2f2f2", "#ff6ad5"] }],
     defaults: { color: "#ffb347" },
   },
   classified: {
-    label: "CLASSIFIED", positioned: true, sizeLabel: "BAR SIZE",
+    label: "CLASSIFIED", positioned: true, sizeLabel: "FACE SIZE",
     controls: [{ kind: "choice", key: "word", label: "STAMP", options: ["CLASSIFIED", "TOP SECRET", "REDACTED", "UNKNOWN"] }],
     defaults: { word: "CLASSIFIED" },
   },
@@ -230,7 +230,8 @@ export function renderMaskBody(): string {
         </div>
         <input class="mask__file" type="file" accept="image/*" data-mask-file aria-label="Choose a photo" />
         ${state.error ? `<p class="mask__error" role="alert">${escapeHtml(state.error)}</p>` : ""}
-        <p class="mask__privacy">Your photo stays in this tab's memory. It's never sent to us or anyone, never saved in your browser, and it's gone when you leave this page.${own ? ` <button type="button" data-mask-action="forget">FORGET MY PHOTO NOW</button>` : ""}</p>
+        <p class="mask__privacy"><b>Masks hide your face, not everything.</b> Hair, clothes and the background can still give you away, so don't use a photo people have already seen. Line the guide up on your eyes so the whole face is covered.</p>
+          <p class="mask__privacy">Your photo stays in this tab's memory. It's never sent to us or anyone, never saved in your browser, and it's gone when you leave this page.${own ? ` <button type="button" data-mask-action="forget">FORGET MY PHOTO NOW</button>` : ""}</p>
       </div>
       <div class="mask__side">
         <div class="mask__strip" role="group" aria-label="Masks">${strip}</div>
@@ -619,8 +620,85 @@ function renderMask(key: MaskKey, S: number): HTMLCanvasElement | null {
     rand: () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; },
     mono: getComputedStyle(document.documentElement).getPropertyValue("--hidn-font-mono").trim() || "ui-monospace, Menlo, monospace",
   };
+  // Every mask draws from a copy whose face is already wiped, so no style can
+  // leave a recognisable face behind, whatever it draws on top.
+  const scrubbed = scrubFace(entry.canvas, entry.lum, S, eye, size, tilt);
+  kit.src = scrubbed.canvas;
+  kit.lum = scrubbed.lum;
   DRAW[key](kit, key === "anon" ? backdropAt(S) : undefined);
+  wipe(scrubbed.canvas);
   return out;
+}
+
+/** Where the whole face sits, from the eye line the person lined up: wider and
+ * longer than any bar, and never smaller than a typical face at this size. */
+function faceOval(S: number, eye: { x: number; y: number }, size: number): { cx: number; cy: number; rx: number; ry: number } {
+  const s = Math.max(0.85, size);
+  return { cx: eye.x, cy: eye.y + S * 0.07 * s, rx: S * 0.27 * s, ry: S * 0.37 * s };
+}
+
+/** Replaces the face with coarse, noisy blocks pulled toward the face's
+ * average colour. Features (eyes, nose, mouth, jaw) are gone; the head's
+ * outline, hair and tone stay, so every style still reads as a person. The
+ * per-block noise means the blocks can't be sharpened back into a face. */
+function scrubFace(src: HTMLCanvasElement, lum: Float32Array, S: number, eye: { x: number; y: number }, size: number, tilt: number): { canvas: HTMLCanvasElement; lum: Float32Array } {
+  const { cx, cy, rx, ry } = faceOval(S, eye, size);
+  const canvas = canvasOf(S);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(src, 0, 0);
+  const image = ctx.getImageData(0, 0, S, S);
+  const d = image.data;
+  const cos = Math.cos(-tilt), sin = Math.sin(-tilt);
+  const reach = Math.max(rx, ry);
+  const x0 = Math.max(0, Math.floor(cx - reach)), x1 = Math.min(S, Math.ceil(cx + reach));
+  const y0 = Math.max(0, Math.floor(cy - reach)), y1 = Math.min(S, Math.ceil(cy + reach));
+  // How much of each pixel is inside the oval: full in the middle, feathered at the rim.
+  const weightAt = (px: number, py: number): number => {
+    const dx = px - cx, dy = py - cy;
+    const u = (dx * cos - dy * sin) / rx, v = (dx * sin + dy * cos) / ry;
+    const r = u * u + v * v;
+    return r <= 0.78 ? 1 : r >= 1 ? 0 : (1 - r) / 0.22;
+  };
+  const cell = Math.max(4, Math.round((rx * 2) / 6));
+  const cols = Math.ceil((x1 - x0) / cell), rows = Math.ceil((y1 - y0) / cell);
+  const sums = new Float64Array(cols * rows * 4);
+  let mr = 0, mg = 0, mb = 0, mn = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (weightAt(x, y) <= 0) continue;
+      const i = (y * S + x) * 4, c = (Math.floor((y - y0) / cell) * cols + Math.floor((x - x0) / cell)) * 4;
+      sums[c] += d[i]; sums[c + 1] += d[i + 1]; sums[c + 2] += d[i + 2]; sums[c + 3]++;
+      mr += d[i]; mg += d[i + 1]; mb += d[i + 2]; mn++;
+    }
+  }
+  if (!mn) return { canvas, lum: lum.slice() };
+  mr /= mn; mg /= mn; mb /= mn;
+  // Real randomness, not the style seed: the blocks must not be reproducible.
+  const noise = new Uint8Array(cols * rows);
+  crypto.getRandomValues(noise);
+  const blocks = new Float32Array(cols * rows * 3);
+  for (let c = 0; c < cols * rows; c++) {
+    const n = sums[c * 4 + 3] || 1, jitter = (noise[c] / 255 - 0.5) * 44;
+    blocks[c * 3] = (sums[c * 4] / n) * 0.5 + mr * 0.5 + jitter;
+    blocks[c * 3 + 1] = (sums[c * 4 + 1] / n) * 0.5 + mg * 0.5 + jitter;
+    blocks[c * 3 + 2] = (sums[c * 4 + 2] / n) * 0.5 + mb * 0.5 + jitter;
+  }
+  const out = lum.slice();
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const w = weightAt(x, y);
+      if (w <= 0) continue;
+      const i = (y * S + x) * 4, c = (Math.floor((y - y0) / cell) * cols + Math.floor((x - x0) / cell)) * 3;
+      const before = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      for (let k = 0; k < 3; k++) d[i + k] = d[i + k] * (1 - w) + blocks[c + k] * w;
+      const after = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      // Shift the stretched luminance by the same amount, so ramps stay in range.
+      const p = y * S + x;
+      out[p] = Math.min(1, Math.max(0, lum[p] + (after - before) / 255));
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return { canvas, lum: out };
 }
 
 /** Maps luminance onto a colour ramp, writing the whole canvas. */
@@ -774,9 +852,31 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     bloom(k, 0.4, 10);
     scanlines(k, 0.18, 4);
     vignette(k, 0.6);
-    const w = k.S * 0.7 * k.size, h = 62 * k.u * k.size;
-    eyeBar(k, w, h, "rgba(77, 255, 110, 0.6)");
-    centeredText(k, String(k.opts.word), k.eye.x, k.eye.y, `700 ${24 * k.u * k.size}px ${k.mono}`, "#4dff6e", 12, w * 0.88, k.tilt);
+    // The face is a hollow: a black void with two embers where the eyes were.
+    const { cx, cy, rx, ry } = faceOval(k.S, k.eye, k.size);
+    k.x.save();
+    k.x.translate(cx, cy);
+    k.x.rotate(k.tilt);
+    k.x.scale(1, ry / rx);
+    const hollow = k.x.createRadialGradient(0, 0, 0, 0, 0, rx * 1.02);
+    hollow.addColorStop(0, "rgba(2, 1, 0, 1)"); hollow.addColorStop(0.78, "rgba(2, 1, 0, 0.98)"); hollow.addColorStop(1, "rgba(2, 1, 0, 0)");
+    k.x.fillStyle = hollow;
+    k.x.beginPath(); k.x.arc(0, 0, rx * 1.02, 0, Math.PI * 2); k.x.fill();
+    k.x.restore();
+    const half = k.S * 0.075 * k.spread * Math.max(0.85, k.size);
+    k.x.save();
+    k.x.translate(k.eye.x, k.eye.y);
+    k.x.rotate(k.tilt);
+    k.x.globalCompositeOperation = "lighter";
+    for (const ex of [-half, half]) {
+      const R = 30 * k.u * Math.max(0.85, k.size);
+      const g = k.x.createRadialGradient(ex, 0, 0, ex, 0, R);
+      g.addColorStop(0, "rgba(255, 240, 210, 1)"); g.addColorStop(0.25, "rgba(255, 150, 40, 0.95)"); g.addColorStop(1, "rgba(255, 90, 0, 0)");
+      k.x.fillStyle = g;
+      k.x.beginPath(); k.x.ellipse(ex, 0, R, R * 0.62, 0, 0, Math.PI * 2); k.x.fill();
+    }
+    k.x.restore();
+    centeredText(k, String(k.opts.word), k.S / 2, k.S - 40 * k.u, `700 ${24 * k.u}px ${k.mono}`, "#ff8a1f", 12, k.S * 0.8);
     k.x.font = `700 ${18 * k.u}px ${k.mono}`;
     k.x.fillStyle = "#ff8a1f";
     k.x.fillText("31.10 // HALLOWEEN", 24 * k.u, 40 * k.u);
@@ -786,7 +886,19 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     grain(k, 0.35);
     scanlines(k, 0.25, 4);
     vignette(k, 0.6);
-    const { x, y, w, h } = k.face, len = 34 * k.u * k.size;
+    // The tracked face is censored: a hard mosaic over the whole face.
+    const oval = faceOval(k.S, k.eye, k.size);
+    const cells = 7, bw = oval.rx * 2, bh = oval.ry * 2;
+    const tiny = canvasOf(cells);
+    tiny.getContext("2d")!.drawImage(k.x.canvas, oval.cx - oval.rx, oval.cy - oval.ry, bw, bh, 0, 0, cells, cells);
+    k.x.save();
+    k.x.translate(oval.cx, oval.cy);
+    k.x.rotate(k.tilt);
+    k.x.imageSmoothingEnabled = false;
+    k.x.drawImage(tiny, 0, 0, cells, cells, -oval.rx, -oval.ry, bw, bh);
+    k.x.restore();
+    wipe(tiny);
+    const x = oval.cx - oval.rx * 1.08, y = oval.cy - oval.ry * 1.06, w = oval.rx * 2.16, h = oval.ry * 2.12, len = 34 * k.u * k.size;
     k.x.save();
     k.x.translate(k.eye.x, k.eye.y);
     k.x.rotate(k.tilt);
@@ -1010,12 +1122,21 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     k.x.drawImage(photo, crop.x, crop.y, crop.w, crop.w, -half, top, half * 2, half * 2);
     const ex = ((k.eye.x - crop.x) / crop.w) * half * 2 - half;
     const ey = ((k.eye.y - crop.y) / crop.w) * half * 2 + top;
-    const bw = 340 * k.u * k.size, bh = 46 * k.u * k.size;
+    // Redact the whole face, mapped into the pinned photo's frame.
+    const oval = faceOval(k.S, k.eye, k.size);
+    const scale = (half * 2) / crop.w;
+    const bw = oval.rx * 2.1 * scale, bh = oval.ry * 2.05 * scale, by = (oval.cy - k.eye.y) * scale;
     k.x.save();
+    // Keep the redaction inside the pinned photo.
+    k.x.beginPath(); k.x.rect(-half, top, half * 2, half * 2); k.x.clip();
     k.x.translate(ex, ey);
     k.x.rotate(k.tilt);
     k.x.fillStyle = "#0a0a0a";
-    k.x.fillRect(-bw / 2, -bh / 2, bw, bh);
+    k.x.fillRect(-bw / 2, by - bh / 2, bw, bh);
+    k.x.fillStyle = "rgba(233, 223, 200, 0.85)";
+    k.x.font = `700 ${14 * k.u}px 'Courier New', ${k.mono}`;
+    k.x.textAlign = "center";
+    k.x.fillText("[ FACE REDACTED ]", 0, by + 5 * k.u);
     k.x.restore();
     k.x.restore();
     wipe(photo);
