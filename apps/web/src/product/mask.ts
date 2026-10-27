@@ -111,7 +111,7 @@ const MASKS: Record<MaskKey, MaskSpec> = {
     defaults: { color: "#ffb347" },
   },
   classified: {
-    label: "CLASSIFIED", positioned: true, sizeLabel: "FACE SIZE",
+    label: "CLASSIFIED", positioned: true, sizeLabel: "BAR SIZE",
     controls: [{ kind: "choice", key: "word", label: "STAMP", options: ["CLASSIFIED", "TOP SECRET", "REDACTED", "UNKNOWN"] }],
     defaults: { word: "CLASSIFIED" },
   },
@@ -1122,21 +1122,16 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     k.x.drawImage(photo, crop.x, crop.y, crop.w, crop.w, -half, top, half * 2, half * 2);
     const ex = ((k.eye.x - crop.x) / crop.w) * half * 2 - half;
     const ey = ((k.eye.y - crop.y) / crop.w) * half * 2 + top;
-    // Redact the whole face, mapped into the pinned photo's frame.
-    const oval = faceOval(k.S, k.eye, k.size);
-    const scale = (half * 2) / crop.w;
-    const bw = oval.rx * 2.1 * scale, bh = oval.ry * 2.05 * scale, by = (oval.cy - k.eye.y) * scale;
+    // A black bar across the eyes, the classic redaction. The face under it is
+    // already wiped (scrubFace), so the bar is the look, not the protection.
+    const bw = 340 * k.u * k.size, bh = 46 * k.u * k.size;
     k.x.save();
-    // Keep the redaction inside the pinned photo.
+    // Keep the bar inside the pinned photo.
     k.x.beginPath(); k.x.rect(-half, top, half * 2, half * 2); k.x.clip();
     k.x.translate(ex, ey);
     k.x.rotate(k.tilt);
     k.x.fillStyle = "#0a0a0a";
-    k.x.fillRect(-bw / 2, by - bh / 2, bw, bh);
-    k.x.fillStyle = "rgba(233, 223, 200, 0.85)";
-    k.x.font = `700 ${14 * k.u}px 'Courier New', ${k.mono}`;
-    k.x.textAlign = "center";
-    k.x.fillText("[ FACE REDACTED ]", 0, by + 5 * k.u);
+    k.x.fillRect(-bw / 2, -bh / 2, bw, bh);
     k.x.restore();
     k.x.restore();
     wipe(photo);
