@@ -276,6 +276,8 @@ let adminAuditEvents: AdminAuditEvent[] | undefined;
 let adminAuditLoaded = false;
 let adminMetrics: AdminMetrics | undefined;
 let adminMetricsLoaded = false;
+let adminMetricsDays = 30;
+let adminReportsAutoLoaded = false;
 let adminReportFilter: ReportStatus | "all" = "all";
 let adminReportError = "";
 let adminReportLoading = false;
@@ -2342,7 +2344,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     : [{ label: "HOW IT WORKS", href: "/how-it-works" }];
 
   // room-v2: the 2026-10 redesign (room-v2.css). Remove to restore the old look.
-  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" || normalizedPath.startsWith("/to/") || normalizedPath === "/" || normalizedPath === "/room/access" ? " room-v2" : "";
+  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" || normalizedPath.startsWith("/to/") || normalizedPath === "/" || normalizedPath === "/room/access" || isAdminPage ? " room-v2" : "";
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
@@ -3372,215 +3374,150 @@ function adminReportStatusLabel(status: ReportStatus): string {
   }
 }
 
-function renderAdminReportCard(report: AdminReportsResponse["reports"][number]): string {
-  return `<article class="admin-report-card" data-admin-report-id="${escapeHtml(report.reportId)}">
-    <header class="admin-report-card__header">
-      <div>
-        <span class="admin-report-card__id">${escapeHtml(report.reportId)}</span>
-        <h2>${escapeHtml(reportReasonLabel(report.reason))}</h2>
-      </div>
-      <span class="admin-report-card__status admin-report-card__status--${escapeHtml(report.status)}">${escapeHtml(adminReportStatusLabel(report.status))}</span>
-    </header>
-    <dl class="admin-report-card__meta">
-      <div><dt>TARGET</dt><dd>${escapeHtml(report.targetType)} / ${escapeHtml(report.targetId)}</dd></div>
-      <div><dt>REPORTED BY</dt><dd>${escapeHtml(report.reporterUsername ?? "ANONYMOUS MEMBER")}</dd></div>
-      <div><dt>CREATED</dt><dd>${escapeHtml(report.createdAt)}</dd></div>
-    </dl>
-    <blockquote class="admin-report-card__excerpt">“${escapeHtml(report.targetExcerpt || "NO CONTENT SNAPSHOT")}"</blockquote>
-    ${report.details ? `<p class="admin-report-card__details"><strong>REPORTER DETAILS</strong>${escapeHtml(report.details)}</p>` : ""}
-    <div class="admin-report-card__review">
-      <label class="ui-field" for="admin-report-status-${escapeHtml(report.reportId)}">
-        <span class="ui-field__label">REVIEW STATUS</span>
-        <select id="admin-report-status-${escapeHtml(report.reportId)}" data-admin-report-status>
-          ${(["open", "reviewed", "dismissed", "actioned"] as ReportStatus[]).map((status) => `<option value="${status}"${status === report.status ? " selected" : ""}>${adminReportStatusLabel(status)}</option>`).join("")}
-        </select>
-      </label>
-      <label class="ui-field" for="admin-report-note-${escapeHtml(report.reportId)}">
-        <span class="ui-field__label">MODERATOR NOTE</span>
-        <textarea id="admin-report-note-${escapeHtml(report.reportId)}" data-admin-report-note rows="3" maxlength="2000" placeholder="Internal note...">${escapeHtml(report.reviewerNote)}</textarea>
-      </label>
-      <button class="ui-button ui-button--secondary" type="button" data-action="admin-report-update" data-report-id="${escapeHtml(report.reportId)}">UPDATE REPORT →</button>
+/** Every admin page shares one layout: a sidebar of tools, who's signed in, then the page. */
+function renderAdminShell(active: "overview" | "reports" | "metrics" | "moderators" | "audit", head: { path: string; title: string; intro: string }, content: string): string {
+  const superAdmin = adminSession?.role === "super_admin";
+  const item = (key: typeof active, href: string, label: string, icon: string, show = true) => show
+    ? `<a class="hidn-admin-nav__item${key === active ? " is-active" : ""}" href="${href}"${key === active ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icon}"/></svg><span>${label}</span></a>`
+    : "";
+  const who = adminSession
+    ? `<div class="hidn-admin-who"><span class="hidn-admin-who__dot" aria-hidden="true"></span><span><b>${escapeHtml(adminSession.displayName || adminSession.email || "Access identity")}</b><small>${escapeHtml(adminSession.role.replace("_", " "))}${adminSession.email && adminSession.displayName ? ` · ${escapeHtml(adminSession.email)}` : ""}</small></span></div>`
+    : `<div class="hidn-admin-who hidn-admin-who--out"><span class="hidn-admin-who__dot" aria-hidden="true"></span><span><b>Not signed in</b><small>Open this page through Cloudflare Access</small></span></div>`;
+  return `<main id="main-content" class="public-main admin-main hidn-admin">
+    <aside class="hidn-admin-side">
+      <a class="hidn-admin-side__logo" href="/admin">&gt;hidn <span>admin</span></a>
+      <nav class="hidn-admin-nav" aria-label="Admin">
+        ${item("overview", "/admin", "Overview", "M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-3H4zM14 4v3h6V4z")}
+        ${item("reports", "/admin/reports", "Reports", "M5 21V4h11l-1.5 4L16 12H5")}
+        ${item("metrics", "/admin/metrics", "Metrics", "M4 20V10M10 20V4M16 20v-7M22 20H2", superAdmin)}
+        ${item("moderators", "/admin/moderators", "Team", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c1-4 4-6 7-6s6 2 7 6M17 4a3.5 3.5 0 0 1 0 7M19 15c1.6.8 2.7 2.8 3 6", superAdmin)}
+        ${item("audit", "/admin/audit", "Audit log", "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01", superAdmin)}
+      </nav>
+      ${who}
+      <a class="hidn-admin-side__exit" href="/">Back to the site</a>
+    </aside>
+    <div class="hidn-admin-main">
+      <header class="hidn-admin-head">
+        <p class="hidn-admin-head__path">${escapeHtml(head.path)}</p>
+        <h1>${escapeHtml(head.title)}</h1>
+        <p>${head.intro}</p>
+      </header>
+      ${adminReportError ? `<p class="hidn-admin-alert" role="alert">${escapeHtml(adminReportError)}</p>` : ""}
+      ${content}
     </div>
-    ${report.targetType === "thread" || report.targetType === "reply"
-      ? `<div class="admin-report-card__moderation-actions">
-        <span class="ui-field__label">CONTENT ACTION</span>
-        <button class="ui-button ui-button--danger" type="button" data-action="admin-report-moderate" data-report-id="${escapeHtml(report.reportId)}" data-target-type="${escapeHtml(report.targetType)}" data-target-id="${escapeHtml(report.targetId)}" data-moderation-action="hide" data-moderation-reason="${escapeHtml(reportReasonLabel(report.reason))}">HIDE CONTENT →</button>
-        <button class="ui-button ui-button--secondary" type="button" data-action="admin-report-moderate" data-report-id="${escapeHtml(report.reportId)}" data-target-type="${escapeHtml(report.targetType)}" data-target-id="${escapeHtml(report.targetId)}" data-moderation-action="approve" data-moderation-reason="RESTORED BY MODERATOR">RESTORE CONTENT →</button>
-      </div>`
-      : `<p class="admin-report-card__no-moderation">ACCOUNT REPORT / REVIEW THE ACCOUNT SEPARATELY</p>`}
+  </main>`;
+}
+
+function renderAdminReportCard(report: AdminReportsResponse["reports"][number]): string {
+  const id = escapeHtml(report.reportId);
+  return `<article class="hidn-admin-report" data-admin-report-id="${id}">
+    <header>
+      <span class="hidn-admin-pill hidn-admin-pill--${escapeHtml(report.status)}">${escapeHtml(adminReportStatusLabel(report.status).toLowerCase().replace(/^./, (c) => c.toUpperCase()))}</span>
+      <b>${escapeHtml(reportReasonLabel(report.reason))}</b>
+      <small>${escapeHtml(report.targetType)} · ${escapeHtml(new Date(report.createdAt).toLocaleString())} · reported by ${escapeHtml(report.reporterUsername ?? "an anonymous member")}</small>
+    </header>
+    <blockquote>${escapeHtml(report.targetExcerpt || "No copy of the content was kept.")}</blockquote>
+    ${report.details ? `<p class="hidn-admin-report__details"><b>Reporter added:</b> ${escapeHtml(report.details)}</p>` : ""}
+    <div class="hidn-admin-report__review">
+      <label class="ui-field" for="admin-report-status-${id}"><span class="ui-field__label">Status</span>
+        <select id="admin-report-status-${id}" data-admin-report-status>${(["open", "reviewed", "dismissed", "actioned"] as ReportStatus[]).map((status) => `<option value="${status}"${status === report.status ? " selected" : ""}>${status.charAt(0).toUpperCase() + status.slice(1)}</option>`).join("")}</select>
+      </label>
+      <label class="ui-field" for="admin-report-note-${id}"><span class="ui-field__label">Note for the team</span>
+        <textarea id="admin-report-note-${id}" data-admin-report-note rows="2" maxlength="2000" placeholder="Why you decided this">${escapeHtml(report.reviewerNote)}</textarea>
+      </label>
+    </div>
+    <footer>
+      <button class="ui-button ui-button--secondary" type="button" data-action="admin-report-update" data-report-id="${id}">Save review</button>
+      ${report.targetType === "thread" || report.targetType === "reply"
+        ? `<button class="ui-button ui-button--ghost hidn-admin-danger" type="button" data-action="admin-report-moderate" data-report-id="${id}" data-target-type="${escapeHtml(report.targetType)}" data-target-id="${escapeHtml(report.targetId)}" data-moderation-action="hide" data-moderation-reason="${escapeHtml(reportReasonLabel(report.reason))}">Hide content</button>
+           <button class="ui-button ui-button--ghost" type="button" data-action="admin-report-moderate" data-report-id="${id}" data-target-type="${escapeHtml(report.targetType)}" data-target-id="${escapeHtml(report.targetId)}" data-moderation-action="approve" data-moderation-reason="Restored by moderator">Restore content</button>`
+        : `<small>Account report: review the account separately.</small>`}
+    </footer>
   </article>`;
 }
 
 function renderAdminReports(): RenderedProductRoute {
   const reportRows = adminReports?.reports ?? [];
   const summary = adminReports?.summary ?? [];
-
+  const filter = (value: string, label: string) => `<option value="${value}"${adminReportFilter === value ? " selected" : ""}>${label}</option>`;
+  const tokenBox = adminSession ? "" : `<details class="hidn-admin-token">
+      <summary>Use a migration token instead</summary>
+      <label class="ui-field" for="admin-report-token"><span class="ui-field__label">Legacy token (not saved)</span><input id="admin-report-token" type="password" autocomplete="off" /></label>
+      <div class="hidn-admin-token__actions">${PrimaryButton({ label: adminReportLoading ? "Loading…" : "Load reports", disabled: adminReportLoading, dataAction: "admin-reports-load" })}${GhostButton({ label: "Clear", dataAction: "admin-reports-clear" })}</div>
+    </details>`;
   return {
-    metadata: {
-      kind: "admin",
-      title: "Report console · HIDN",
-      description: "Private HIDN moderation report console.",
-      canonicalPath: "/admin/reports",
-    },
-    html: publicFrame(
-      "/admin/reports",
-      `<main id="main-content" class="public-main admin-main">
-        <div class="hidn-container--reading admin-reports-page">
-          <header class="admin-reports-page__header">
-            ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
-            <p class="hidn-admin__log">hidn@admin:~$ ./queue --reports</p>
-            <h1 class="type-display-lg hidn-admin__title" data-text="REPORT CONSOLE.">REPORT CONSOLE.</h1>
-            <p>Review user-submitted moderation reports, then hide or restore thread and reply content. Cloudflare Access protects this surface before the Worker checks your HIDN administrator role.</p>
-          </header>
-          <section class="admin-reports-gate" aria-labelledby="admin-reports-gate-title">
-            <div>
-              ${TerminalLabel("ADMIN AUTHORIZATION")}
-              <h2 id="admin-reports-gate-title">OPEN THE PRIVATE QUEUE.</h2>
-            </div>
-            <label class="ui-field" for="admin-report-token">
-              <span class="ui-field__label">LEGACY TOKEN / MIGRATION FALLBACK</span>
-              <input id="admin-report-token" type="password" autocomplete="off" placeholder="Optional when Access is enabled" />
-            </label>
-            <div class="admin-reports-gate__actions">
-              ${PrimaryButton({ label: adminReportLoading ? "LOADING REPORTS..." : "LOAD REPORTS →", disabled: adminReportLoading, dataAction: "admin-reports-load" })}
-              ${GhostButton({ label: "CLEAR", dataAction: "admin-reports-clear" })}
-            </div>
-            <p class="admin-reports-gate__status" role="status">${adminSession
-              ? `${escapeHtml(adminSession.role.replace("_", " ").toUpperCase())} / ${escapeHtml(adminSession.email ?? "ACCESS IDENTITY")}`
-              : adminReportToken
-                ? "LEGACY TOKEN PRESENT / NOT STORED"
-                : "OPEN THROUGH CLOUDFLARE ACCESS OR USE THE MIGRATION TOKEN"}</p>
-          </section>
-          ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
-          ${adminReports ? `<section class="admin-reports-results" aria-labelledby="admin-reports-results-title">
-            <header class="admin-reports-results__header">
-              <div>
-                ${TerminalLabel("MODERATION QUEUE")}
-                <h2 id="admin-reports-results-title">${adminReports.reports.length} REPORT${adminReports.reports.length === 1 ? "" : "S"} LOADED.</h2>
-              </div>
-              <label class="ui-field admin-reports-results__filter" for="admin-report-filter">
-                <span class="ui-field__label">FILTER</span>
-                <select id="admin-report-filter" data-admin-report-filter>
-                  <option value="all"${adminReportFilter === "all" ? " selected" : ""}>ALL REPORTS</option>
-                  <option value="open"${adminReportFilter === "open" ? " selected" : ""}>OPEN</option>
-                  <option value="reviewed"${adminReportFilter === "reviewed" ? " selected" : ""}>REVIEWED</option>
-                  <option value="dismissed"${adminReportFilter === "dismissed" ? " selected" : ""}>DISMISSED</option>
-                  <option value="actioned"${adminReportFilter === "actioned" ? " selected" : ""}>ACTIONED</option>
-                </select>
-              </label>
-            </header>
-            <div class="admin-reports-summary" aria-label="Report totals">
-              ${summary.length ? summary.map((item) => `<span><strong>${escapeHtml(String(item.count))}</strong> ${escapeHtml(adminReportStatusLabel(item.status))}</span>`).join("") : "<span>NO REPORTS YET</span>"}
-            </div>
-            <div class="admin-reports-list">
-              ${reportRows.length ? reportRows.map(renderAdminReportCard).join("") : `<p class="admin-reports-empty">No reports match this filter.</p>`}
-            </div>
-          </section>` : SystemMessage("PRIVATE QUEUE / LOCKED", "Cloudflare Access should sign you in before the Worker checks your HIDN role. The legacy token remains available only during migration and is not saved in this browser.", "INFO")}
+    metadata: { kind: "admin", title: "Reports · HIDN", description: "Private HIDN moderation report console.", canonicalPath: "/admin/reports" },
+    html: publicFrame("/admin/reports", renderAdminShell("reports", {
+      path: "hidn://admin/reports",
+      title: "Reports",
+      intro: "What people flagged. Review it, leave a note, and hide or restore the content.",
+    }, `${tokenBox}
+      ${adminReports ? `<div class="hidn-admin-toolbar">
+          <div class="hidn-admin-summary">${summary.length ? summary.map((item) => `<span><b>${escapeHtml(String(item.count))}</b> ${escapeHtml(adminReportStatusLabel(item.status).toLowerCase())}</span>`).join("") : "<span>No reports yet</span>"}</div>
+          <label class="ui-field hidn-admin-filter" for="admin-report-filter"><span class="ui-field__label">Show</span>
+            <select id="admin-report-filter" data-admin-report-filter>${filter("all", "All reports")}${filter("open", "Open")}${filter("reviewed", "Reviewed")}${filter("dismissed", "Dismissed")}${filter("actioned", "Actioned")}</select>
+          </label>
         </div>
-      </main>`,
-      "public-page--admin",
-    ),
+        ${reportRows.length ? `<div class="hidn-admin-reports">${reportRows.map(renderAdminReportCard).join("")}</div>` : `<p class="hidn-admin-empty">Nothing here. No reports match this filter.</p>`}`
+        : `<p class="hidn-admin-empty">${adminReportLoading ? "Loading reports…" : adminSession ? "Loading reports…" : "Sign in through Cloudflare Access to see reports."}</p>`}`), "public-page--admin"),
   };
 }
 
 function renderAdminDashboard(): RenderedProductRoute {
+  const superAdmin = adminSession?.role === "super_admin";
+  const m = adminMetrics;
+  const open = adminReports?.summary.find((row) => row.status === "open")?.count;
+  const card = (href: string, title: string, copy: string, stat = "") => `<a class="hidn-admin-card" href="${href}"><span class="hidn-admin-card__title">${escapeHtml(title)}${stat ? ` <b>${escapeHtml(stat)}</b>` : ""}</span><span class="hidn-admin-card__copy">${escapeHtml(copy)}</span><span class="hidn-admin-card__go" aria-hidden="true">→</span></a>`;
+  const quick = m ? `<section class="hidn-admin-quick" aria-label="At a glance">
+      ${[["Keys created", m.totals.members], ["Confessions", m.totals.posts], ["Replies", m.totals.replies], ["Link messages", m.totals.linkMessages]].map(([label, value]) => `<div><span>${label}</span><b>${Number(value).toLocaleString()}</b></div>`).join("")}
+    </section>` : "";
   return {
-    metadata: {
-      kind: "admin",
-      title: "Admin control · HIDN",
-      description: "Private HIDN administrator control surface.",
-      canonicalPath: "/admin",
-    },
-    html: publicFrame(
-      "/admin",
-      `<main id="main-content" class="public-main admin-main">
-        <div class="hidn-container--reading admin-reports-page">
-          <header class="admin-reports-page__header">
-            ${TerminalLabel("HIDN / PRIVATE OPERATOR SURFACE")}
-            <p class="hidn-admin__log">hidn@admin:~$ ./control --status</p>
-            <h1 class="type-display-lg hidn-admin__title" data-text="ADMIN CONTROL.">ADMIN CONTROL.</h1>
-            <p>This is the control room for HIDN moderation. Cloudflare Access handles the human login; HIDN applies the role after the Worker verifies the Access identity.</p>
-          </header>
-          <section class="admin-reports-gate" aria-labelledby="admin-control-session-title">
-            ${TerminalLabel("CURRENT SESSION")}
-            <h2 id="admin-control-session-title">${adminSession ? escapeHtml((adminSession.displayName || adminSession.email || "ACCESS IDENTITY").toUpperCase()) : "SESSION NOT LOADED."}</h2>
-            <p class="admin-reports-gate__status">${adminSession ? `${escapeHtml(adminSession.role.replace("_", " ").toUpperCase())} / ${escapeHtml(adminSession.email ?? "ACCESS IDENTITY")}` : "OPEN THIS PAGE THROUGH CLOUDFLARE ACCESS."}</p>
-          </section>
-          ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
-          <nav class="admin-reports-summary" aria-label="Admin tools">
-            <a class="ui-button ui-button--primary" href="/admin/reports">REPORT QUEUE →</a>
-            ${adminSession?.role === "super_admin" ? `<a class="ui-button ui-button--secondary" href="/admin/moderators">MODERATORS →</a><a class="ui-button ui-button--secondary" href="/admin/audit">AUDIT LOG →</a><a class="ui-button ui-button--secondary" href="/admin/metrics">METRICS →</a>` : ""}
-          </nav>
-        </div>
-      </main>`,
-      "public-page--admin",
-    ),
+    metadata: { kind: "admin", title: "Admin · HIDN", description: "Private HIDN administrator control surface.", canonicalPath: "/admin" },
+    html: publicFrame("/admin", renderAdminShell("overview", {
+      path: "hidn://admin",
+      title: "Overview",
+      intro: "Moderation, the team and how HIDN is being used. Cloudflare Access handles the login; HIDN checks your role.",
+    }, `${quick}
+      <section class="hidn-admin-cards">
+        ${card("/admin/reports", "Reports", "Review what people flagged, then hide or restore it.", open !== undefined ? `${open} open` : "")}
+        ${superAdmin ? card("/admin/metrics", "Metrics", "Growth, activity, rooms and traffic, as totals only.") : ""}
+        ${superAdmin ? card("/admin/moderators", "Team", "Give moderators and reviewers access, or remove it.") : ""}
+        ${superAdmin ? card("/admin/audit", "Audit log", "Every role change and moderation action, with who did it.") : ""}
+      </section>`), "public-page--admin"),
   };
 }
 
 function renderAdminModerators(): RenderedProductRoute {
   const admins = adminModerators ?? [];
+  const roleName = (role: string) => role === "super_admin" ? "Super admin" : role === "moderator" ? "Moderator" : "Reviewer";
   return {
-    metadata: {
-      kind: "admin",
-      title: "Admin roles · HIDN",
-      description: "Private HIDN administrator role control.",
-      canonicalPath: "/admin/moderators",
-    },
-    html: publicFrame(
-      "/admin/moderators",
-      `<main id="main-content" class="public-main admin-main">
-        <div class="hidn-container--reading admin-reports-page">
-          <header class="admin-reports-page__header">
-            ${TerminalLabel("HIDN / SUPER ADMIN ONLY")}
-            <p class="hidn-admin__log">hidn@admin:~$ ./roles --list</p>
-            <h1 class="type-display-lg hidn-admin__title" data-text="ADMIN ROLES.">ADMIN ROLES.</h1>
-            <p>Add or disable moderator and reviewer identities. They must sign in through the Cloudflare Access application with the same email before HIDN grants the role.</p>
-            <p><a class="hidn-admin__back" href="/admin">&lt; cd /admin</a></p>
-          </header>
-          <section class="admin-reports-gate" aria-labelledby="admin-role-add-title">
-            ${TerminalLabel("ADD ADMINISTRATOR")}
-            <h2 id="admin-role-add-title">GRANT A ROLE.</h2>
-            <label class="ui-field" for="admin-moderator-email"><span class="ui-field__label">ACCESS EMAIL</span><input id="admin-moderator-email" type="email" autocomplete="off" placeholder="moderator@example.com" /></label>
-            <label class="ui-field" for="admin-moderator-name"><span class="ui-field__label">DISPLAY NAME / OPTIONAL</span><input id="admin-moderator-name" type="text" autocomplete="off" placeholder="ROOM MODERATOR" /></label>
-            <label class="ui-field" for="admin-moderator-role"><span class="ui-field__label">ROLE</span><select id="admin-moderator-role"><option value="moderator">MODERATOR / REPORT ACTIONS</option><option value="reviewer">REVIEWER / READ ONLY</option><option value="super_admin">SUPER ADMIN / FULL CONTROL</option></select></label>
-            <div class="admin-reports-gate__actions">${PrimaryButton({ label: "GRANT ROLE →", dataAction: "admin-moderator-create" })}</div>
-          </section>
-          ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
-          <section class="admin-reports-results" aria-labelledby="admin-role-list-title">
-            ${TerminalLabel("CURRENT ADMINISTRATORS")}
-            <h2 id="admin-role-list-title">${admins.length} IDENTITY${admins.length === 1 ? "" : "IES"}.</h2>
-            <div class="admin-reports-list">
-              ${admins.length ? admins.map((admin) => `<article class="admin-report-card">
-                <header class="admin-report-card__header"><div><span class="admin-report-card__id">${escapeHtml(admin.adminId)}</span><h2>${escapeHtml(admin.displayName || admin.email || "ACCESS IDENTITY")}</h2></div><span class="admin-report-card__status">${escapeHtml(admin.status.toUpperCase())}</span></header>
-                <dl class="admin-report-card__meta"><div><dt>EMAIL</dt><dd>${escapeHtml(admin.email ?? "NOT SET")}</dd></div><div><dt>ROLE</dt><dd>${escapeHtml(admin.role.replace("_", " ").toUpperCase())}</dd></div><div><dt>LAST SEEN</dt><dd>${escapeHtml(admin.lastSeenAt ?? "NOT YET")}</dd></div></dl>
-                <div class="admin-report-card__review"><label class="ui-field" for="admin-role-${escapeHtml(admin.adminId)}"><span class="ui-field__label">ROLE</span><select id="admin-role-${escapeHtml(admin.adminId)}" data-admin-role><option value="super_admin"${admin.role === "super_admin" ? " selected" : ""}>SUPER ADMIN</option><option value="moderator"${admin.role === "moderator" ? " selected" : ""}>MODERATOR</option><option value="reviewer"${admin.role === "reviewer" ? " selected" : ""}>REVIEWER</option></select></label><button class="ui-button ui-button--secondary" type="button" data-action="admin-moderator-update" data-admin-id="${escapeHtml(admin.adminId)}" data-admin-status="${escapeHtml(admin.status)}">SAVE ROLE →</button>${admin.status === "active" && admin.adminId !== adminSession?.adminId ? `<button class="ui-button ui-button--danger" type="button" data-action="admin-moderator-disable" data-admin-id="${escapeHtml(admin.adminId)}">DISABLE →</button>` : ""}</div>
-              </article>`).join("") : `<p class="admin-reports-empty">No administrator records yet.</p>`}
-            </div>
-          </section>
+    metadata: { kind: "admin", title: "Team · HIDN", description: "Private HIDN administrator role control.", canonicalPath: "/admin/moderators" },
+    html: publicFrame("/admin/moderators", renderAdminShell("moderators", {
+      path: "hidn://admin/team",
+      title: "Team",
+      intro: "Add moderators and reviewers. They sign in through Cloudflare Access with the same email before HIDN gives them the role.",
+    }, `<section class="hidn-admin-panel" aria-labelledby="admin-role-add-title">
+        <h2 id="admin-role-add-title">Add someone</h2>
+        <div class="hidn-admin-form">
+          <label class="ui-field" for="admin-moderator-email"><span class="ui-field__label">Email they sign in with</span><input id="admin-moderator-email" type="email" autocomplete="off" placeholder="moderator@example.com" /></label>
+          <label class="ui-field" for="admin-moderator-name"><span class="ui-field__label">Display name (optional)</span><input id="admin-moderator-name" type="text" autocomplete="off" placeholder="Room moderator" /></label>
+          <label class="ui-field" for="admin-moderator-role"><span class="ui-field__label">Role</span><select id="admin-moderator-role"><option value="moderator">Moderator · can act on reports</option><option value="reviewer">Reviewer · read only</option><option value="super_admin">Super admin · full control</option></select></label>
         </div>
-      </main>`,
-      "public-page--admin",
-    ),
+        ${PrimaryButton({ label: "Add to team", dataAction: "admin-moderator-create" })}
+      </section>
+      <section class="hidn-admin-panel" aria-labelledby="admin-role-list-title">
+        <h2 id="admin-role-list-title">People with access <small>${admins.length}</small></h2>
+        ${admins.length ? `<div class="hidn-admin-rows">${admins.map((admin) => `<article class="hidn-admin-row">
+          <div class="hidn-admin-row__main"><b>${escapeHtml(admin.displayName || admin.email || "Access identity")}</b><small>${escapeHtml(admin.email ?? "No email")} · last seen ${escapeHtml(admin.lastSeenAt ? new Date(admin.lastSeenAt).toLocaleString() : "never")}</small></div>
+          <span class="hidn-admin-pill${admin.status === "active" ? "" : " is-off"}">${escapeHtml(admin.status === "active" ? roleName(admin.role) : "Disabled")}</span>
+          <div class="hidn-admin-row__actions">
+            <label class="ui-field" for="admin-role-${escapeHtml(admin.adminId)}"><span class="ui-field__label">Role</span><select id="admin-role-${escapeHtml(admin.adminId)}" data-admin-role><option value="super_admin"${admin.role === "super_admin" ? " selected" : ""}>Super admin</option><option value="moderator"${admin.role === "moderator" ? " selected" : ""}>Moderator</option><option value="reviewer"${admin.role === "reviewer" ? " selected" : ""}>Reviewer</option></select></label>
+            <button class="ui-button ui-button--secondary" type="button" data-action="admin-moderator-update" data-admin-id="${escapeHtml(admin.adminId)}" data-admin-status="${escapeHtml(admin.status)}">Save</button>
+            ${admin.status === "active" && admin.adminId !== adminSession?.adminId ? `<button class="ui-button ui-button--ghost hidn-admin-danger" type="button" data-action="admin-moderator-disable" data-admin-id="${escapeHtml(admin.adminId)}">Remove access</button>` : ""}
+          </div>
+        </article>`).join("")}</div>` : `<p class="hidn-admin-empty">Only you so far. People you add here appear in this list.</p>`}
+      </section>`), "public-page--admin"),
   };
-}
-
-/** A small bar chart of one daily series, drawn inline (no chart library, no requests). */
-function metricsBars(series: AdminMetrics["series"], pick: (day: AdminMetrics["series"][number]) => number, label: string): string {
-  const values = series.map(pick);
-  const max = Math.max(1, ...values);
-  const total = values.reduce((sum, value) => sum + value, 0);
-  const width = 600, height = 120, gap = 3;
-  const bar = (width - gap * (values.length - 1)) / values.length;
-  const bars = values.map((value, index) => {
-    const h = Math.max(value ? 2 : 0, (value / max) * (height - 4));
-    return `<rect x="${(index * (bar + gap)).toFixed(1)}" y="${(height - h).toFixed(1)}" width="${bar.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"><title>${escapeHtml(series[index].day)}: ${value}</title></rect>`;
-  }).join("");
-  return `<figure class="hidn-metrics__chart">
-    <figcaption><span>${escapeHtml(label)}</span><b>${total.toLocaleString()}</b><small>last ${series.length} days${total ? ` · peak ${max.toLocaleString()} a day` : " · none yet"}</small></figcaption>
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} per day, last ${series.length} days">${bars}</svg>
-    <div class="hidn-metrics__axis"><span>${escapeHtml(series[0]?.day ?? "")}</span><span>today</span></div>
-  </figure>`;
 }
 
 const METRICS_PAGE_NAMES: Record<string, string> = {
@@ -3596,121 +3533,137 @@ const METRICS_PAGE_NAMES: Record<string, string> = {
   "/mask": "Mask your pfp",
 };
 
+/** A daily chart; hovering (or tapping) a day shows its date and count. Drawn inline, no chart library. */
+function metricsChart(label: string, unit: string, days: string[], values: number[], kind: "bars" | "line" = "bars", note = ""): string {
+  const max = Math.max(1, ...values);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const width = 600, height = 140, gap = days.length > 40 ? 1 : 3;
+  const step = width / days.length;
+  const bar = Math.max(1, step - gap);
+  const y = (value: number) => height - 6 - (value / max) * (height - 16);
+  const shapes = kind === "line"
+    ? `<path class="hidn-chart__area" d="M0 ${height} ${values.map((v, i) => `L${(i * step + step / 2).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")} L${width} ${height} Z"/><path class="hidn-chart__line" d="${values.map((v, i) => `${i ? "L" : "M"}${(i * step + step / 2).toFixed(1)} ${y(v).toFixed(1)}`).join(" ")}"/>`
+    : values.map((v, i) => `<rect x="${(i * step).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bar.toFixed(1)}" height="${(height - 6 - y(v)).toFixed(1)}" rx="1.5"/>`).join("");
+  const gridlines = [0.5, 1].map((f) => `<line x1="0" x2="${width}" y1="${y(max * f).toFixed(1)}" y2="${y(max * f).toFixed(1)}"/>`).join("");
+  const avg = values.length ? total / values.length : 0;
+  return `<figure class="hidn-chart" data-metrics-chart data-days='${escapeHtml(JSON.stringify(days))}' data-values='${escapeHtml(JSON.stringify(values))}' data-unit="${escapeHtml(unit)}">
+    <figcaption><span>${escapeHtml(label)}</span><b>${(kind === "line" ? values[values.length - 1] ?? 0 : total).toLocaleString()}</b>${note ? `<em>${note}</em>` : ""}<small>${kind === "line" ? `${(values[0] ?? 0).toLocaleString()} at the start · ` : `${avg.toFixed(avg < 10 ? 1 : 0)} a day on average · `}${total || kind === "line" ? `peak ${max.toLocaleString()}` : "none yet"}</small></figcaption>
+    <div class="hidn-chart__plot">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} per day">${gridlines}${shapes}<line class="hidn-chart__cursor" x1="0" x2="0" y1="0" y2="${height}" hidden/></svg>
+      <span class="hidn-chart__max" aria-hidden="true">${max.toLocaleString()}</span>
+      <div class="hidn-chart__tip" hidden></div>
+    </div>
+    <div class="hidn-chart__axis"><span>${escapeHtml(formatMetricsDay(days[0] ?? ""))}</span><span>${escapeHtml(formatMetricsDay(days[Math.floor(days.length / 2)] ?? ""))}</span><span>Today</span></div>
+  </figure>`;
+}
+
+function formatMetricsDay(day: string): string {
+  if (!day) return "";
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/** "▲ 24% vs the previous 30 days", or nothing when there's nothing to compare. */
+function metricsChange(now: number, before: number, days: number): string {
+  if (!before && !now) return "";
+  if (!before) return `<span class="hidn-delta is-up">new vs the previous ${days} days</span>`;
+  const change = Math.round(((now - before) / before) * 100);
+  return `<span class="hidn-delta ${change >= 0 ? "is-up" : "is-down"}">${change >= 0 ? "▲" : "▼"} ${Math.abs(change)}% vs the previous ${days} days</span>`;
+}
+
 function renderMetricsTraffic(m: AdminMetrics): string {
   const t = m.traffic;
   if (!t || !t.total) {
-    return `<section class="hidn-metrics__traffic" aria-labelledby="hidn-metrics-traffic"><h2 id="hidn-metrics-traffic">Traffic</h2><p class="hidn-metrics__empty">Counting starts from the day this went live. Visits appear here as they come in.</p></section>`;
+    return `<section class="hidn-admin-panel" aria-labelledby="hidn-metrics-traffic"><h2 id="hidn-metrics-traffic">Traffic</h2><p class="hidn-admin-empty">Counting started on the day this went live. Visits appear here as they come in.</p></section>`;
   }
   const pageName = (page: string) => METRICS_PAGE_NAMES[page] ?? (page.startsWith("/r/") ? `Room link · ${roomDisplayName(roomLinkBySlug(page.slice(3))?.title ?? page.slice(3))}` : page);
   const list = (rows: Array<{ label: string; views: number }>) => {
     const max = Math.max(1, ...rows.map((row) => row.views));
-    return `<ul class="hidn-metrics__list">${rows.map((row) => `<li><span>${escapeHtml(row.label)}</span><i style="width:${Math.max(2, (row.views / max) * 100).toFixed(0)}%"></i><b>${row.views.toLocaleString()}</b></li>`).join("")}</ul>`;
+    const sum = rows.reduce((total, row) => total + row.views, 0) || 1;
+    return `<ul class="hidn-metrics-list">${rows.map((row) => `<li title="${escapeHtml(row.label)}: ${row.views.toLocaleString()} views (${Math.round((row.views / sum) * 100)}%)"><span>${escapeHtml(row.label)}</span><b>${row.views.toLocaleString()} <small>${Math.round((row.views / sum) * 100)}%</small></b><i style="width:${Math.max(2, (row.views / max) * 100).toFixed(0)}%"></i></li>`).join("")}</ul>`;
   };
-  const daily = m.series.map((day) => ({ ...day, visits: t.daily[day.day] ?? 0 }));
-  const step = (label: string, value: number, of?: number) => `<li><b>${value.toLocaleString()}</b><span>${escapeHtml(label)}</span>${of && value <= of ? `<small>${Math.round((value / of) * 100)}% of the step before</small>` : ""}</li>`;
-  return `<section class="hidn-metrics__traffic" aria-labelledby="hidn-metrics-traffic">
-    <h2 id="hidn-metrics-traffic">Traffic · last ${m.days} days</h2>
-    <ol class="hidn-metrics__funnel" aria-label="From visit to post">
-      ${step("homepage visits", t.home)}
-      ${step("opened sign in", t.access, t.home)}
-      ${step("keys created", m.recentMembers, t.access)}
-      ${step("confessions posted", m.recentPosts)}
+  const days = m.series.map((day) => day.day);
+  const step = (label: string, value: number, of?: number) => `<li><b>${value.toLocaleString()}</b><span>${escapeHtml(label)}</span>${of && value <= of ? `<small>${Math.round((value / of) * 100)}% of the step before</small>` : `<small>&nbsp;</small>`}</li>`;
+  return `<section class="hidn-admin-panel" aria-labelledby="hidn-metrics-traffic">
+    <h2 id="hidn-metrics-traffic">Traffic <small>${t.total.toLocaleString()} page views</small></h2>
+    <ol class="hidn-metrics-funnel" aria-label="From visit to post">
+      ${step("homepage visits", t.home)}${step("opened sign in", t.access, t.home)}${step("keys created", m.recentMembers, t.access)}${step("confessions posted", m.recentPosts)}
     </ol>
-    <div class="hidn-metrics__charts">${metricsBars(daily, (d) => (d as typeof daily[number]).visits, "Page views")}</div>
-    <div class="hidn-metrics__cols">
+    ${metricsChart("Page views", "page views", days, days.map((day) => t.daily[day] ?? 0))}
+    <div class="hidn-metrics-cols">
       <div><h3>Pages</h3>${list(t.pages.map((row) => ({ label: pageName(row.page), views: row.views })))}</div>
       <div><h3>Where visitors come from</h3>${list(t.sources.map((row) => ({ label: row.source === "direct" ? "Direct or typed in" : row.source, views: row.views })))}</div>
       <div><h3>Countries</h3>${list(t.countries.map((row) => ({ label: row.country === "??" ? "Unknown" : row.country, views: row.views })))}</div>
     </div>
-    <p class="hidn-metrics__note">Page views of real browsers (bots and link previews aren't counted). Stored as daily totals by page, source and country only: no IPs, cookies or IDs, and private link and post addresses are never recorded.</p>
+    <p class="hidn-admin-note">Page views from real browsers only (bots and link previews aren't counted), kept as daily totals by page, source and country. No IPs, cookies or IDs, and private link and post addresses are never recorded.</p>
   </section>`;
 }
 
 function renderAdminMetrics(): RenderedProductRoute {
   const m = adminMetrics;
-  const stat = (label: string, value: number, note = "") => `<div class="hidn-metrics__stat"><span>${escapeHtml(label)}</span><b>${value.toLocaleString()}</b>${note ? `<small>${escapeHtml(note)}</small>` : ""}</div>`;
-  const pct = (value: number) => `${Math.round(value * 100)}%`;
-  const sumOf = (pick: (day: AdminMetrics["series"][number]) => number) => (m ? m.series.reduce((sum, day) => sum + pick(day), 0) : 0);
-  const body = !m
-    ? `<p class="hidn-metrics__empty">${adminReportError ? "" : "Loading metrics…"}</p>`
-    : `<section class="hidn-metrics__stats" aria-label="All-time totals">
-        ${stat("Keys created", m.totals.members, `${sumOf((d) => d.members).toLocaleString()} in the last ${m.days} days`)}
-        ${stat("Confessions", m.totals.posts, `${sumOf((d) => d.posts).toLocaleString()} in the last ${m.days} days`)}
-        ${stat("Replies", m.totals.replies, `${sumOf((d) => d.replies).toLocaleString()} in the last ${m.days} days`)}
-        ${stat("Likes", m.totals.likes)}
-        ${stat("Private links", m.totals.links, `${pct(m.rates.linksWithMessagesShare)} have received a message`)}
-        ${stat("Link messages", m.totals.linkMessages, `${m.totals.tipMessages.toLocaleString()} with a tip`)}
-        ${stat("Posts open to tips", m.totals.tipPosts)}
-        ${stat("Reports", m.totals.reports, `${m.totals.hiddenPosts.toLocaleString()} posts hidden`)}
+  const range = [7, 30, 90].map((days) => `<button type="button" class="hidn-range__btn${adminMetricsDays === days ? " is-on" : ""}" data-metrics-days="${days}" aria-pressed="${adminMetricsDays === days}">${days} days</button>`).join("");
+  let body = `<p class="hidn-admin-empty">${adminReportError ? "" : "Loading metrics…"}</p>`;
+  if (m) {
+    const days = m.series.map((day) => day.day);
+    const sum = (pick: (day: AdminMetrics["series"][number]) => number) => m.series.reduce((total, day) => total + pick(day), 0);
+    const recent = { members: sum((d) => d.members), posts: sum((d) => d.posts), replies: sum((d) => d.replies), likes: sum((d) => d.likes), messages: sum((d) => d.messages) };
+    let running = m.membersBefore;
+    const cumulative = m.series.map((day) => (running += day.members));
+    const pct = (value: number) => `${Math.round(value * 100)}%`;
+    const kpi = (label: string, total: number, inRange: number, before: number) => `<div class="hidn-kpi"><span>${escapeHtml(label)}</span><b>${total.toLocaleString()}</b><small>${inRange.toLocaleString()} in the last ${m.days} days</small>${metricsChange(inRange, before, m.days)}</div>`;
+    body = `<section class="hidn-kpis" aria-label="Totals">
+        ${kpi("Keys created", m.totals.members, recent.members, m.previous.members)}
+        ${kpi("Confessions", m.totals.posts, recent.posts, m.previous.posts)}
+        ${kpi("Replies", m.totals.replies, recent.replies, m.previous.replies)}
+        ${kpi("Likes", m.totals.likes, recent.likes, m.previous.likes)}
+        ${kpi("Link messages", m.totals.linkMessages, recent.messages, m.previous.messages)}
       </section>
-      <p class="hidn-metrics__rate"><b>${pct(m.rates.repliedShare)}</b> of confessions in the last ${m.days} days got at least one reply.</p>
-      <section class="hidn-metrics__charts" aria-label="Daily activity">
-        ${metricsBars(m.series, (d) => d.members, "New keys")}
-        ${metricsBars(m.series, (d) => d.posts, "Confessions")}
-        ${metricsBars(m.series, (d) => d.replies, "Replies")}
-        ${metricsBars(m.series, (d) => d.messages, "Private link messages")}
+      <section class="hidn-kpis hidn-kpis--small" aria-label="Rates">
+        <div class="hidn-kpi"><span>Confessions that got a reply</span><b>${pct(m.rates.repliedShare)}</b><small>last ${m.days} days</small></div>
+        <div class="hidn-kpi"><span>Replies per confession</span><b>${recent.posts ? (recent.replies / recent.posts).toFixed(1) : "0"}</b><small>last ${m.days} days</small></div>
+        <div class="hidn-kpi"><span>Private links</span><b>${m.totals.links.toLocaleString()}</b><small>${pct(m.rates.linksWithMessagesShare)} have received a message</small></div>
+        <div class="hidn-kpi"><span>Tips switched on</span><b>${m.totals.tipPosts.toLocaleString()}</b><small>posts · ${m.totals.tipMessages.toLocaleString()} tipped link messages</small></div>
+        <div class="hidn-kpi"><span>Reports</span><b>${m.totals.reports.toLocaleString()}</b><small>${m.totals.hiddenPosts.toLocaleString()} posts hidden</small></div>
+      </section>
+      <section class="hidn-charts" aria-label="Daily activity">
+        ${metricsChart("Members over time", "members in total", days, cumulative, "line")}
+        ${metricsChart("New keys", "new keys", days, m.series.map((d) => d.members))}
+        ${metricsChart("Confessions", "confessions", days, m.series.map((d) => d.posts))}
+        ${metricsChart("Replies", "replies", days, m.series.map((d) => d.replies))}
+        ${metricsChart("Likes", "likes", days, m.series.map((d) => d.likes))}
+        ${metricsChart("Private link messages", "messages", days, m.series.map((d) => d.messages))}
       </section>
       ${renderMetricsTraffic(m)}
-      <section class="hidn-metrics__rooms" aria-labelledby="hidn-metrics-rooms">
+      <section class="hidn-admin-panel" aria-labelledby="hidn-metrics-rooms">
         <h2 id="hidn-metrics-rooms">Confessions by room</h2>
-        <table><thead><tr><th scope="col">Room</th><th scope="col">Last ${m.days} days</th><th scope="col">All time</th></tr></thead>
-        <tbody>${m.rooms.map((row) => `<tr><td>${escapeHtml(roomDisplayName(roomChannelOptions.find((option) => option.key === row.room)?.label ?? row.room))}</td><td>${row.recent.toLocaleString()}</td><td>${row.total.toLocaleString()}</td></tr>`).join("")}</tbody></table>
+        <table class="hidn-admin-table"><thead><tr><th scope="col">Room</th><th scope="col">Last ${m.days} days</th><th scope="col">Share</th><th scope="col">All time</th></tr></thead>
+        <tbody>${m.rooms.map((row) => `<tr><td>${escapeHtml(roomDisplayName(roomChannelOptions.find((option) => option.key === row.room)?.label ?? row.room))}</td><td>${row.recent.toLocaleString()}</td><td>${recent.posts ? Math.round((row.recent / recent.posts) * 100) : 0}%</td><td>${row.total.toLocaleString()}</td></tr>`).join("")}</tbody></table>
       </section>
-      <p class="hidn-metrics__note">Counts only. Posts are zero-knowledge, so HIDN can't tell members apart: there is no per-person activity, daily-active-user count or retention to show. Updated ${escapeHtml(new Date(m.generatedAt).toLocaleString())}.</p>`;
+      <p class="hidn-admin-note">Counts only. Posts are zero-knowledge, so HIDN can't tell members apart: there's no per-person activity, daily-active-user count or retention to show. Updated ${escapeHtml(new Date(m.generatedAt).toLocaleString())}.</p>`;
+  }
   return {
-    metadata: {
-      kind: "admin",
-      title: "Metrics · HIDN",
-      description: "Private HIDN usage metrics.",
-      canonicalPath: "/admin/metrics",
-    },
-    html: publicFrame(
-      "/admin/metrics",
-      `<main id="main-content" class="public-main admin-main">
-        <div class="hidn-container--wide hidn-metrics">
-          <header class="hidn-metrics__head">
-            <p class="hidn-metrics__path">hidn://admin/metrics</p>
-            <h1>Metrics</h1>
-            <p>How HIDN is being used, from counts the database already keeps. <a href="/admin">Back to admin</a></p>
-          </header>
-          ${adminReportError ? AlertMessage("METRICS", adminReportError, "danger") : ""}
-          ${body}
-        </div>
-      </main>`,
-      "public-page--admin",
-    ),
+    metadata: { kind: "admin", title: "Metrics · HIDN", description: "Private HIDN usage metrics.", canonicalPath: "/admin/metrics" },
+    html: publicFrame("/admin/metrics", renderAdminShell("metrics", {
+      path: "hidn://admin/metrics",
+      title: "Metrics",
+      intro: `How HIDN is being used, as totals. Hover or tap any day on a chart to see its number. <span class="hidn-range" role="group" aria-label="Period">${range}</span>`,
+    }, body), "public-page--admin"),
   };
 }
 
 function renderAdminAudit(): RenderedProductRoute {
   const events = adminAuditEvents ?? [];
   return {
-    metadata: {
-      kind: "admin",
-      title: "Admin audit · HIDN",
-      description: "Private HIDN administrator audit log.",
-      canonicalPath: "/admin/audit",
-    },
-    html: publicFrame(
-      "/admin/audit",
-      `<main id="main-content" class="public-main admin-main">
-        <div class="hidn-container--reading admin-reports-page">
-          <header class="admin-reports-page__header">
-            ${TerminalLabel("HIDN / SUPER ADMIN ONLY")}
-            <p class="hidn-admin__log">hidn@admin:~$ tail -n 50 /var/log/hidn-admin</p>
-            <h1 class="type-display-lg hidn-admin__title" data-text="AUDIT LOG.">AUDIT LOG.</h1>
-            <p>Every role change, report update, and content action is recorded here with the acting admin identity.</p>
-            <p><a class="hidn-admin__back" href="/admin">&lt; cd /admin</a></p>
-          </header>
-          <section class="admin-reports-results" aria-labelledby="admin-audit-list-title">
-            ${TerminalLabel("RECENT ADMIN ACTIONS")}
-            <h2 id="admin-audit-list-title">${events.length} EVENT${events.length === 1 ? "" : "S"}.</h2>
-            <div class="admin-reports-list">${events.length ? events.map((event) => `<article class="admin-report-card"><header class="admin-report-card__header"><div><span class="admin-report-card__id">${escapeHtml(event.eventId)}</span><h2>${escapeHtml(event.action.replaceAll("_", " ").toUpperCase())}</h2></div><span class="admin-report-card__status">${escapeHtml(event.createdAt)}</span></header><dl class="admin-report-card__meta"><div><dt>ADMIN</dt><dd>${escapeHtml(event.adminEmail ?? event.adminId)}</dd></div><div><dt>TARGET</dt><dd>${escapeHtml(event.targetType)} / ${escapeHtml(event.targetId)}</dd></div></dl>${event.reason ? `<p class="admin-report-card__details"><strong>NOTE</strong>${escapeHtml(event.reason)}</p>` : ""}</article>`).join("") : `<p class="admin-reports-empty">No audit events yet.</p>`}</div>
-          </section>
-        </div>
-      </main>`,
-      "public-page--admin",
-    ),
+    metadata: { kind: "admin", title: "Audit log · HIDN", description: "Private HIDN administrator audit log.", canonicalPath: "/admin/audit" },
+    html: publicFrame("/admin/audit", renderAdminShell("audit", {
+      path: "hidn://admin/audit",
+      title: "Audit log",
+      intro: "Every role change, report update and content action, with the admin who did it.",
+    }, `<section class="hidn-admin-panel">
+        ${events.length ? `<ol class="hidn-admin-log">${events.map((event) => `<li>
+          <time datetime="${escapeHtml(event.createdAt)}">${escapeHtml(new Date(event.createdAt).toLocaleString())}</time>
+          <div><b>${escapeHtml(event.action.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase()))}</b><small>${escapeHtml(event.adminEmail ?? event.adminId)} · ${escapeHtml(event.targetType)} ${escapeHtml(event.targetId)}</small>${event.reason ? `<p>${escapeHtml(event.reason)}</p>` : ""}</div>
+        </li>`).join("")}</ol>` : `<p class="hidn-admin-empty">Nothing yet. Actions taken in admin show up here.</p>`}
+      </section>`), "public-page--admin"),
   };
 }
 
@@ -6550,18 +6503,22 @@ async function submitActiveReport(): Promise<void> {
   }
 }
 
+let adminSessionRequest: Promise<boolean> | undefined;
+
 async function loadAdminSessionState(): Promise<boolean> {
+  // Several admin loaders ask at once; they all wait for the same request.
+  if (adminSessionRequest) {
+    return adminSessionRequest;
+  }
   if (adminSessionLoaded) {
     return Boolean(adminSession);
   }
   adminSessionLoaded = true;
-  try {
-    adminSession = (await fetchAdminSession()).admin;
-    return true;
-  } catch {
-    adminSession = undefined;
-    return false;
-  }
+  adminSessionRequest = fetchAdminSession()
+    .then(({ admin }) => { adminSession = admin; return true; })
+    .catch(() => { adminSession = undefined; return false; })
+    .finally(() => { adminSessionRequest = undefined; });
+  return adminSessionRequest;
 }
 
 async function loadAdminReports(): Promise<void> {
@@ -6611,23 +6568,58 @@ async function loadAdminModerators(): Promise<void> {
   }
 }
 
+/** Hover or tap a chart to read the exact day and count. */
+function bindMetricsCharts(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-metrics-chart]").forEach((chart) => {
+    const days = JSON.parse(chart.dataset.days ?? "[]") as string[];
+    const values = JSON.parse(chart.dataset.values ?? "[]") as number[];
+    const unit = chart.dataset.unit ?? "";
+    const plot = chart.querySelector<HTMLElement>(".hidn-chart__plot");
+    const tip = chart.querySelector<HTMLElement>(".hidn-chart__tip");
+    const cursor = chart.querySelector<SVGLineElement>(".hidn-chart__cursor");
+    if (!plot || !tip || !cursor || !days.length) return;
+    const show = (clientX: number) => {
+      const rect = plot.getBoundingClientRect();
+      const ratio = Math.min(0.9999, Math.max(0, (clientX - rect.left) / rect.width));
+      const index = Math.floor(ratio * days.length);
+      const date = new Date(`${days[index]}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+      tip.innerHTML = `<b>${values[index].toLocaleString()}</b> ${unit}<br><small>${date}</small>`;
+      tip.hidden = false;
+      const x = ((index + 0.5) / days.length) * 600;
+      cursor.setAttribute("x1", String(x));
+      cursor.setAttribute("x2", String(x));
+      cursor.removeAttribute("hidden");
+      const left = ((index + 0.5) / days.length) * rect.width;
+      tip.style.left = `${Math.min(rect.width - 70, Math.max(70, left))}px`;
+      chart.querySelectorAll("rect").forEach((bar, i) => bar.classList.toggle("is-on", i === index));
+    };
+    const hide = () => { tip.hidden = true; cursor.setAttribute("hidden", ""); chart.querySelectorAll("rect.is-on").forEach((bar) => bar.classList.remove("is-on")); };
+    plot.addEventListener("pointermove", (event) => show(event.clientX));
+    plot.addEventListener("pointerdown", (event) => show(event.clientX));
+    plot.addEventListener("pointerleave", hide);
+  });
+}
+
 async function loadAdminMetrics(): Promise<void> {
   adminMetricsLoaded = true;
   const hasSession = adminSession ? true : await loadAdminSessionState();
   if (!hasSession || adminSession?.role !== "super_admin") {
-    adminReportError = "A super-admin Cloudflare Access session is required for metrics.";
+    // The overview just skips the numbers; only the metrics page says why.
+    if (normalizePath(window.location.pathname) === "/admin/metrics") {
+      adminReportError = "Only a super admin can see metrics. Sign in through Cloudflare Access.";
+    }
     rerenderProductRoute();
     return;
   }
 
   try {
-    adminMetrics = await fetchAdminMetrics(adminReportToken);
+    adminMetrics = await fetchAdminMetrics(adminReportToken, adminMetricsDays);
     adminReportError = "";
   } catch (error) {
     adminMetrics = undefined;
     adminReportError = error instanceof Error ? error.message : "Metrics could not be loaded.";
   }
-  if (normalizePath(window.location.pathname) === "/admin/metrics") {
+  if (["/admin/metrics", "/admin"].includes(normalizePath(window.location.pathname))) {
     rerenderProductRoute();
   }
 }
@@ -7858,11 +7850,24 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (normalizedPath === "/admin/moderators" && !adminModeratorsLoaded) {
     void loadAdminModerators();
   }
-  if (normalizedPath === "/admin/metrics" && !adminMetricsLoaded) {
+  if ((normalizedPath === "/admin/metrics" || normalizedPath === "/admin") && !adminMetricsLoaded) {
     void loadAdminMetrics();
   }
   if (normalizedPath === "/admin/audit" && !adminAuditLoaded) {
     void loadAdminAudit();
+  }
+  root.querySelectorAll<HTMLButtonElement>("[data-metrics-days]").forEach((button) => {
+    button.addEventListener("click", () => {
+      adminMetricsDays = Number(button.dataset.metricsDays) || 30;
+      adminMetrics = undefined;
+      rerenderProductRoute();
+      void loadAdminMetrics();
+    });
+  });
+  bindMetricsCharts(root);
+  if (normalizePath(window.location.pathname) === "/admin/reports" && !adminReports && !adminReportLoading && !adminReportsAutoLoaded) {
+    adminReportsAutoLoaded = true;
+    void loadAdminReports();
   }
   root.querySelector<HTMLSelectElement>('[data-admin-report-filter]')?.addEventListener("change", (event) => {
     const filter = (event.currentTarget as HTMLSelectElement).value;

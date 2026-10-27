@@ -2401,7 +2401,10 @@ function trafficSource(request: Request): string {
     if (host.includes("tiktok")) return "tiktok";
     if (host.includes("reddit")) return "reddit";
     if (host.includes("linkedin") || host === "lnkd.in") return "linkedin";
-    return host.slice(0, 60);
+    // Anything else: just the main domain (blog.someone.com becomes someone.com).
+    const labels = host.split(".").filter(Boolean);
+    const twoPartSuffix = labels.length >= 3 && labels[labels.length - 2].length <= 3 && labels[labels.length - 1].length === 2;
+    return labels.slice(twoPartSuffix ? -3 : -2).join(".").slice(0, 60) || "other";
   } catch {
     return "direct";
   }
@@ -2447,7 +2450,8 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
   }
 
   const db = env.ROOM_DB!;
-  const days = 30;
+  const requestedDays = Number(new URL(request.url).searchParams.get("days") ?? "30");
+  const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
   const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
   const one = async (sql: string, ...binds: unknown[]): Promise<number> =>
     Number((await db.prepare(sql).bind(...binds).first<{ n: number }>())?.n ?? 0);
@@ -2475,6 +2479,18 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
          AND EXISTS (SELECT 1 FROM hidn_replies r WHERE r.thread_id = t.thread_id)`, since),
     one("SELECT COUNT(DISTINCT link_id) AS n FROM hidn_link_messages"),
     one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NULL AND substr(created_at, 1, 10) >= ?", since),
+  ]);
+  const previousSince = new Date(Date.parse(`${since}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+  const between = (table: string, extra = "") => one(
+    `SELECT COUNT(*) AS n FROM ${table} WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) < ?${extra}`, previousSince, since,
+  );
+  const [prevMembers, prevPosts, prevReplies, prevLikes, prevMessages, membersBefore] = await Promise.all([
+    between("hidn_anonymous_members"),
+    between("hidn_threads"),
+    between("hidn_replies"),
+    between("hidn_reactions"),
+    between("hidn_link_messages"),
+    one("SELECT COUNT(*) AS n FROM hidn_anonymous_members WHERE substr(created_at, 1, 10) < ?", since),
   ]);
   const roomRows = await db.prepare(
     `SELECT channel, COUNT(*) AS total, SUM(CASE WHEN substr(created_at, 1, 10) >= ? THEN 1 ELSE 0 END) AS recent
@@ -2528,6 +2544,8 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
     days,
     traffic,
     recentMembers: series.reduce((total, day) => total + day.members, 0),
+    previous: { members: prevMembers, posts: prevPosts, replies: prevReplies, likes: prevLikes, messages: prevMessages },
+    membersBefore,
     recentPosts,
     totals: { members, posts, replies, likes, links, linkMessages, tipPosts, tipMessages, reports, hiddenPosts },
     rates: {
@@ -3532,6 +3550,16 @@ const worker = {
     const adminApiPath = url.pathname.startsWith("/admin/api/admin/")
       ? url.pathname.slice("/admin".length)
       : url.pathname;
+
+    // Admin changes must come from HIDN's own pages: another site can't make a
+    // signed-in admin's browser hide content or change roles.
+    if (adminApiPath.startsWith("/api/admin/") && request.method !== "GET" && request.method !== "HEAD") {
+      const origin = request.headers.get("Origin");
+      const fetchSite = request.headers.get("Sec-Fetch-Site");
+      if (origin !== url.origin || (fetchSite && fetchSite !== "same-origin")) {
+        return jsonResponse({ error: "Admin changes must come from the HIDN admin pages." }, 403);
+      }
+    }
 
     if (adminApiPath === "/api/admin/session") {
       if (request.method !== "GET") {

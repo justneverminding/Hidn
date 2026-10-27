@@ -461,6 +461,10 @@ export interface AdminMetrics {
   rooms: Array<{ room: string; total: number; recent: number }>;
   series: Array<{ day: string; members: number; posts: number; replies: number; likes: number; messages: number }>;
   recentMembers: number;
+  /** The same counts for the period just before this one. */
+  previous: { members: number; posts: number; replies: number; likes: number; messages: number };
+  /** Keys that existed before the period started, for the running total. */
+  membersBefore: number;
   recentPosts: number;
   /** Null until the page-view tally exists. */
   traffic: {
@@ -474,8 +478,8 @@ export interface AdminMetrics {
   } | null;
 }
 
-export function fetchAdminMetrics(token = ""): Promise<AdminMetrics> {
-  return adminRequest<AdminMetrics>("/api/admin/metrics", token);
+export function fetchAdminMetrics(token = "", days = 30): Promise<AdminMetrics> {
+  return adminRequest<AdminMetrics>(`/api/admin/metrics?days=${days}`, token);
 }
 
 export function fetchAdminAudit(token = "", limit = 100): Promise<{ events: AdminAuditEvent[] }> {

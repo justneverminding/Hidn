@@ -1695,3 +1695,177 @@ html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !i
 .public-page .hidn-metrics__list span { grid-column: 1; grid-row: 1; }
 .public-page .hidn-metrics__list b { grid-column: 2; grid-row: 1; }
 .public-page .hidn-metrics__list i { grid-row: 2; }
+
+/* ======================= Admin: shared shell ======================= */
+.public-page.room-v2.room-v2.room-v2.public-page--admin .public-page__window-chrome { display: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--admin .ui-footer-shell { display: none !important; }
+.public-page.room-v2 .hidn-admin { box-sizing: border-box; display: grid !important; font-family: var(--v2-read); gap: 0; grid-template-columns: 232px minmax(0, 1fr); margin: 0 !important; max-width: none !important; min-height: 100dvh; padding: 0 !important; }
+.public-page.room-v2 .hidn-admin * { letter-spacing: 0; text-shadow: none; }
+.public-page.room-v2 .hidn-admin-side { border-right: 1px solid var(--v2-line-soft); box-sizing: border-box; display: flex; flex-direction: column; gap: 18px; height: 100dvh; padding: 22px 14px; position: sticky; top: 0; }
+.public-page.room-v2 .hidn-admin-side__logo { color: var(--v2-green); font: 600 20px var(--v2-mono); padding: 0 8px; text-decoration: none; }
+.public-page.room-v2 .hidn-admin-side__logo span { color: var(--v2-dim); font: 400 13px var(--v2-mono); }
+.public-page.room-v2 .hidn-admin-nav { display: flex; flex-direction: column; gap: 2px; }
+.public-page.room-v2 .hidn-admin-nav__item { align-items: center; border-radius: 6px; color: var(--v2-muted); display: flex; font: 500 14.5px var(--v2-read); gap: 10px; min-height: 40px; padding: 0 10px; text-decoration: none; }
+.public-page.room-v2 .hidn-admin-nav__item svg { fill: none; height: 18px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; width: 18px; }
+.public-page.room-v2 .hidn-admin-nav__item:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.06); color: var(--v2-ink); }
+.public-page.room-v2 .hidn-admin-nav__item.is-active { background: rgba(93, 255, 143, 0.1); color: var(--v2-green); }
+.public-page.room-v2 .hidn-admin-who { align-items: flex-start; border-top: 1px solid var(--v2-line-soft); display: flex; gap: 10px; margin-top: auto; padding: 14px 8px 0; }
+.public-page.room-v2 .hidn-admin-who__dot { background: var(--v2-green); border-radius: 50%; box-shadow: 0 0 8px rgba(93, 255, 143, 0.6); flex: none; height: 8px; margin-top: 6px; width: 8px; }
+.public-page.room-v2 .hidn-admin-who--out .hidn-admin-who__dot { background: var(--v2-amber); box-shadow: none; }
+.public-page.room-v2 .hidn-admin-who b { color: var(--v2-ink); display: block; font: 600 13.5px var(--v2-read); overflow-wrap: anywhere; }
+.public-page.room-v2 .hidn-admin-who small { color: var(--v2-dim); display: block; font: 400 12px var(--v2-read); overflow-wrap: anywhere; text-transform: capitalize; }
+.public-page.room-v2 .hidn-admin-side__exit { color: var(--v2-dim); font: 400 13px var(--v2-read); padding: 0 8px; }
+.public-page.room-v2 .hidn-admin-main { box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; max-width: 1120px; min-width: 0; padding: 34px 40px 64px; }
+.public-page.room-v2 .hidn-admin-head__path { color: var(--v2-dim); font: 400 12px var(--v2-mono); margin: 0 0 6px; }
+.public-page.room-v2 .hidn-admin-head h1 { color: var(--v2-green); font: 600 30px/1.15 var(--v2-mono); margin: 0 0 8px; text-transform: none; }
+.public-page.room-v2 .hidn-admin-head h1::before, .public-page.room-v2 .hidn-admin-head h1::after { content: none !important; }
+.public-page.room-v2 .hidn-admin-head > p:last-child { align-items: center; color: var(--v2-muted); display: flex; flex-wrap: wrap; font: 400 15px/1.55 var(--v2-read); gap: 10px 16px; margin: 0; max-width: 72ch; }
+.public-page.room-v2 .hidn-admin-alert { background: rgba(255, 95, 95, 0.08); border: 1px solid rgba(255, 141, 141, 0.35); border-radius: 8px; color: #ff9d9d; font: 500 14px var(--v2-read); margin: 0; padding: 10px 14px; }
+.public-page.room-v2 .hidn-admin-empty { color: var(--v2-muted); font: 400 14.5px/1.55 var(--v2-read); margin: 0; }
+.public-page.room-v2 .hidn-admin-note { color: var(--v2-dim); font: 400 13px/1.55 var(--v2-read); margin: 0; max-width: 78ch; }
+.public-page.room-v2 .hidn-admin-panel { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+.public-page.room-v2 .hidn-admin-panel h2 { align-items: baseline; color: var(--v2-ink); display: flex; font: 600 16px var(--v2-read); gap: 8px; margin: 0; text-transform: none; }
+.public-page.room-v2 .hidn-admin-panel h2 small { color: var(--v2-dim); font: 400 13px var(--v2-mono); }
+.public-page.room-v2 .hidn-admin-panel h3 { color: var(--v2-muted); font: 500 13px var(--v2-read); margin: 0 0 8px; text-transform: none; }
+/* Fields and buttons inside admin */
+.public-page.room-v2 .hidn-admin .ui-field { display: flex; flex-direction: column; gap: 6px; }
+.public-page.room-v2 .hidn-admin .ui-field__label { color: var(--v2-muted) !important; font: 500 13px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2 .hidn-admin .ui-field__label::before { content: none !important; }
+.public-page.room-v2 .hidn-admin :is(input, select, textarea) { background: #040b07 !important; border: 1px solid var(--v2-edge) !important; border-radius: 6px !important; box-shadow: none !important; color: var(--v2-ink) !important; font: 400 14.5px var(--v2-read) !important; letter-spacing: 0 !important; min-height: 40px; padding: 8px 12px !important; text-transform: none !important; }
+.public-page.room-v2 .hidn-admin :is(input, select, textarea):focus { border-color: var(--v2-green) !important; outline: none; }
+.public-page.room-v2 .hidn-admin .ui-button { min-height: 38px !important; padding: 0 16px !important; }
+.public-page.room-v2 .hidn-admin .ui-button--primary { background: var(--v2-green) !important; background-image: none !important; border: 0 !important; border-radius: 3px !important; color: #021006 !important; font: 600 14px var(--v2-mono) !important; text-transform: none !important; }
+.public-page.room-v2 .hidn-admin .ui-button--primary::before, .public-page.room-v2 .hidn-admin .ui-button--primary::after { content: none !important; }
+.public-page.room-v2 .hidn-admin .hidn-admin-danger { color: #ff8d8d !important; text-decoration-color: rgba(255, 141, 141, 0.4) !important; }
+.public-page.room-v2 .hidn-admin-pill { background: rgba(93, 255, 143, 0.1); border-radius: 20px; color: var(--v2-green); flex: none; font: 500 12px var(--v2-read); padding: 3px 10px; }
+.public-page.room-v2 .hidn-admin-pill.is-off { background: rgba(138, 161, 142, 0.12); color: var(--v2-muted); }
+.public-page.room-v2 .hidn-admin-pill--open { background: rgba(244, 183, 40, 0.12); color: var(--v2-amber); }
+.public-page.room-v2 .hidn-admin-pill--dismissed { background: rgba(138, 161, 142, 0.12); color: var(--v2-muted); }
+.public-page.room-v2 .hidn-admin-pill--actioned { background: rgba(255, 141, 141, 0.12); color: #ff9d9d; }
+/* Overview */
+.public-page.room-v2 .hidn-admin-quick { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; }
+.public-page.room-v2 .hidn-admin-quick div { border-right: 1px solid var(--v2-line-soft); display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
+.public-page.room-v2 .hidn-admin-quick div:last-child { border-right: 0; }
+.public-page.room-v2 .hidn-admin-quick span { color: var(--v2-muted); font: 500 13px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-quick b { color: var(--v2-ink); font: 600 24px var(--v2-mono); }
+.public-page.room-v2 .hidn-admin-cards { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.public-page.room-v2 .hidn-admin-card { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: grid; gap: 4px 12px; grid-template-columns: minmax(0, 1fr) auto; padding: 16px 18px; text-decoration: none; }
+.public-page.room-v2 .hidn-admin-card:is(:hover, :focus-visible) { border-color: var(--v2-edge); background: rgba(93, 255, 143, 0.03); }
+.public-page.room-v2 .hidn-admin-card__title { color: var(--v2-ink); font: 600 16px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-card__title b { color: var(--v2-amber); font: 500 13px var(--v2-mono); margin-left: 6px; }
+.public-page.room-v2 .hidn-admin-card__copy { color: var(--v2-muted); font: 400 14px/1.5 var(--v2-read); grid-column: 1; }
+.public-page.room-v2 .hidn-admin-card__go { align-self: center; color: var(--v2-green); grid-column: 2; grid-row: 1 / span 2; }
+/* Team and audit rows */
+.public-page.room-v2 .hidn-admin-form { display: grid; gap: 12px; grid-template-columns: 2fr 1.5fr 1.5fr; }
+.public-page.room-v2 .hidn-admin-rows { display: flex; flex-direction: column; }
+.public-page.room-v2 .hidn-admin-row { align-items: center; border-top: 1px solid var(--v2-line-soft); display: grid; gap: 10px 14px; grid-template-columns: minmax(0, 1fr) auto; padding: 14px 0; }
+.public-page.room-v2 .hidn-admin-row__main b { color: var(--v2-ink); display: block; font: 600 14.5px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-row__main small { color: var(--v2-dim); font: 400 12.5px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-row__actions { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; }
+.public-page.room-v2 .hidn-admin-log { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
+.public-page.room-v2 .hidn-admin-log li { border-top: 1px solid var(--v2-line-soft); display: grid; gap: 4px 16px; grid-template-columns: 170px minmax(0, 1fr); padding: 12px 0; }
+.public-page.room-v2 .hidn-admin-log li:first-child { border-top: 0; }
+.public-page.room-v2 .hidn-admin-log time { color: var(--v2-dim); font: 400 12.5px var(--v2-mono); }
+.public-page.room-v2 .hidn-admin-log b { color: var(--v2-ink); display: block; font: 600 14px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-log small { color: var(--v2-dim); font: 400 12.5px var(--v2-read); overflow-wrap: anywhere; }
+.public-page.room-v2 .hidn-admin-log p { color: var(--v2-muted); font: 400 13.5px var(--v2-read); margin: 4px 0 0; }
+/* Reports */
+.public-page.room-v2 .hidn-admin-token { border: 1px solid var(--v2-line-soft); border-radius: 10px; padding: 12px 16px; }
+.public-page.room-v2 .hidn-admin-token summary { color: var(--v2-muted); cursor: pointer; font: 500 14px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-token[open] summary { margin-bottom: 12px; }
+.public-page.room-v2 .hidn-admin-token__actions { display: flex; gap: 8px; margin-top: 10px; }
+.public-page.room-v2 .hidn-admin-toolbar { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.public-page.room-v2 .hidn-admin-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.public-page.room-v2 .hidn-admin-summary span { border: 1px solid var(--v2-line-soft); border-radius: 20px; color: var(--v2-muted); font: 400 13px var(--v2-read); padding: 4px 12px; }
+.public-page.room-v2 .hidn-admin-summary b { color: var(--v2-ink); font: 600 13px var(--v2-mono); }
+.public-page.room-v2 .hidn-admin-filter { min-width: 180px; }
+.public-page.room-v2 .hidn-admin-reports { display: flex; flex-direction: column; gap: 12px; }
+.public-page.room-v2 .hidn-admin-report { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
+.public-page.room-v2 .hidn-admin-report header { align-items: center; display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.public-page.room-v2 .hidn-admin-report header b { color: var(--v2-ink); font: 600 15px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-report header small { color: var(--v2-dim); flex-basis: 100%; font: 400 12.5px var(--v2-read); }
+.public-page.room-v2 .hidn-admin-report blockquote { background: #040b07; border-left: 2px solid var(--v2-edge); border-radius: 0 8px 8px 0; color: var(--v2-ink); font: 400 15.5px/1.55 var(--v2-read); margin: 0; padding: 10px 14px; }
+.public-page.room-v2 .hidn-admin-report__details { color: var(--v2-muted); font: 400 14px/1.5 var(--v2-read); margin: 0; }
+.public-page.room-v2 .hidn-admin-report__review { display: grid; gap: 12px; grid-template-columns: 200px minmax(0, 1fr); }
+.public-page.room-v2 .hidn-admin-report footer { align-items: center; display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.public-page.room-v2 .hidn-admin-report footer small { color: var(--v2-dim); font: 400 13px var(--v2-read); }
+/* Metrics */
+.public-page.room-v2 .hidn-range { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--v2-line-soft); border-radius: 8px; }
+.public-page.room-v2 .hidn-range__btn { background: transparent; border: 0; border-radius: 6px; color: var(--v2-muted); cursor: pointer; font: 500 13px var(--v2-read); min-height: 30px; padding: 0 12px; }
+.public-page.room-v2 .hidn-range__btn.is-on { background: rgba(93, 255, 143, 0.12); color: var(--v2-green); }
+.public-page.room-v2 .hidn-kpis { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); overflow: hidden; }
+.public-page.room-v2 .hidn-kpi { border-right: 1px solid var(--v2-line-soft); display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; }
+.public-page.room-v2 .hidn-kpi:last-child { border-right: 0; }
+.public-page.room-v2 .hidn-kpi span { color: var(--v2-muted); font: 500 13px var(--v2-read); }
+.public-page.room-v2 .hidn-kpi b { color: var(--v2-ink); font: 600 26px/1.1 var(--v2-mono); }
+.public-page.room-v2 .hidn-kpis--small .hidn-kpi b { font-size: 20px; }
+.public-page.room-v2 .hidn-kpi small { color: var(--v2-dim); font: 400 12px var(--v2-read); }
+.public-page.room-v2 .hidn-delta { font: 500 12px var(--v2-read); }
+.public-page.room-v2 .hidn-delta.is-up { color: var(--v2-green); }
+.public-page.room-v2 .hidn-delta.is-down { color: #ff9d9d; }
+.public-page.room-v2 .hidn-charts { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.public-page.room-v2 .hidn-chart { border: 1px solid var(--v2-line-soft); border-radius: 12px; margin: 0; padding: 14px 16px 10px; }
+.public-page.room-v2 .hidn-chart figcaption { align-items: baseline; display: flex; flex-wrap: wrap; gap: 2px 10px; margin-bottom: 10px; }
+.public-page.room-v2 .hidn-chart figcaption span { color: var(--v2-ink); font: 600 14px var(--v2-read); }
+.public-page.room-v2 .hidn-chart figcaption b { color: var(--v2-green); font: 600 15px var(--v2-mono); }
+.public-page.room-v2 .hidn-chart figcaption small { color: var(--v2-dim); flex-basis: 100%; font: 400 12px var(--v2-read); }
+.public-page.room-v2 .hidn-chart__plot { cursor: crosshair; position: relative; touch-action: pan-y; }
+.public-page.room-v2 .hidn-chart svg { display: block; height: 130px; overflow: visible; width: 100%; }
+.public-page.room-v2 .hidn-chart svg rect { fill: var(--v2-green); opacity: 0.7; }
+.public-page.room-v2 .hidn-chart svg rect.is-on { opacity: 1; }
+.public-page.room-v2 .hidn-chart svg line { stroke: var(--v2-line-soft); stroke-dasharray: 3 4; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.public-page.room-v2 .hidn-chart svg .hidn-chart__cursor { stroke: var(--v2-muted); stroke-dasharray: none; }
+.public-page.room-v2 .hidn-chart__line { fill: none; stroke: var(--v2-green); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.public-page.room-v2 .hidn-chart__area { fill: rgba(93, 255, 143, 0.1); }
+.public-page.room-v2 .hidn-chart__max { color: var(--v2-dim); font: 400 11px var(--v2-mono); pointer-events: none; position: absolute; right: 0; top: -2px; }
+.public-page.room-v2 .hidn-chart__tip { background: #0c1a12; border: 1px solid var(--v2-edge); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); color: var(--v2-text); font: 400 12.5px/1.4 var(--v2-read); padding: 6px 10px; pointer-events: none; position: absolute; text-align: center; top: -10px; transform: translate(-50%, -100%); white-space: nowrap; z-index: 2; }
+.public-page.room-v2 .hidn-chart__tip b { color: var(--v2-green); font: 600 15px var(--v2-mono); }
+.public-page.room-v2 .hidn-chart__tip small { color: var(--v2-dim); }
+.public-page.room-v2 .hidn-chart__axis { color: var(--v2-dim); display: flex; font: 400 11px var(--v2-mono); justify-content: space-between; margin-top: 6px; }
+.public-page.room-v2 .hidn-metrics-funnel { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; overflow: hidden; padding: 0; }
+.public-page.room-v2 .hidn-metrics-funnel li { border-right: 1px solid var(--v2-line-soft); display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }
+.public-page.room-v2 .hidn-metrics-funnel li:last-child { border-right: 0; }
+.public-page.room-v2 .hidn-metrics-funnel b { color: var(--v2-green); font: 600 22px var(--v2-mono); }
+.public-page.room-v2 .hidn-metrics-funnel span { color: var(--v2-ink); font: 400 14px var(--v2-read); }
+.public-page.room-v2 .hidn-metrics-funnel small { color: var(--v2-dim); font: 400 12px var(--v2-read); }
+.public-page.room-v2 .hidn-metrics-cols { display: grid; gap: 20px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.public-page.room-v2 .hidn-metrics-list { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.public-page.room-v2 .hidn-metrics-list li { display: grid; gap: 4px 10px; grid-template-columns: minmax(0, 1fr) auto; }
+.public-page.room-v2 .hidn-metrics-list span { color: var(--v2-text); font: 400 13.5px var(--v2-read); grid-column: 1; grid-row: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.public-page.room-v2 .hidn-metrics-list b { color: var(--v2-ink); font: 500 13px var(--v2-mono); grid-column: 2; grid-row: 1; }
+.public-page.room-v2 .hidn-metrics-list b small { color: var(--v2-dim); font-weight: 400; }
+.public-page.room-v2 .hidn-metrics-list i { background: var(--v2-green); border-radius: 2px; grid-column: 1 / -1; grid-row: 2; height: 3px; opacity: 0.6; }
+.public-page.room-v2 .hidn-admin-table { border-collapse: collapse; font: 400 14px var(--v2-read); width: 100%; }
+.public-page.room-v2 .hidn-admin-table th { border-bottom: 1px solid var(--v2-line-soft); color: var(--v2-dim); font: 500 12.5px var(--v2-read); padding: 8px 10px; text-align: left; }
+.public-page.room-v2 .hidn-admin-table td { border-bottom: 1px solid var(--v2-line-soft); color: var(--v2-text); padding: 10px; }
+.public-page.room-v2 .hidn-admin-table :is(th, td):not(:first-child) { font-family: var(--v2-mono); text-align: right; }
+.public-page.room-v2 .hidn-admin-table tr:hover td { background: rgba(93, 255, 143, 0.03); }
+/* Admin on phones: the sidebar becomes a top bar of tabs. */
+@media (max-width: 900px) {
+  .public-page.room-v2 .hidn-admin { grid-template-columns: 1fr; }
+  .public-page.room-v2 .hidn-admin-side { border-bottom: 1px solid var(--v2-line-soft); border-right: 0; flex-direction: row; flex-wrap: wrap; gap: 8px; height: auto; padding: 12px 16px; position: static; }
+  .public-page.room-v2 .hidn-admin-nav { flex-direction: row; flex-basis: 100%; order: 3; overflow-x: auto; scrollbar-width: none; }
+  .public-page.room-v2 .hidn-admin-nav__item { flex: none; }
+  .public-page.room-v2 .hidn-admin-who { border-top: 0; margin: 0 0 0 auto; padding: 0; order: 2; }
+  .public-page.room-v2 .hidn-admin-who small { display: none; }
+  .public-page.room-v2 .hidn-admin-side__exit { display: none; }
+  .public-page.room-v2 .hidn-admin-main { padding: 22px 16px 48px; }
+  .public-page.room-v2 :is(.hidn-admin-quick, .hidn-kpis, .hidn-metrics-funnel) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .public-page.room-v2 :is(.hidn-admin-quick div, .hidn-kpi, .hidn-metrics-funnel li) { border-bottom: 1px solid var(--v2-line-soft); }
+  .public-page.room-v2 :is(.hidn-admin-cards, .hidn-charts, .hidn-metrics-cols, .hidn-admin-form, .hidn-admin-report__review) { grid-template-columns: 1fr; }
+  .public-page.room-v2 .hidn-admin-log li { grid-template-columns: 1fr; }
+}
+/* Admin fixes: the old admin theme forces wide mono text and a minimum width. */
+.public-page.room-v2.public-page--admin { max-width: 100vw; overflow-x: hidden; }
+.public-page.room-v2 .hidn-admin { max-width: 100vw !important; width: 100% !important; }
+.public-page.room-v2 .hidn-admin :is(p, span, small, b, a, li, td, th, label, button, select, input, textarea, blockquote) { letter-spacing: 0 !important; text-transform: none; }
+.public-page.room-v2 .hidn-admin :is(.hidn-admin-head > p:last-child, .hidn-admin-empty, .hidn-admin-note, .hidn-admin-card__copy, .hidn-admin-card__title, .hidn-admin-panel h2, .hidn-admin-nav__item, .hidn-admin-who b, .hidn-admin-who small, .hidn-admin-side__exit, .hidn-admin-report header b, .hidn-admin-report header small, .hidn-admin-report__details, .hidn-admin-row__main b, .hidn-admin-row__main small, .hidn-admin-log b, .hidn-admin-log small, .hidn-admin-log p, .hidn-kpi span, .hidn-kpi small, .hidn-chart figcaption span, .hidn-chart figcaption small, .hidn-metrics-funnel span, .hidn-metrics-funnel small, .hidn-metrics-list span, .hidn-admin-quick span, .hidn-admin-token summary, .hidn-range__btn, .hidn-delta) { font-family: var(--v2-read) !important; }
+.public-page.room-v2 .hidn-chart svg .hidn-chart__cursor[hidden] { display: none; }
+@media (max-width: 900px) {
+  .public-page.room-v2 .hidn-admin-main, .public-page.room-v2 .hidn-admin-side { max-width: 100vw; }
+  .public-page.room-v2 .hidn-admin-side__logo { font-size: 18px; }
+  .public-page.room-v2 .hidn-admin-nav__item { min-height: 36px; padding: 0 10px; font-size: 14px; }
+  .public-page.room-v2 .hidn-admin-head h1 { font-size: 26px; }
+  .public-page.room-v2 .hidn-admin-head > p:last-child { font-size: 14.5px; }
+  .public-page.room-v2 .hidn-admin-who b { font-size: 12.5px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
