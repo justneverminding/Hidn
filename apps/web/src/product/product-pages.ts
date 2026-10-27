@@ -84,7 +84,7 @@ import {
   timeAgo,
 } from "./public-feed";
 import { mountStandingsStage, mountStandingsTicker, renderStandingsStage, renderStandingsTicker } from "./standings-stage";
-import { roomLinkByKey, roomNote } from "./room-links";
+import { roomClosedReason, roomLinkByKey, roomNote } from "./room-links";
 import { bindMaskPage, MASK_PATH, maskEntry, renderMaskBody } from "./mask";
 import {
   KEY_CREDENTIAL_NAME,
@@ -2222,8 +2222,9 @@ function renderRoomMenu(): string {
       <p class="room-menu__cmd" aria-hidden="true">hidn://whoami</p>
       <p class="room-menu__whoami"><b>${escapeHtml(profileName)}</b><span>Today's name. It changes every visit.</span></p>
       <nav aria-label="More">
-        <a href="/how-it-works">How it works <b aria-hidden="true">→</b></a>
-        <a href="/">Home <b aria-hidden="true">→</b></a>
+        <a href="/room/main"><span>Lobby <small>walk the 3D museum</small></span> <b aria-hidden="true">→</b></a>
+        <a href="/how-it-works"><span>How it works</span> <b aria-hidden="true">→</b></a>
+        <a href="/"><span>Home</span> <b aria-hidden="true">→</b></a>
       </nav>
       <a class="room-menu__leave" href="/" data-room-logout>Leave room</a>
     </div>
@@ -3305,7 +3306,7 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
     </div>
     <h2 class="hidn-glitch-title" data-text="CHOOSE A R&nbsp;&nbsp;M.">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m.</h2>
     <p class="room-directory__intro">Read quietly or leave a thought without a public name.</p>
-    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${SecondaryButton({ label: "Say it here", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`}
+    ${roomPostComposerOpen ? "" : `<div class="room-directory__create">${renderSayItButton()}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`}
     <div class="room-directory__tree" role="tree" aria-label="Room folders">
       ${folderGroups
         .map(
@@ -4183,6 +4184,21 @@ function renderRoomShareControl(): string {
     : "";
 }
 
+/** Why a room isn't taking posts right now (a limited room before it opens or after it closes), or null. */
+function roomPostingClosed(key: string): string | null {
+  const link = roomLinkByKey(key);
+  return link ? roomClosedReason(link) : null;
+}
+
+/** The say-it button, or a disabled one while the room on screen isn't open for posts. */
+function renderSayItButton(): string {
+  const fixed = roomChannelSurfaceFromPath(window.location.pathname);
+  if (fixed && roomPostingClosed(fixed)) {
+    return SecondaryButton({ label: "Closed for new posts", disabled: true, className: "room-say-closed" });
+  }
+  return SecondaryButton({ label: "Say it here", dataAction: "room-create-post" });
+}
+
 function renderRoomPostChannelPicker(): string {
   const fixed = roomChannelSurfaceFromPath(window.location.pathname);
   if (fixed) {
@@ -4192,7 +4208,9 @@ function renderRoomPostChannelPicker(): string {
     <legend>Room</legend>
     <div class="room-post-channel__options">
       ${visibleRoomChannelOptions()
-        .map((channel) => `<button type="button" class="room-post-channel__option" data-room-post-channel="${channel.key}" aria-pressed="${channel.key === activeRoomChannel}">${escapeHtml(roomDisplayName(channel.label))}</button>`)
+        .map((channel) => roomPostingClosed(channel.key)
+          ? `<button type="button" class="room-post-channel__option" data-room-post-channel="${channel.key}" aria-pressed="false" disabled title="${escapeHtml(roomPostingClosed(channel.key) ?? "")}">${escapeHtml(roomDisplayName(channel.label))} · closed</button>`
+          : `<button type="button" class="room-post-channel__option" data-room-post-channel="${channel.key}" aria-pressed="${channel.key === activeRoomChannel}">${escapeHtml(roomDisplayName(channel.label))}</button>`)
         .join("")}
     </div>
   </fieldset>`;
@@ -4214,7 +4232,7 @@ function renderMobilePostSurface(): string {
           ${SecondaryButton({ label: roomPostSubmitting ? "Proving and sending…" : "Transmit", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
         </div>
       </form>`
-    : `<div class="room-mobile-index__create-actions">${SecondaryButton({ label: "Say it here", dataAction: "room-create-post" })}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
+    : `<div class="room-mobile-index__create-actions">${renderSayItButton()}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
 
   return `<div class="room-mobile-index__create">
     ${content}
@@ -4445,6 +4463,11 @@ function renderMobileRoomIndex(): string {
         </header>
         ${isRoomDesktopViewport() ? "" : renderRoomStandings()}
         <section class="room-mobile-index__list" aria-label="Private rooms">
+          <a class="room-mobile-index__lobby" href="/room/main">
+            <span class="room-mobile-index__lobby-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6"/></svg></span>
+            <span class="room-mobile-index__copy"><strong>Walk the lobby</strong><small>A 3D museum where real posts hang on the walls</small></span>
+            <span class="room-mobile-index__arrow" aria-hidden="true">→</span>
+          </a>
           ${rooms}
         </section>
       </div>
@@ -5069,8 +5092,8 @@ function renderRoomTabs(path: string): string {
   const icon = (d: string): string => `<svg class="hidn-tabs__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
   const item = (href: string, label: string, active: boolean, d: string, extra = "", className = ""): string =>
     `<a class="hidn-tabs__item${className}${active ? " hidn-tabs__item--active" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}>${icon(d)}<span>${label}</span>${extra}</a>`;
-  // On phones the tabs become a bottom dock with "say it" in the middle;
-  // the lobby is reached from ROOMS there, so its tab is desktop-only.
+  // On phones the tabs become a bottom dock with "say it" in the middle; the
+  // lobby moves to the menu and the top of ROOMS there, so its tab is desktop-only.
   return `<nav class="hidn-tabs" aria-label="Room">
     ${item(MIXED_FEED_PATH, "Feed", path === MIXED_FEED_PATH || path.startsWith("/c/"), "M4 6h16M4 12h16M4 18h10")}
     ${item("/room/rooms", "Rooms", path === "/room/rooms" || Boolean(roomChannelFeedFromPath(path)), "M5 3h14v18H5zM15 12h.01")}
@@ -7231,6 +7254,15 @@ function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
       void copyRoomRecoveryKey(button);
       break;
     case "room-dock-say": {
+      // Inside a room that isn't open yet, say so instead of opening a box nobody can send.
+      const closedHere = roomChannelSurfaceFromPath(window.location.pathname);
+      const closedReason = closedHere ? roomPostingClosed(closedHere) : null;
+      if (closedReason) {
+        roomChannelNotice = closedReason;
+        rerenderProductRoute();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        break;
+      }
       // The dock's say-it button: open the composer here, or go to the feed and open it there.
       const here = document.querySelector<HTMLButtonElement>('[data-action="room-create-post"]');
       if (here) {
@@ -7248,6 +7280,19 @@ function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
         break;
       }
 
+      {
+        const fixedRoom = roomChannelSurfaceFromPath(window.location.pathname);
+        const closedReason = roomPostingClosed(fixedRoom ?? activeRoomChannel);
+        if (closedReason && fixedRoom) {
+          roomChannelNotice = closedReason;
+          rerenderProductRoute();
+          break;
+        }
+        // Elsewhere, a closed room is never the one a new post starts in.
+        if (closedReason) {
+          activeRoomChannel = "general";
+        }
+      }
       roomPostComposerOpen = true;
       roomPostTipsEnabled = false;
       roomPostTipAddressDraft = roomTipAddress;

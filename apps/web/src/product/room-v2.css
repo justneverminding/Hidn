@@ -1522,3 +1522,108 @@ html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !i
 .public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn { background-image: none !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn::before,
 .public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn::after { content: none !important; }
+/* A limited room before it opens: its say-it button and room chip are visibly off. */
+.public-page.room-v2.room-v2.room-v2 .room-say-closed { background: transparent !important; border: 1px dashed rgba(245, 165, 74, 0.45) !important; color: #c9925a !important; cursor: not-allowed !important; opacity: 1 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-post-channel__option:disabled { cursor: not-allowed; opacity: 0.55; }
+.public-page.room-v2.room-v2.room-v2 .ui-button.room-say-closed { background: transparent !important; background-image: none !important; border: 1px dashed rgba(245, 165, 74, 0.45) !important; box-shadow: none !important; color: #c9925a !important; }
+
+/* Phone: the lobby is reached from the menu and the top of Rooms. */
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a span { display: flex; flex-direction: column; gap: 1px; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a small { color: var(--v2-dim); font: 400 12px var(--v2-read); }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby {
+  align-items: center; background: rgba(93, 255, 143, 0.05); border: 1px solid var(--v2-edge); border-radius: 12px; display: grid; gap: 14px;
+  grid-template-columns: 40px minmax(0, 1fr) auto; margin: 4px 0 10px; min-height: 64px; padding: 10px 14px; text-decoration: none;
+}
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby:is(:hover, :focus-visible) { border-color: var(--v2-green); }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby-icon { align-items: center; background: rgba(93, 255, 143, 0.1); border-radius: 10px; color: var(--v2-green); display: inline-flex; height: 40px; justify-content: center; width: 40px; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby-icon svg { fill: none; height: 20px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; width: 20px; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby strong { color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby .room-mobile-index__arrow { color: var(--v2-green) !important; }
+@media (min-width: 761px) { .public-page.room-v2.room-v2.room-v2 .room-mobile-index__lobby { display: none; } }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a span { color: var(--v2-ink) !important; font: 500 15px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a span small { color: var(--v2-dim) !important; font: 400 12.5px var(--v2-read) !important; letter-spacing: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a[href="/room/main"] span { color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a { opacity: 1 !important; }
+
+/* ======================= Crypto confessions: a header of coins in Zcash gold (only this room has one) ======================= */
+.public-page--room-underground {
+  --room-accent: #5fd4c4; --room-glow: rgba(95, 212, 196, 0.13); --room-edge: rgba(95, 212, 196, 0.35); --room-motif-w: 0.85em;
+  --room-motif: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235fd4c4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3Cpath d='M12 15v2'/%3E%3C/svg%3E");
+}
+.public-page--room-love {
+  --room-accent: #f08aa5; --room-glow: rgba(240, 138, 165, 0.12); --room-edge: rgba(240, 138, 165, 0.35); --room-motif-w: 0.85em;
+  --room-motif: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20s-7-4.4-9-9a4.8 4.8 0 0 1 9-3 4.8 4.8 0 0 1 9 3c-2 4.6-9 9-9 9z' fill='%23f08aa5'/%3E%3Cpath d='M12 8l-1.6 3.2 3 2-2 3.4' stroke='%23070402' stroke-width='1.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.public-page--room-ragebait {
+  --room-accent: #ff6a5c; --room-glow: rgba(255, 90, 79, 0.13); --room-edge: rgba(255, 106, 92, 0.38); --room-motif-w: 0.8em;
+  --room-motif: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2c1 4 5 5.5 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.5-5 .2 2 1.2 3 2.5 3-1-3 0-6 0-9z' fill='%23ff5a4f'/%3E%3Cpath d='M12 21a2.6 2.6 0 0 1-2.6-2.6c0-1.6 1.3-2.6 2.6-4 1.3 1.4 2.6 2.4 2.6 4A2.6 2.6 0 0 1 12 21z' fill='%23ffd27a'/%3E%3C/svg%3E");
+}
+.public-page--room-wildest {
+  --room-accent: #b99aff; --room-glow: rgba(160, 120, 255, 0.14); --room-edge: rgba(185, 154, 255, 0.38); --room-motif-w: 0.75em;
+  --room-motif: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 2L4 14h7l-1 8 9-12h-7l1-8z' fill='%23b99aff'/%3E%3C/svg%3E");
+}
+.public-page--room-students {
+  --room-accent: #8ec5ff; --room-glow: rgba(142, 197, 255, 0.12); --room-edge: rgba(142, 197, 255, 0.35); --room-motif-w: 1.1em; --room-motif-h: 1em;
+  --room-motif: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24'%3E%3Crect x='3' y='3' width='14' height='18' rx='1.5' fill='%23eaf2ff'/%3E%3Cpath d='M6 3v18' stroke='%23ff7a7a' stroke-width='1'/%3E%3Cpath d='M8 8h7M8 11h7M8 14h5' stroke='%238ec5ff' stroke-width='1.3' stroke-linecap='round'/%3E%3Cpath d='M14 21l1-4 6.5-6.5 3 3L18 20l-4 1z' fill='%23f4c430' stroke='%23070402' stroke-width='.8' stroke-linejoin='round'/%3E%3Cpath d='M20.5 11.5l3 3' stroke='%23ff9db0' stroke-width='2'/%3E%3C/svg%3E");
+}
+.public-page--room-crypto {
+  --room-accent: #f4b728; --room-glow: rgba(244, 183, 40, 0.12); --room-edge: rgba(244, 183, 40, 0.38); --room-motif-w: 3.4em; --room-motif-h: 0.9em;
+  --room-motif: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 24'%3E%3Cg transform='translate(12 12)'%3E%3Ccircle r='10.5' fill='%23f4b728' stroke='%23070402' stroke-width='1.2'/%3E%3Cpath d='M-4.5-4.5h9l-9 9h9M0-7.5v3M0 4.5v3' stroke='%23070402' stroke-width='2' fill='none'/%3E%3C/g%3E%3Cg transform='translate(35 12)'%3E%3Ccircle r='10.5' fill='%23f7931a' stroke='%23070402' stroke-width='1.2'/%3E%3Ctext y='5' text-anchor='middle' font-family='Arial,sans-serif' font-weight='700' font-size='14' fill='%23fff'%3E%E2%82%BF%3C/text%3E%3C/g%3E%3Cg transform='translate(58 12)'%3E%3Ccircle r='10.5' fill='%23627eea' stroke='%23070402' stroke-width='1.2'/%3E%3Cpath d='M0-7.5l-4.6 7.6L0 2.8l4.6-2.7zM0 3.8l-4.6-2.7L0 7.5l4.6-6.4z' fill='%23fff'/%3E%3C/g%3E%3Cg transform='translate(81 12)'%3E%3Ccircle r='10.5' fill='%23101010' stroke='%23070402' stroke-width='1.2'/%3E%3Cpath d='M-5.5-3.5h8.5l2.5-2.5h-8.5z' fill='%2314f195'/%3E%3Cpath d='M-5.5 1.2h8.5l2.5-2.5h-8.5z' fill='%2380c7e0'/%3E%3Cpath d='M-5.5 6h8.5l2.5-2.5h-8.5z' fill='%239945ff'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* The page keeps HIDN's colours; only the header carries the room: a soft glow, a faint
+   pattern of the room's motif fading downward, and the motif as a large emblem. */
+.public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header { isolation: isolate; overflow: hidden; position: relative; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header > * { position: relative; z-index: 1; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header::before {
+  background: var(--room-motif) 0 0 / var(--room-tile, 46px) auto repeat; content: ""; height: 190px; left: 0; opacity: 0.08; pointer-events: none; position: absolute; right: 0; top: 0; z-index: 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.6) 45%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.6) 45%, transparent 100%);
+}
+.public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header::after {
+  background: radial-gradient(circle at 50% 50%, var(--room-glow) 0%, transparent 68%), var(--room-motif) center / 58% auto no-repeat; content: ""; height: 150px; opacity: 0.9;
+  pointer-events: none; position: absolute; right: -10px; top: 0; width: var(--room-emblem-w, 150px); z-index: 0;
+  bottom: auto !important; left: auto !important; display: block !important; inset: 0 -10px auto auto !important;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header { background: radial-gradient(ellipse 85% 70% at 85% 0%, var(--room-glow), transparent 70%); border-radius: 0 0 16px 16px; }
+.public-page--room-crypto { --room-tile: 120px; --room-emblem-w: 200px; }
+.public-page--room-students { --room-tile: 56px; }
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header::after { height: 110px; opacity: 0.75; right: -14px; width: calc(var(--room-emblem-w, 150px) * 0.72); }
+  .public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header h1 { padding-right: 70px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--room-crypto .explore-header h1 { padding-right: 120px; }
+}
+
+/* ======================= Buttons: flat and terminal-native ======================= */
+/* One solid action per screen; everything else is underlined mono text. No pills, no glow. */
+.public-page.room-v2.room-v2.room-v2 :is(.ui-button--secondary, .hidn-home__btn--primary, .hidn-auth__submit, .hidn-auth__btn--primary, .hidn-key__btn--primary, .room-tip-dialog__btn--primary, .hidn-share-sheet__btn--primary, .hidn-verify-sheet__btn) {
+  background: var(--v2-green) !important; background-image: none !important; border: 0 !important; border-radius: 3px !important; box-shadow: none !important; color: #021006 !important;
+  font: 600 14px var(--v2-mono) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 :is(.ui-button--secondary, .hidn-home__btn--primary, .hidn-auth__submit, .hidn-auth__btn--primary, .hidn-key__btn--primary):is(:hover, :focus-visible) { background: #8affb1 !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.ui-button--secondary, .ui-button--ghost, .hidn-home__btn)::before,
+.public-page.room-v2.room-v2.room-v2 :is(.ui-button--secondary, .ui-button--ghost, .hidn-home__btn)::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.ui-button--ghost, .room-channel-share, .hidn-home__btn--ghost, .hidn-key__btn:not(.hidn-key__btn--primary), .hidn-desk__btn) {
+  background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; color: var(--v2-green) !important;
+  font: 500 14px var(--v2-mono) !important; letter-spacing: 0 !important; padding: 0 6px !important; text-decoration: underline !important; text-decoration-color: rgba(93, 255, 143, 0.4) !important;
+  text-decoration-thickness: 1px !important; text-transform: lowercase !important; text-underline-offset: 5px !important;
+}
+.public-page.room-v2.room-v2.room-v2 :is(.ui-button--ghost, .room-channel-share, .hidn-home__btn--ghost, .hidn-key__btn:not(.hidn-key__btn--primary), .hidn-desk__btn):is(:hover, :focus-visible) { text-decoration-color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .room-refresh-button { background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; color: var(--v2-muted) !important; height: 44px !important; min-height: 44px !important; padding: 0 !important; width: 36px !important; }
+.public-page.room-v2.room-v2.room-v2 .room-refresh-button:is(:hover, :focus-visible) { color: var(--v2-green) !important; }
+/* The not-saved reminder: a thin amber rule, not a card. */
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder { background: transparent !important; border: 0 !important; border-left: 2px solid var(--v2-amber) !important; border-radius: 0 !important; padding: 2px 0 2px 12px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder > span { color: #f0cf8a !important; font: 400 14px var(--v2-read) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder a { background: transparent !important; border-radius: 0 !important; color: var(--v2-amber) !important; font: 500 14px var(--v2-mono) !important; min-height: 0 !important; padding: 0 !important; text-decoration: underline !important; text-transform: lowercase !important; text-underline-offset: 4px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder button { height: 28px !important; width: 28px !important; }
+/* Homepage */
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn { min-height: 50px !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--primary { padding: 0 24px !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask { background: transparent !important; border: 0 !important; border-radius: 0 !important; gap: 10px !important; min-height: 32px !important; padding: 0 !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask b { background: transparent !important; color: var(--v2-amber) !important; font: 600 13px var(--v2-mono) !important; padding: 0 !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask b::after { color: var(--v2-dim); content: " —"; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask span { text-decoration: underline; text-decoration-color: rgba(232, 242, 233, 0.3); text-underline-offset: 5px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__key { border-radius: 3px !important; font-family: var(--v2-mono) !important; font-size: 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder { align-items: center !important; display: flex !important; flex-wrap: nowrap !important; gap: 14px !important; position: relative; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder > span { flex: 0 1 auto !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder button { flex: none; margin-left: auto; position: static !important; color: #8a7a55 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth :is(.hidn-auth__submit, .hidn-auth__btn--primary, .hidn-key__btn) { font-family: var(--v2-mono) !important; font-size: 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth .hidn-key__btn:not(.hidn-key__btn--primary) { text-transform: lowercase !important; }
