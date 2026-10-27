@@ -1627,3 +1627,12 @@ html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !i
 .public-page.room-v2.room-v2.room-v2 .hidn-key-reminder button { flex: none; margin-left: auto; position: static !important; color: #8a7a55 !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-auth :is(.hidn-auth__submit, .hidn-auth__btn--primary, .hidn-key__btn) { font-family: var(--v2-mono) !important; font-size: 14px !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-auth .hidn-key__btn:not(.hidn-key__btn--primary) { text-transform: lowercase !important; }
+/* Top bar: a smaller bell and menu on desktop (phones keep full-size touch targets). */
+@media (min-width: 761px) {
+  .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle { height: 30px !important; min-height: 30px !important; width: 32px !important; border-radius: 6px !important; }
+  .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__bell-icon { height: 15px !important; width: 15px !important; }
+  .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__badge { font-size: 9px !important; height: 15px !important; line-height: 15px !important; min-width: 15px !important; right: -9px !important; top: -8px !important; }
+  .public-page.room-v2.room-v2.room-v2 .room-menu__toggle { border-radius: 6px !important; gap: 6px !important; height: 30px !important; min-height: 30px !important; padding: 0 10px !important; }
+  .public-page.room-v2.room-v2.room-v2 .room-menu__label { font-size: 13px !important; }
+  .public-page.room-v2.room-v2.room-v2 .room-menu__icon { transform: scale(0.8); }
+}
