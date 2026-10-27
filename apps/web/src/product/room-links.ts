@@ -47,8 +47,7 @@ export const ROOM_LINKS: readonly RoomLink[] = [
     slug: "haunted",
     title: "THINGS THAT HAUNT ME",
     description: "halloween only. say what keeps you up at night",
-    note: "Open until Halloween ends. No real names, and nothing that points to a real person.",
-    opensAt: "2026-10-29T20:00:00Z",
+    note: "Open now, until Halloween ends. No real names, and nothing that points to a real person.",
     // Halloween has ended everywhere (midnight at UTC-12).
     closesAt: "2026-11-01T12:00:00Z",
   },
