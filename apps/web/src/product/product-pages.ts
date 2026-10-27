@@ -979,7 +979,7 @@ function renderTransmissionRow(
   const openClass = threadId && threadId === deskOpenThreadId ? " transmission-row--open" : "";
   return `<article class="transmission-row${className}${openClass}"${openAttribute}>
     <div class="transmission-row__meta">
-      <span class="transmission-row__room">${options.roomLabel ? escapeHtml(roomDisplayName(options.roomLabel)) : "Anonymous"}</span>
+      <span class="transmission-row__room"${options.roomLabel === roomChannelOption("haunted").label ? ` data-room="haunted"` : ""}>${options.roomLabel ? escapeHtml(roomDisplayName(options.roomLabel)) : "Anonymous"}</span>
       <time datetime="${escapeHtml(transmission.time)}">${escapeHtml(threadId ? timeAgo(transmission.time) || formatTransmissionTime(transmission.time) : formatTransmissionTime(transmission.time))}</time>
       <span class="transmission-row__signed" role="img" aria-label="Signed: name withheld"></span>
     </div>
@@ -1420,11 +1420,22 @@ function startHomeAudio(root: ParentNode): void {
     return;
   }
 
+  // Leaving the tab or the app pauses the signal, so the phone doesn't keep
+  // showing HIDN as "now playing"; coming back resumes it if it was on.
+  let pausedByHiding = false;
   const resumeAudio = (): void => {
-    if (document.visibilityState !== "visible" || (graph.context.state === "running" && !audio.paused)) {
+    if (document.visibilityState !== "visible") {
+      if (!audio.paused) {
+        pausedByHiding = true;
+        audio.pause();
+        void graph.context.suspend().catch(() => undefined);
+      }
       return;
     }
-
+    if (!pausedByHiding || (graph.context.state === "running" && !audio.paused)) {
+      return;
+    }
+    pausedByHiding = false;
     void attemptHomeAudioPlayback(root);
   };
   const gestureHandler = (event: PointerEvent): void => {
@@ -3703,7 +3714,7 @@ function renderDeskWindow(title: string, body: string, options: { close?: boolea
   return `<section class="hidn-desk__window${options.className ? ` ${options.className}` : ""}"${options.label ? ` aria-label="${escapeHtml(options.label)}"` : ""}${options.root ? ` data-thread-root="${escapeHtml(options.root)}"` : ""}>
     <div class="hidn-desk__window-bar">
       <span class="hidn-desk__window-title">${escapeHtml(title)}<span class="hidn-desk__caret" aria-hidden="true">▌</span></span>
-      ${options.close ? `<button class="hidn-desk__window-close" type="button" data-desk-close aria-label="Close this post">[ × ]</button>` : ""}
+      ${options.close ? `<button class="hidn-desk__window-close" type="button" data-desk-close aria-label="Close this post">×</button>` : ""}
     </div>
     <div class="hidn-desk__window-body">${body}</div>
   </section>`;
@@ -3722,15 +3733,16 @@ function renderDeskThread(post: RoomPost): string {
     <div class="hidn-desk__replies">
       <p class="hidn-desk__card-title">Replies · ${replyCount}</p>
       ${replies.map((reply) => `<div class="hidn-desk__reply"><span class="hidn-desk__reply-mark" aria-hidden="true">↳</span><div><p>${escapeHtml(reply.text)}</p><span>anonymous · ${escapeHtml(reply.time)}</span></div></div>`).join("")}
-      ${loading && !replies.length && replyCount ? `<p class="hidn-desk__muted">&gt; loading replies…</p>` : ""}
+      ${loading && !replies.length && replyCount ? `<p class="hidn-desk__muted">Loading replies…</p>` : ""}
       ${error ? `<p class="hidn-desk__muted">!! ${escapeHtml(error)}</p>` : ""}
-      ${!replyCount && !loading ? `<p class="hidn-desk__muted">&gt; no replies yet. say something back.</p>` : ""}
+      ${!replyCount && !loading ? `<p class="hidn-desk__muted">No replies yet. Say something back.</p>` : ""}
     </div>
     <label class="hidn-desk__card-title" for="desk-reply-${escapeHtml(post.id)}">Reply without a name</label>
     <textarea class="hidn-desk__input" id="desk-reply-${escapeHtml(post.id)}" rows="3" maxlength="${roomReplyCharacterLimit()}" placeholder="Say it back." data-thread-input></textarea>
     <div class="hidn-desk__actions">
       ${SecondaryButton({ label: roomReplySubmitting ? "Proving and sending…" : "Reply", disabled: roomReplySubmitting, dataAction: "thread-reply" })}
-      <a class="hidn-desk__link" href="/c/${encodeURIComponent(post.id)}">Full page · quote · report</a>
+      <button class="hidn-desk__btn" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(post.id)}">Share</button>
+      <a class="hidn-desk__btn hidn-desk__btn--link" href="/c/${encodeURIComponent(post.id)}" title="Quote, save as image or report on the full page">Open full page →</a>
     </div>`;
   return renderDeskWindow(`hidn://thread/${reference}`, body, { close: true, className: "hidn-desk__thread", label: "Open post", root: post.id });
 }
@@ -4497,7 +4509,7 @@ function renderExplore(path = "/room"): string {
           <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
         </section>`,
       ),
-      "public-page--explore public-page--room-channel public-page--desk",
+      `public-page--explore public-page--room-channel public-page--desk public-page--room-${channel.key}`,
     );
   }
 
@@ -4533,7 +4545,7 @@ function renderExplore(path = "/room"): string {
         </div>
       </div>
     </main>`,
-    `public-page--explore${isChannelRoute ? " public-page--room-channel" : ""}`,
+    `public-page--explore${isChannelRoute ? ` public-page--room-channel public-page--room-${activeRoomChannel}` : ""}`,
   );
 }
 
@@ -5321,28 +5333,24 @@ function renderZecVerificationNotice(): string {
     return "";
   }
 
-  // A terminal handshake that prints, then stalls: verification is not live
-  // yet, so the screen says so plainly instead of pretending to work.
-  return `<div class="hidn-verification-notice hidn-verification-notice--term" data-zec-verification-notice role="dialog" aria-modal="true" aria-labelledby="hidn-verification-notice-title">
-    <button class="hidn-verification-notice__backdrop" type="button" data-action="room-verification-notice-close" aria-label="Close Zcash verification notice"></button>
-    <section class="hidn-verification-notice__panel hidn-term hidn-term--verify">
-      <div class="hidn-term__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/verify</span>
-        <button class="hidn-verify__close-x" type="button" data-action="room-verification-notice-close" aria-label="Close Zcash verification notice">×</button>
-      </div>
-      <div class="hidn-term__body hidn-verify">
-        <p class="hidn-verify__log">hidn@room:~$ ./verify --zec --shielded</p>
-        <p class="hidn-verify__log"><b>[ OK ]</b> SHIELDED CHANNEL OPEN</p>
-        <p class="hidn-verify__log"><b>[ OK ]</b> IDENTITY STAYS WITHHELD</p>
-        <p class="hidn-verify__log hidn-verify__log--wait"><b>[WAIT]</b> MAINNET VERIFICATION MODULE</p>
-        <div class="hidn-verify__progress" role="img" aria-label="Zcash verification is still being built">
-          <span class="hidn-verify__bar"><i></i></span>
-          <span class="hidn-verify__pct">BUILDING</span>
-        </div>
-        <h2 id="hidn-verification-notice-title" class="hidn-verify__title" data-text="HOLD TIGHT, ANON.">HOLD TIGHT, ANON.</h2>
-        <p class="hidn-verify__line">&gt; Zcash verification is on its way. Until it lands, your room works as it does now, still without a name.</p>
-        <p class="hidn-verify__status"><span class="hidn-verify__dot" aria-hidden="true"></span> STATUS: COMING SOON<span class="hidn-verify__caret" aria-hidden="true">▌</span></p>
-        <button class="hidn-verify__close" type="button" data-action="room-verification-notice-close">[ CLOSE ]</button>
-      </div>
+  // Verification is not live yet, so the sheet says so plainly instead of pretending to work.
+  return `<div class="hidn-verification-notice hidn-verify-sheet" data-zec-verification-notice role="dialog" aria-modal="true" aria-labelledby="hidn-verification-notice-title">
+    <button class="hidn-verification-notice__backdrop" type="button" data-action="room-verification-notice-close" aria-label="Close"></button>
+    <section class="hidn-verify-sheet__panel">
+      <header class="hidn-verify-sheet__head">
+        <span class="hidn-verify-sheet__badge"><i aria-hidden="true"></i>Coming soon</span>
+        <button class="hidn-verify-sheet__close" type="button" data-action="room-verification-notice-close" aria-label="Close">×</button>
+      </header>
+      <span class="hidn-verify-sheet__coin" aria-hidden="true">ⓩ</span>
+      <h2 id="hidn-verification-notice-title" class="hidn-verify-sheet__title">Verify with ZEC</h2>
+      <p class="hidn-verify-sheet__lead">A private Zcash payment will unlock extra features for your key, without ever attaching a name to it.</p>
+      <ul class="hidn-verify-sheet__steps" aria-label="How it will work">
+        <li><b>Shielded</b><span>You pay from a shielded Zcash wallet, so the payment stays private.</span></li>
+        <li><b>Still anonymous</b><span>Verifying never asks for a name, email or phone number.</span></li>
+        <li><b>Nothing changes until then</b><span>Your room works exactly as it does now.</span></li>
+      </ul>
+      <p class="hidn-verify-sheet__status"><span aria-hidden="true"></span>Being built. It isn't live yet, so nothing can be paid here today.</p>
+      <button class="hidn-verify-sheet__btn" type="button" data-action="room-verification-notice-close">Got it</button>
     </section>
   </div>`;
 }
@@ -5421,7 +5429,7 @@ function renderProfileBody(
         <section class="hidn-me__panel">
           <p class="hidn-me__label">Verify with ZEC</p>
           <p class="hidn-me__note">A private ZEC payment will unlock extra features. Coming soon.</p>
-          ${GhostButton({ label: "Verify with ZEC", dataAction: "room-open-verification" })}
+          ${GhostButton({ label: "See how it will work", dataAction: "room-open-verification" })}
         </section>`
       : `${renderProfilePfp()}${renderProfileActivity(posts, comments)}`;
   return `<header class="hidn-me">
@@ -5809,7 +5817,7 @@ function renderTerminalHomePage(): RenderedProductRoute {
         <div class="hidn-welcome hidn-home"><div class="hidn-welcome__panel hidn-home__hero">
           <p class="hidn-home__eyebrow"><span aria-hidden="true"></span>hidn://private_room · built on Zcash</p>
           <h1 id="hidn-welcome-title" class="hidn-home__title">Say what you can't say out loud.</h1>
-          <p class="hidn-home__lead">A private room with no names.<span> Your browser proves you belong, without ever saying who you are.</span></p>
+          <p class="hidn-home__lead">People are confessing things they’ve never told anyone. Your turn.</p>
           <div class="hidn-welcome__actions hidn-home__actions" data-hidn-type-reveal>
             <a class="hidn-home__btn hidn-home__btn--primary" href="${enterPath}">${signedIn ? "Back to the room" : "Enter the room"}</a>
             <a class="hidn-home__btn hidn-home__btn--ghost" href="/read">Read first</a>
@@ -7601,6 +7609,8 @@ export function bindProductRoute(root: ParentNode = document): void {
   const normalizedPath = normalizePath(window.location.pathname);
   root.querySelectorAll<HTMLAnchorElement>("[data-room-notification-link]").forEach((link) => {
     link.addEventListener("click", () => {
+      // Close the panel on the way, or it stays open over the post it opened.
+      roomNotificationsOpen = false;
       void markRoomNotificationRead(link.dataset.notificationId ?? "");
     });
   });

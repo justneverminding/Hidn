@@ -1384,3 +1384,141 @@ html[data-perf="lite"] .public-page--theme-signal.room-v2::after { background: r
   .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__links { gap: 14px; }
   .public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle { height: 44px; width: 44px; }
 }
+
+/* ======================= Halloween: Things that haunt me ======================= */
+:root {
+  --haunt: #f5a54a;
+  --haunt-ember: #ff8a1f;
+  --haunt-pumpkin: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 6c-1.2-1.6-4.2-1.8-6.2-.2C3.2 7.8 2.6 11.8 4 15.2 5.4 18.6 8.6 20 12 20s6.6-1.4 8-4.8c1.4-3.4.8-7.4-1.8-9.4C16.2 4.2 13.2 4.4 12 6z' fill='%23f5a54a'/%3E%3Cpath d='M12 6c.2-1.6.9-2.9 2.3-3.6' stroke='%235dff8f' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M8 11l1.6 1.2L11 11M13 11l1.4 1.2L16 11M8.5 15.5c1.2 1 5.8 1 7 0' stroke='%23140a02' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --haunt-ghost: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 48'%3E%3Cpath d='M20 2C10 2 4 10 4 20v24l5-4 5 4 6-4 6 4 5-4 5 4V20C36 10 30 2 20 2z' fill='%23e9e2d6' fill-opacity='.9'/%3E%3Cellipse cx='14' cy='19' rx='3' ry='4' fill='%23140a02'/%3E%3Cellipse cx='26' cy='19' rx='3' ry='4' fill='%23140a02'/%3E%3Cellipse cx='20' cy='29' rx='3' ry='3.6' fill='%23140a02'/%3E%3C/svg%3E");
+}
+
+/* Wherever the room is listed: an orange name and a small pumpkin. */
+.public-page.room-v2.room-v2.room-v2 :is([data-room-channel="haunted"] .hidn-desk__rail-title, .room-mobile-index__room[data-room-channel="haunted"] strong, .transmission-row__room[data-room="haunted"], [data-room-post-channel="haunted"]) {
+  color: var(--haunt) !important;
+}
+.public-page.room-v2.room-v2.room-v2 :is([data-room-channel="haunted"] .hidn-desk__rail-title, .room-mobile-index__room[data-room-channel="haunted"] strong, [data-room-post-channel="haunted"])::before {
+  background: var(--haunt-pumpkin) center/contain no-repeat !important; content: "" !important; display: inline-block !important; height: 1.05em; margin-right: 0.4em;
+  vertical-align: -0.15em; width: 1.05em;
+}
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__room[data-room-channel="haunted"] {
+  background: radial-gradient(ellipse 80% 120% at 0% 50%, rgba(255, 138, 31, 0.1), transparent 70%) !important; border-radius: 10px;
+}
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__room[data-room-channel="haunted"] small { color: #c9925a !important; }
+.public-page.room-v2.room-v2.room-v2 [data-room-channel="haunted"].hidn-desk__rail-item--active { background: rgba(255, 138, 31, 0.1) !important; }
+.public-page.room-v2.room-v2.room-v2 [data-room-post-channel="haunted"] { border-color: rgba(245, 165, 74, 0.45) !important; }
+.public-page.room-v2.room-v2.room-v2 [data-room-post-channel="haunted"][aria-pressed="true"] { background: var(--haunt) !important; border-color: var(--haunt) !important; color: #1a0d02 !important; }
+
+/* Inside the room: warm dark, drifting fog, an ember title and a ghost. */
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted {
+  background-color: #070402 !important;
+  background-image: radial-gradient(ellipse 90% 45% at 50% -5%, rgba(255, 120, 20, 0.16), transparent 70%), radial-gradient(ellipse 60% 40% at 100% 100%, rgba(120, 40, 160, 0.08), transparent 70%) !important;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .public-main { position: relative; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .public-main::before {
+  animation: haunt-fog 38s linear infinite; background:
+    radial-gradient(ellipse 40% 18% at 20% 30%, rgba(233, 226, 214, 0.05), transparent 70%),
+    radial-gradient(ellipse 35% 15% at 75% 55%, rgba(233, 226, 214, 0.045), transparent 70%),
+    radial-gradient(ellipse 45% 20% at 40% 85%, rgba(233, 226, 214, 0.04), transparent 70%);
+  background-size: 200% 100%; content: ""; inset: 0; pointer-events: none; position: fixed; z-index: 0;
+}
+@keyframes haunt-fog { from { background-position: 0% 0; } to { background-position: -200% 0; } }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header, .hidn-desk__title) { position: relative; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header h1, h1.hidn-desk__title) {
+  animation: haunt-flicker 7s steps(1) infinite; color: var(--haunt) !important; text-shadow: 0 0 18px rgba(255, 138, 31, 0.45) !important;
+}
+@keyframes haunt-flicker { 0%, 46%, 49%, 83%, 100% { opacity: 1; } 47% { opacity: 0.55; } 48% { opacity: 0.9; } 84% { opacity: 0.7; } }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header, .hidn-desk__main > header, .hidn-desk__head)::after {
+  animation: haunt-float 6s ease-in-out infinite; background: var(--haunt-ghost) center/contain no-repeat; content: ""; filter: drop-shadow(0 0 12px rgba(233, 226, 214, 0.35));
+  height: 48px; opacity: 0.8; pointer-events: none; position: absolute; right: 64px; top: 4px; width: 40px;
+}
+@keyframes haunt-float { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-10px) rotate(4deg); } }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.ui-terminal-label, .room-v2-path, .explore-header > p:first-child) { color: #c9925a !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .explore-header > p:not(.room-channel-care):not(.ui-terminal-label) { color: #c8b9a6 !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .room-channel-care { background: rgba(255, 138, 31, 0.07) !important; border: 1px solid rgba(245, 165, 74, 0.3) !important; border-radius: 10px; color: #f0c48f !important; padding: 10px 14px !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .explore-tabs__tab[aria-selected="true"] { border-color: var(--haunt) !important; color: var(--haunt) !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .explore-tabs__tab[aria-selected="true"]::after { background: var(--haunt) !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .transmission-row__room { color: var(--haunt) !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .transmission-row { border-color: rgba(245, 165, 74, 0.12) !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted .transmission-row__signed { filter: hue-rotate(-95deg) saturate(1.4); }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.room-message__action, .transmission-row__actions button):is(:hover, :focus-visible) { color: var(--haunt) !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.room-channel-back, .hidn-standing-chip a) { color: var(--haunt) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .public-page.room-v2.room-v2.room-v2.public-page--room-haunted .public-main::before,
+  .public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header h1, h1.hidn-desk__title),
+  .public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header, .hidn-desk__main > header, .hidn-desk__head)::after { animation: none !important; }
+}
+
+/* ======================= Desktop open-post panel ======================= */
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__thread .hidn-desk__window-body p.hidn-desk__thread-text { color: var(--v2-ink) !important; font: 400 18px/1.55 var(--v2-read) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__thread .hidn-desk__window-bar { align-items: center; display: flex; justify-content: space-between; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__window-close {
+  align-items: center; background: transparent !important; border: 1px solid transparent !important; border-radius: 8px !important; color: var(--v2-muted) !important; cursor: pointer;
+  display: inline-flex; font: 400 22px/1 var(--v2-read) !important; height: 36px; justify-content: center; letter-spacing: 0 !important; padding: 0 !important; width: 36px;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__window-close:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.07) !important; border-color: var(--v2-edge) !important; color: var(--v2-ink) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__replies { border-top: 1px solid var(--v2-line-soft) !important; border-bottom: 0 !important; margin-top: 14px; padding-top: 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__replies::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__replies::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__thread .hidn-desk__input { background: #040b07 !important; border: 1px solid var(--v2-edge) !important; border-radius: 10px !important; padding: 12px 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__thread .hidn-desk__input:focus { border-color: var(--v2-green) !important; outline: none; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__actions { align-items: center; display: flex !important; flex-wrap: wrap; gap: 8px !important; margin-top: 10px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__actions .ui-button--secondary { background-image: none !important; min-height: 42px !important; padding: 0 22px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__actions .ui-button--secondary::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__actions .ui-button--secondary::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__btn {
+  align-items: center; background: transparent; border: 1px solid var(--v2-edge); border-radius: 8px; color: var(--v2-green); cursor: pointer; display: inline-flex;
+  font: 500 14px var(--v2-read); letter-spacing: 0; min-height: 42px; padding: 0 16px; text-decoration: none; text-transform: none;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__btn:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.07); }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__btn--link { border-color: transparent; margin-left: auto; padding: 0 4px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__btn--link:is(:hover, :focus-visible) { background: transparent; text-decoration: underline; }
+.public-page.room-v2.room-v2.room-v2 .hidn-desk .hidn-desk__window-body .hidn-desk__muted { font-size: 14px !important; }
+/* The ghost floats beside the title, not over the header lines. */
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header, .hidn-desk__main > header, .hidn-desk__head)::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header h1, h1.hidn-desk__title)::after {
+  animation: haunt-float 6s ease-in-out infinite; background: var(--haunt-ghost) center/contain no-repeat !important; content: "" !important; display: inline-block !important;
+  filter: drop-shadow(0 0 12px rgba(233, 226, 214, 0.35)); height: 0.95em; margin-left: 0.35em; opacity: 0.85 !important; position: static !important; vertical-align: -0.05em; width: 0.8em;
+}
+.public-page.room-v2.room-v2.room-v2 [data-room-channel="haunted"].hidn-desk__rail-item--active .hidn-desk__rail-title { color: var(--haunt) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .public-page.room-v2.room-v2.room-v2.public-page--room-haunted :is(.explore-header h1, h1.hidn-desk__title)::after { animation: none !important; }
+}
+
+/* ======================= Verify with ZEC (coming soon) ======================= */
+html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet { align-items: center; background: rgba(0, 0, 0, 0.72) !important; display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 2100; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet::before { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet .hidn-verification-notice__backdrop { background: transparent !important; border: 0; inset: 0; position: absolute; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__panel {
+  background: #071009; border: 1px solid var(--v2-edge); border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); box-sizing: border-box; color: var(--v2-text); display: flex;
+  flex-direction: column; font-family: var(--v2-read); gap: 14px; max-height: calc(100dvh - 32px); max-width: 420px; overflow-y: auto; padding: 18px 22px 22px; position: relative; width: 100%;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__head { align-items: center; display: flex; justify-content: space-between; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__badge { align-items: center; background: rgba(244, 183, 40, 0.1); border: 1px solid rgba(244, 183, 40, 0.35); border-radius: 20px; color: var(--v2-amber); display: inline-flex; font: 500 12px var(--v2-mono); gap: 8px; padding: 4px 10px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__badge i { animation: hidn-verify-pulse 1.6s ease-in-out infinite; background: var(--v2-amber); border-radius: 50%; height: 6px; width: 6px; }
+@keyframes hidn-verify-pulse { 50% { opacity: 0.3; } }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__close { background: transparent; border: 0; color: var(--v2-muted); cursor: pointer; font-size: 24px; height: 44px; margin-right: -12px; width: 44px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__coin { align-items: center; align-self: flex-start; background: radial-gradient(circle at 35% 30%, #ffd772, #f4b728 60%, #b07d0c); border-radius: 50%; box-shadow: 0 0 30px rgba(244, 183, 40, 0.25); color: #1a1200; display: inline-flex; font: 700 26px var(--v2-read); height: 48px; justify-content: center; width: 48px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__title { color: var(--v2-ink); font: 600 24px/1.2 var(--v2-mono); letter-spacing: -0.01em; margin: 0; text-shadow: none; text-transform: none; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__lead { color: var(--v2-muted); font: 400 15.5px/1.55 var(--v2-read); margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__steps { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: flex; flex-direction: column; list-style: none; margin: 0; padding: 4px 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__steps li { border-bottom: 1px solid var(--v2-line-soft); display: flex; flex-direction: column; gap: 2px; padding: 10px 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__steps li:last-child { border-bottom: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__steps b { color: var(--v2-ink); font: 600 14.5px var(--v2-read); }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__steps span { color: var(--v2-muted); font: 400 13.5px/1.5 var(--v2-read); }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__status { align-items: flex-start; color: #f0cf8a; display: flex; font: 400 13.5px/1.5 var(--v2-read); gap: 10px; margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__status span { background: var(--v2-amber); border-radius: 50%; flex: none; height: 7px; margin-top: 7px; width: 7px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn { background: var(--v2-green); border: 0; border-radius: 10px; color: #021006; cursor: pointer; font: 600 16px var(--v2-read); min-height: 50px; }
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet { align-items: flex-end; padding: 0; }
+  .public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__panel { border-bottom: 0; border-radius: 18px 18px 0 0; max-height: calc(100dvh - 60px); max-width: none; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .public-page.room-v2.room-v2.room-v2:has(.hidn-verify-sheet) .hidn-tabs { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { .public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__badge i { animation: none; } }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__panel :is(p, b, span, li, button):not(.hidn-verify-sheet__badge):not(.hidn-verify-sheet__coin) { font-family: var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__badge { letter-spacing: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__title { letter-spacing: -0.01em !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn { background-image: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-verify-sheet__btn::after { content: none !important; }
