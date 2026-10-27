@@ -460,6 +460,18 @@ export interface AdminMetrics {
   rates: { repliedShare: number; linksWithMessagesShare: number };
   rooms: Array<{ room: string; total: number; recent: number }>;
   series: Array<{ day: string; members: number; posts: number; replies: number; likes: number; messages: number }>;
+  recentMembers: number;
+  recentPosts: number;
+  /** Null until the page-view tally exists. */
+  traffic: {
+    pages: Array<{ page: string; views: number }>;
+    sources: Array<{ source: string; views: number }>;
+    countries: Array<{ country: string; views: number }>;
+    daily: Record<string, number>;
+    total: number;
+    home: number;
+    access: number;
+  } | null;
 }
 
 export function fetchAdminMetrics(token = ""): Promise<AdminMetrics> {

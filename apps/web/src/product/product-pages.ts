@@ -84,7 +84,7 @@ import {
   timeAgo,
 } from "./public-feed";
 import { mountStandingsStage, mountStandingsTicker, renderStandingsStage, renderStandingsTicker } from "./standings-stage";
-import { roomClosedReason, roomLinkByKey, roomNote } from "./room-links";
+import { roomClosedReason, roomLinkByKey, roomLinkBySlug, roomNote } from "./room-links";
 import { bindMaskPage, MASK_PATH, maskEntry, renderMaskBody } from "./mask";
 import {
   KEY_CREDENTIAL_NAME,
@@ -3583,6 +3583,49 @@ function metricsBars(series: AdminMetrics["series"], pick: (day: AdminMetrics["s
   </figure>`;
 }
 
+const METRICS_PAGE_NAMES: Record<string, string> = {
+  "/": "Homepage",
+  "/read": "Read first",
+  "/room/access": "Sign in",
+  "/room/*": "Inside the room",
+  "/to/:link": "Private link pages",
+  "/c/:post": "Shared posts",
+  "/how-it-works": "How it works",
+  "/manifesto": "Manifesto",
+  "/privacy": "Privacy",
+  "/mask": "Mask your pfp",
+};
+
+function renderMetricsTraffic(m: AdminMetrics): string {
+  const t = m.traffic;
+  if (!t || !t.total) {
+    return `<section class="hidn-metrics__traffic" aria-labelledby="hidn-metrics-traffic"><h2 id="hidn-metrics-traffic">Traffic</h2><p class="hidn-metrics__empty">Counting starts from the day this went live. Visits appear here as they come in.</p></section>`;
+  }
+  const pageName = (page: string) => METRICS_PAGE_NAMES[page] ?? (page.startsWith("/r/") ? `Room link · ${roomDisplayName(roomLinkBySlug(page.slice(3))?.title ?? page.slice(3))}` : page);
+  const list = (rows: Array<{ label: string; views: number }>) => {
+    const max = Math.max(1, ...rows.map((row) => row.views));
+    return `<ul class="hidn-metrics__list">${rows.map((row) => `<li><span>${escapeHtml(row.label)}</span><i style="width:${Math.max(2, (row.views / max) * 100).toFixed(0)}%"></i><b>${row.views.toLocaleString()}</b></li>`).join("")}</ul>`;
+  };
+  const daily = m.series.map((day) => ({ ...day, visits: t.daily[day.day] ?? 0 }));
+  const step = (label: string, value: number, of?: number) => `<li><b>${value.toLocaleString()}</b><span>${escapeHtml(label)}</span>${of && value <= of ? `<small>${Math.round((value / of) * 100)}% of the step before</small>` : ""}</li>`;
+  return `<section class="hidn-metrics__traffic" aria-labelledby="hidn-metrics-traffic">
+    <h2 id="hidn-metrics-traffic">Traffic · last ${m.days} days</h2>
+    <ol class="hidn-metrics__funnel" aria-label="From visit to post">
+      ${step("homepage visits", t.home)}
+      ${step("opened sign in", t.access, t.home)}
+      ${step("keys created", m.recentMembers, t.access)}
+      ${step("confessions posted", m.recentPosts)}
+    </ol>
+    <div class="hidn-metrics__charts">${metricsBars(daily, (d) => (d as typeof daily[number]).visits, "Page views")}</div>
+    <div class="hidn-metrics__cols">
+      <div><h3>Pages</h3>${list(t.pages.map((row) => ({ label: pageName(row.page), views: row.views })))}</div>
+      <div><h3>Where visitors come from</h3>${list(t.sources.map((row) => ({ label: row.source === "direct" ? "Direct or typed in" : row.source, views: row.views })))}</div>
+      <div><h3>Countries</h3>${list(t.countries.map((row) => ({ label: row.country === "??" ? "Unknown" : row.country, views: row.views })))}</div>
+    </div>
+    <p class="hidn-metrics__note">Page views of real browsers (bots and link previews aren't counted). Stored as daily totals by page, source and country only: no IPs, cookies or IDs, and private link and post addresses are never recorded.</p>
+  </section>`;
+}
+
 function renderAdminMetrics(): RenderedProductRoute {
   const m = adminMetrics;
   const stat = (label: string, value: number, note = "") => `<div class="hidn-metrics__stat"><span>${escapeHtml(label)}</span><b>${value.toLocaleString()}</b>${note ? `<small>${escapeHtml(note)}</small>` : ""}</div>`;
@@ -3607,6 +3650,7 @@ function renderAdminMetrics(): RenderedProductRoute {
         ${metricsBars(m.series, (d) => d.replies, "Replies")}
         ${metricsBars(m.series, (d) => d.messages, "Private link messages")}
       </section>
+      ${renderMetricsTraffic(m)}
       <section class="hidn-metrics__rooms" aria-labelledby="hidn-metrics-rooms">
         <h2 id="hidn-metrics-rooms">Confessions by room</h2>
         <table><thead><tr><th scope="col">Room</th><th scope="col">Last ${m.days} days</th><th scope="col">All time</th></tr></thead>

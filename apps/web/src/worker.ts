@@ -2367,6 +2367,71 @@ async function updateAdminUser(adminId: string, request: Request, env: HidnWorke
   return jsonResponse({ status: "updated", adminId: normalizedAdminId, role, accountStatus: status });
 }
 
+// MARK: Page-view counting (a tally, not tracking)
+
+/** Folds a path into a page group, so private link slugs, post ids and other
+ * identifiers in URLs are never stored. Unknown paths are dropped. */
+function pageGroup(pathname: string): string | null {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/") return "/";
+  if (/^\/to\/[a-z2-9]{8}$/.test(path)) return "/to/:link";
+  if (/^\/c\/[^/]+$/.test(path)) return "/c/:post";
+  const room = path.match(/^\/r\/([a-z0-9-]+)$/);
+  if (room) return roomLinkBySlug(room[1]) ? `/r/${room[1]}` : null;
+  const read = path.match(/^\/read(?:\/([a-z]+))?$/);
+  if (read) return "/read";
+  if (["/how-it-works", "/manifesto", "/privacy", "/mask", "/room/access"].includes(path)) return path;
+  if (path.startsWith("/room") || path.startsWith("/explore")) return "/room/*";
+  return null;
+}
+
+/** The referring site's name only (x.com, whatsapp…), never the full link; visits from HIDN itself are "direct". */
+function trafficSource(request: Request): string {
+  const referer = request.headers.get("Referer") ?? "";
+  if (!referer) return "direct";
+  try {
+    const host = new URL(referer).hostname.toLowerCase().replace(/^www\./, "").replace(/^(m|mobile|l|lm)\./, "");
+    if (!host || host === "hidnroom.com" || host.endsWith(".hidnroom.com") || host === "localhost") return "direct";
+    if (host === "t.co" || host === "twitter.com" || host === "x.com") return "x.com";
+    if (host.includes("whatsapp")) return "whatsapp";
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("facebook") || host === "fb.com") return "facebook";
+    if (host.includes("google.")) return "google";
+    if (host.includes("t.me") || host.includes("telegram")) return "telegram";
+    if (host.includes("tiktok")) return "tiktok";
+    if (host.includes("reddit")) return "reddit";
+    if (host.includes("linkedin") || host === "lnkd.in") return "linkedin";
+    return host.slice(0, 60);
+  } catch {
+    return "direct";
+  }
+}
+
+const BOT_AGENT = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|discord|embedly|vkshare|headless|lighthouse|monitor|curl|wget|python|node-fetch|axios|go-http/i;
+
+/** Adds one to today's tally for this page, source and country. Real page loads only. */
+async function recordPageView(request: Request, url: URL, env: HidnWorkerEnv): Promise<void> {
+  if (!env.ROOM_DB || request.method !== "GET") return;
+  // Only top-level page loads, never prefetches or embeds.
+  const dest = request.headers.get("Sec-Fetch-Dest");
+  if (dest && dest !== "document") return;
+  if (request.headers.get("Purpose") === "prefetch" || request.headers.get("Sec-Purpose")?.includes("prefetch")) return;
+  if (BOT_AGENT.test(request.headers.get("User-Agent") ?? "")) return;
+  const page = pageGroup(url.pathname);
+  if (!page) return;
+  const cf = (request as Request & { cf?: { country?: string } }).cf;
+  const country = /^[A-Z]{2}$/.test(cf?.country ?? "") ? cf!.country! : "??";
+  const day = new Date().toISOString().slice(0, 10);
+  try {
+    await env.ROOM_DB.prepare(
+      `INSERT INTO hidn_page_views (day, page, source, country, views) VALUES (?, ?, ?, ?, 1)
+       ON CONFLICT (day, page, source, country) DO UPDATE SET views = views + 1`,
+    ).bind(day, page, trafficSource(request), country).run();
+  } catch {
+    // Counting must never break a page load.
+  }
+}
+
 /** Aggregate usage for the private metrics page: counts and daily totals only.
  * Nothing here can tell members apart; posts are zero-knowledge, so there is
  * no per-person activity to read. */
@@ -2434,9 +2499,36 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
     };
   });
 
+  // Traffic, from the daily page-view tally (empty until counting has run).
+  let traffic: { pages: Array<{ page: string; views: number }>; sources: Array<{ source: string; views: number }>; countries: Array<{ country: string; views: number }>; daily: Record<string, number>; total: number; home: number; access: number } | null = null;
+  try {
+    const sum = (column: string) => db.prepare(
+      `SELECT ${column} AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY ${column} ORDER BY n DESC LIMIT 12`,
+    ).bind(since).all<{ key: string; n: number }>();
+    const [pages, sources, countries, dailyRows] = await Promise.all([
+      sum("page"), sum("source"), sum("country"),
+      db.prepare("SELECT day AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY day").bind(since).all<{ key: string; n: number }>(),
+    ]);
+    const pageViews = pages.results.map((row) => ({ page: row.key, views: Number(row.n) }));
+    traffic = {
+      pages: pageViews,
+      sources: sources.results.map((row) => ({ source: row.key, views: Number(row.n) })),
+      countries: countries.results.map((row) => ({ country: row.key, views: Number(row.n) })),
+      daily: Object.fromEntries(dailyRows.results.map((row) => [row.key, Number(row.n)])),
+      total: dailyRows.results.reduce((total, row) => total + Number(row.n), 0),
+      home: pageViews.find((row) => row.page === "/")?.views ?? 0,
+      access: pageViews.find((row) => row.page === "/room/access")?.views ?? 0,
+    };
+  } catch {
+    traffic = null;
+  }
+
   return jsonResponse({
     generatedAt: new Date().toISOString(),
     days,
+    traffic,
+    recentMembers: series.reduce((total, day) => total + day.members, 0),
+    recentPosts,
     totals: { members, posts, replies, likes, links, linkMessages, tipPosts, tipMessages, reports, hiddenPosts },
     rates: {
       repliedShare: recentPosts ? postsReplied / recentPosts : 0,
@@ -3270,7 +3362,7 @@ function crawlerPolicyForHtmlPath(pathname: string): string {
 }
 
 const worker = {
-  async fetch(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  async fetch(request: Request, env: HidnWorkerEnv, ctx?: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url);
 
     // hidnroom.com is the address. Page visits to www or the old workers.dev
@@ -3631,6 +3723,10 @@ const worker = {
       });
     }
 
+    if (assetResponse.ok) {
+      const counted = recordPageView(request, url, env);
+      if (ctx) ctx.waitUntil(counted); else void counted;
+    }
     const headers = new Headers(assetResponse.headers);
     for (const [name, value] of Object.entries(htmlSecurityHeaders(request))) {
       headers.set(name, value);
