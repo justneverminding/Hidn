@@ -2207,18 +2207,16 @@ function renderRoomMenu(): string {
   return `<div class="room-menu" data-room-menu>
     <button class="room-menu__toggle" type="button" data-action="room-menu-toggle" aria-expanded="false" aria-controls="room-channel-menu" aria-label="Open menu">
       <span class="room-menu__icon" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span class="room-menu__label">MENU</span>
+      <span class="room-menu__label">Menu</span>
     </button>
     <div class="room-menu__panel room-menu__panel--term" id="room-channel-menu" hidden>
-      <div class="room-menu__bar" aria-hidden="true"><i></i><i></i><i></i><span>hidn@room: ~/menu</span></div>
-      <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ whoami</p>
-      <p class="room-menu__whoami">&gt; ${escapeHtml(profileName)} · <span>today's name, changes every visit</span></p>
-      <p class="room-menu__cmd" aria-hidden="true">hidn@room:~$ ls</p>
+      <p class="room-menu__cmd" aria-hidden="true">hidn://whoami</p>
+      <p class="room-menu__whoami"><b>${escapeHtml(profileName)}</b><span>Today's name. It changes every visit.</span></p>
       <nav aria-label="More">
-        <a href="/how-it-works"><span>[1]</span> HOW IT WORKS <b aria-hidden="true">↗</b></a>
-        <a href="/"><span>[2]</span> HOME <b aria-hidden="true">↗</b></a>
+        <a href="/how-it-works">How it works <b aria-hidden="true">→</b></a>
+        <a href="/">Home <b aria-hidden="true">→</b></a>
       </nav>
-      <a class="room-menu__leave" href="/" data-room-logout><span aria-hidden="true">$ exit</span> LEAVE ROOM</a>
+      <a class="room-menu__leave" href="/" data-room-logout>Leave room</a>
     </div>
   </div>`;
 }
@@ -2300,6 +2298,10 @@ function renderSelectionTools(): string {
   </aside>`;
 }
 
+function isPublicReadPage(path: string): boolean {
+  return path === "/read" || path.startsWith("/read/");
+}
+
 function publicFrame(path: string, main: string, pageClass = ""): string {
   const normalizedPath = normalizePath(path);
   const isHome = normalizedPath === "/";
@@ -2325,7 +2327,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     : [{ label: "HOW IT WORKS", href: "/how-it-works" }];
 
   // room-v2: the 2026-10 redesign (room-v2.css). Remove to restore the old look.
-  const redesignClass = isRoomSurface ? " room-v2" : "";
+  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" ? " room-v2" : "";
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
@@ -4409,7 +4411,6 @@ function renderMobileRoomIndex(): string {
   const signalMode = activeHidnTheme() === "signal";
   const rooms = visibleRoomChannelOptions()
     .map((channel) => `<button class="room-mobile-index__room" type="button" data-room-channel="${channel.key}" aria-label="Open ${escapeHtml(channel.label)} room">
-      <span class="room-mobile-index__number" aria-hidden="true">ᙇ</span>
       <span class="room-mobile-index__copy"><strong>${escapeHtml(roomDisplayName(channel.label))}</strong><small>${escapeHtml(channel.description)}</small></span>
       <span class="room-mobile-index__arrow" aria-hidden="true">→</span>
     </button>`)
@@ -4420,7 +4421,7 @@ function renderMobileRoomIndex(): string {
     `<main id="main-content" class="public-main room-mobile-index-main">
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
-          ${TerminalLabel(signalMode ? "PRIVATE ROOM / INDEX" : "PRIVATE ROOM")}
+          <p class="room-v2-path">hidn://rooms</p>
           <h1 class="hidn-glitch-title" data-text="Choose a r&nbsp;&nbsp;m">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m</h1>
           <p>Read quietly, or leave a thought without a name.</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; ls /rooms · ${visibleRoomChannelOptions().length} open · listening<span class="hidn-feed-log__caret">▌</span></p>
@@ -5575,7 +5576,7 @@ function renderHowItWorks(): RenderedProductRoute {
       <div><h3>${title}</h3><p>${body}</p>${note ? `<p class="hidn-how__note">${note}</p>` : ""}</div>
     </li>`;
   const extra = (title: string, body: string) => `<div class="hidn-how__card"><h3>${title}</h3><p>${body}</p></div>`;
-  const rooms = roomChannelOptions.map((channel) => escapeHtml(roomLinkByKey(channel.key)?.title ?? channel.label)).join(" · ");
+  const rooms = roomChannelOptions.map((channel) => escapeHtml(roomDisplayName(roomLinkByKey(channel.key)?.title ?? channel.label))).join(" · ");
   return {
     metadata: {
       kind: "public-page",
@@ -5589,38 +5590,38 @@ function renderHowItWorks(): RenderedProductRoute {
       `<main id="main-content" class="public-main hidn-how">
         <div class="hidn-how__wrap">
           <header class="hidn-how__head">
-            ${TerminalLabel("HOW IT WORKS")}
+            <p class="room-v2-path">hidn://how-it-works</p>
             <h1>Say it. No names.</h1>
             <p class="hidn-how__lead">HIDN is a place to say what you can't say anywhere else. Nobody sees who you are: not other people, and not us.</p>
           </header>
 
           <section aria-labelledby="hidn-how-steps">
-            <h2 id="hidn-how-steps" class="hidn-how__label">&gt; IN 4 STEPS</h2>
+            <h2 id="hidn-how-steps" class="hidn-how__label">In 4 steps</h2>
             <ol class="hidn-how__steps">
-              ${step("01", "Get your key", "Tap ENTER THE ROOM. Your browser makes a key for you. No email, no phone number, no username, no password.", "Save your key. It's the only way back in, and if you lose it, nobody can get it back for you. You stay in for an hour on that tab; after that, paste your key to come back.")}
-              ${step("02", "Pick a room", `Read the FEED, which mixes every room, or pick one: ${rooms}.`)}
+              ${step("01", "Get your key", "Tap Enter the room. Your browser makes a key for you. No email, no phone number, no username, no password.", "Save your key. It's the only way back in, and if you lose it, nobody can get it back for you. You stay in for an hour on that tab; after that, paste your key to come back.")}
+              ${step("02", "Pick a room", `Read the Feed, which mixes every room, or pick one: ${rooms}.`)}
               ${step("03", "Say it", "Write up to 500 characters and post. No name is attached. Links aren't allowed, so say it in words.")}
               ${step("04", "Talk back", "Reply, like (once per post), or share a post as an image. Everyone stays anonymous, including you.")}
             </ol>
           </section>
 
           <section aria-labelledby="hidn-how-extras">
-            <h2 id="hidn-how-extras" class="hidn-how__label">&gt; ALSO</h2>
+            <h2 id="hidn-how-extras" class="hidn-how__label">Also</h2>
             <div class="hidn-how__cards">
-              ${extra("Your private link", "Get your own link and share it. Anyone can send you an anonymous message through it, up to 120 a day. You read them in INBOX.")}
+              ${extra("Your private link", "Get your own link and share it. Anyone can send you an anonymous message through it, up to 120 a day. You read them in Inbox.")}
               ${extra("Tips in ZEC", "Love a post? Tip it in Zcash, straight from your wallet to theirs. HIDN never touches the money.")}
-              ${extra("The lobby", "Walk a 3D museum where real posts hang on the walls. Open LOBBY and look around.")}
+              ${extra("The lobby", "Walk a 3D museum where real posts hang on the walls. Open Lobby and look around.")}
             </div>
           </section>
 
           <section aria-labelledby="hidn-how-why">
-            <h2 id="hidn-how-why" class="hidn-how__label">&gt; HOW CAN IT BE ANONYMOUS?</h2>
+            <h2 id="hidn-how-why" class="hidn-how__label">How can it be anonymous?</h2>
             <p class="hidn-how__text">When you post, your browser proves you hold a HIDN key without showing which key. This is called a zero-knowledge proof. HIDN can check that a real member posted, but it can't tell which member it was.</p>
             <p class="hidn-how__text">Your posts aren't linked to each other either, and the ANON name on your profile changes every visit. HIDN is built on Zcash, which uses the same kind of proof to keep payments private.</p>
           </section>
 
           <section aria-labelledby="hidn-how-sees">
-            <h2 id="hidn-how-sees" class="hidn-how__label">&gt; WHAT HIDN NEVER SEES</h2>
+            <h2 id="hidn-how-sees" class="hidn-how__label">What HIDN never sees</h2>
             <div class="hidn-how__sees">
               <div class="hidn-how__col hidn-how__col--never">
                 <ul>
@@ -5633,13 +5634,13 @@ function renderHowItWorks(): RenderedProductRoute {
           </section>
 
           <section aria-labelledby="hidn-how-rules">
-            <h2 id="hidn-how-rules" class="hidn-how__label">&gt; HOUSE RULES</h2>
+            <h2 id="hidn-how-rules" class="hidn-how__label">House rules</h2>
             <p class="hidn-how__text">No real names of other people. No links. No threats. Anyone can report a post, and reported posts can be hidden. If you're in danger, please reach a local helpline or someone you trust.</p>
           </section>
 
           <div class="hidn-how__cta">
-            <a class="hidn-how__btn hidn-how__btn--primary" href="/room/access">[ ENTER THE ROOM ]</a>
-            <a class="hidn-how__btn" href="/read">[ READ FIRST ]</a>
+            <a class="hidn-how__btn hidn-how__btn--primary" href="/room/access">Enter the room</a>
+            <a class="hidn-how__btn" href="/read">Read first</a>
           </div>
         </div>
       </main>`,

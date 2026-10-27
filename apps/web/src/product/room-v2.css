@@ -706,3 +706,131 @@ body.hidn-share-sheet-open { overflow: hidden; }
 .hidn-share-sheet__btn--primary { background: #5dff8f; border-color: #5dff8f; color: #021006; font-weight: 600; }
 .hidn-share-sheet__btn:disabled { opacity: 0.5; cursor: wait; }
 .hidn-share-sheet :focus-visible { outline: 2px solid #5dff8f; outline-offset: 2px; }
+
+/* ======================= Top bar and menu ======================= */
+.public-page.room-v2.room-v2.room-v2 .public-page__window-controls { display: none !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-title {
+  color: var(--v2-dim) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: lowercase !important;
+}
+.public-page.room-v2.room-v2.room-v2 .public-page__window-title::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-actions,
+.public-page.room-v2.room-v2.room-v2 .public-page__window-actions * { text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-meta { color: var(--v2-dim) !important; font: 400 11px var(--v2-mono) !important; letter-spacing: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__toggle {
+  align-items: center !important; background: transparent !important; border: 1px solid var(--v2-edge) !important; border-radius: 8px !important; box-shadow: none !important;
+  color: var(--v2-green) !important; display: inline-flex !important; gap: 8px !important; min-height: 36px !important; padding: 0 12px !important; text-shadow: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .room-menu__toggle::before,
+.public-page.room-v2.room-v2.room-v2 .room-menu__toggle::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__toggle[aria-expanded="true"],
+.public-page.room-v2.room-v2.room-v2 .room-menu__toggle:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.08) !important; color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__icon i { background: currentColor !important; box-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__label { color: inherit !important; font: 500 14px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel {
+  background: #071009 !important; border: 1px solid var(--v2-edge) !important; border-radius: 12px !important; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7) !important;
+  min-width: 260px; padding: 14px 8px 8px !important;
+}
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel::before,
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__cmd { color: var(--v2-dim) !important; font: 400 11px var(--v2-mono) !important; letter-spacing: 0 !important; margin: 0 10px 4px !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__whoami { display: flex !important; flex-direction: column !important; gap: 2px !important; margin: 0 10px 10px !important; padding: 0 0 12px !important; border-bottom: 1px solid var(--v2-line-soft) !important; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__whoami b { color: var(--v2-green) !important; font: 600 16px var(--v2-mono) !important; letter-spacing: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__whoami span { color: var(--v2-muted) !important; font: 400 13px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a,
+.public-page.room-v2.room-v2.room-v2 .room-menu__leave {
+  align-items: center !important; border: 0 !important; border-radius: 8px !important; color: var(--v2-ink) !important; display: flex !important; font: 500 15px var(--v2-read) !important;
+  justify-content: space-between !important; letter-spacing: 0 !important; margin: 0 !important; min-height: 44px !important; padding: 0 10px !important; text-shadow: none !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a::before,
+.public-page.room-v2.room-v2.room-v2 .room-menu__leave::before { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a b { color: var(--v2-dim) !important; font-weight: 400 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__panel nav a:is(:hover, :focus-visible),
+.public-page.room-v2.room-v2.room-v2 .room-menu__leave:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.07) !important; }
+.public-page.room-v2.room-v2.room-v2 .room-menu__leave { border-top: 1px solid var(--v2-line-soft) !important; border-radius: 0 0 8px 8px !important; color: #ff8d8d !important; margin-top: 6px !important; }
+
+/* ======================= Choose a room (desktop and phone) ======================= */
+.public-page.room-v2.room-v2.room-v2 .room-v2-path { margin: 0 0 6px; color: var(--v2-dim); font: 400 12px var(--v2-mono); letter-spacing: 0; text-transform: none; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__header h1 { font-size: clamp(28px, 3.4vw, 40px) !important; letter-spacing: -0.01em !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__header > p:not(.room-v2-path):not(.hidn-feed-log) {
+  color: var(--v2-muted) !important; font: 400 15px/1.6 var(--v2-read) !important; letter-spacing: 0 !important; max-width: 46ch; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__header .hidn-feed-log { display: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__status { align-items: center !important; justify-content: space-between !important; gap: 12px !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__status :is(.zcash-status-carousel, .zcash-status-carousel *, .room-notifications__toggle, .room-notifications__toggle-copy) {
+  font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: lowercase !important;
+}
+.public-page.room-v2.room-v2.room-v2 .room-notifications__toggle { background: transparent !important; border: 1px solid var(--v2-edge) !important; border-radius: 8px !important; color: var(--v2-muted) !important; min-height: 36px !important; padding: 0 12px !important; }
+.public-page.room-v2.room-v2.room-v2 .room-post-composer__error[role="status"] { color: var(--v2-green) !important; font: 500 14px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: lowercase !important; }
+.public-page.room-v2.room-v2.room-v2 .room-post-composer__error[role="status"]::first-letter { text-transform: uppercase; }
+@media (min-width: 761px) {
+  .public-page.room-v2.room-v2.room-v2 .room-mobile-index__header [data-action="room-create-post"] { flex: 0 1 auto !important; max-width: 240px !important; width: auto !important; padding: 0 28px !important; }
+}
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__copy strong::before,
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__copy strong::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__copy small { display: block; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__copy small::first-letter { text-transform: uppercase; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__arrow { color: var(--v2-edge) !important; font-size: 18px !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__room:is(:hover, :focus-visible) .room-mobile-index__arrow { color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__room::after { content: none !important; }
+
+/* ======================= Read first (/read) ======================= */
+.public-page.room-v2.room-v2.room-v2 .hidn-read__code { color: var(--v2-dim) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__title {
+  color: var(--v2-green) !important; font: 600 clamp(26px, 3.4vw, 36px)/1.2 var(--v2-mono) !important; letter-spacing: -0.01em !important; text-shadow: none !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-read__title::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-read__title::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__line { color: var(--v2-muted) !important; font: 400 15px/1.6 var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__tabs { gap: 8px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__tab {
+  align-items: center !important; background: transparent !important; border: 1px solid var(--v2-edge) !important; border-radius: 20px !important; color: var(--v2-text) !important; display: inline-flex !important;
+  flex: none; font: 400 14px var(--v2-read) !important; letter-spacing: 0 !important; min-height: 38px !important; padding: 0 14px !important; text-shadow: none !important; text-transform: none !important; white-space: nowrap;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-read__tab--active { background: var(--v2-green) !important; border-color: var(--v2-green) !important; color: #021006 !important; font-weight: 600 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post {
+  background: transparent !important; border: 0 !important; border-bottom: 1px solid var(--v2-line-soft) !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; padding: 18px 0 14px !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post header,
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post header * { color: var(--v2-dim) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post header span { color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post > p { color: var(--v2-ink) !important; font: 400 18px/1.55 var(--v2-read) !important; letter-spacing: 0 !important; margin: 8px 0 6px !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post footer { gap: 2px !important; margin-left: -10px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post footer button {
+  background: transparent !important; border: 0 !important; border-radius: 6px !important; color: var(--v2-muted) !important; font: 500 14px var(--v2-read) !important; letter-spacing: 0 !important; min-height: 40px; padding: 0 10px !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-read__post footer button:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.07) !important; color: var(--v2-ink) !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-read__status) { color: var(--v2-muted) !important; font: 400 15px/1.6 var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__bar {
+  align-items: center !important; background: #071009 !important; border: 1px solid var(--v2-edge) !important; border-radius: 12px !important; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important; gap: 12px !important; padding: 10px 10px 10px 16px !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-read__bar > span { color: var(--v2-text) !important; font: 400 14px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-read__btn, .hidn-how__btn) {
+  align-items: center !important; background: transparent !important; border: 1px solid var(--v2-edge) !important; border-radius: 8px !important; box-shadow: none !important; color: var(--v2-green) !important; display: inline-flex !important;
+  font: 500 15px var(--v2-read) !important; justify-content: center !important; letter-spacing: 0 !important; min-height: 44px !important; padding: 0 20px !important; text-decoration: none !important; text-shadow: none !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-read__btn--primary, .hidn-how__btn--primary) { background: var(--v2-green) !important; border-color: var(--v2-green) !important; color: #021006 !important; font-weight: 600 !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-read__btn, .hidn-how__btn)::before,
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-read__btn, .hidn-how__btn)::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__join-panel { background: #071009 !important; border: 1px solid var(--v2-edge) !important; border-radius: 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__join-panel h2 { color: var(--v2-ink) !important; font: 600 22px/1.3 var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__join-panel > p:not(.hidn-read__join-log) { color: var(--v2-muted) !important; font: 400 15px/1.6 var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-read__join-log { color: var(--v2-dim) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; }
+
+/* ======================= How it works ======================= */
+.public-page.room-v2.room-v2.room-v2 .hidn-how__head h1 { color: var(--v2-green) !important; font: 600 clamp(30px, 4vw, 44px)/1.15 var(--v2-mono) !important; letter-spacing: -0.01em !important; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-how__lead, .hidn-how__text, .hidn-how__step p, .hidn-how__card p, .hidn-how__col li) {
+  color: var(--v2-text) !important; font: 400 16px/1.65 var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-how__lead { color: var(--v2-muted) !important; font-size: 17px !important; max-width: 58ch; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__label { color: var(--v2-green) !important; font: 600 13px var(--v2-mono) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__label::before { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-how__step h3, .hidn-how__card h3) { color: var(--v2-ink) !important; font: 600 17px/1.35 var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__num { color: var(--v2-green) !important; font: 500 15px var(--v2-mono) !important; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__note { border-left: 0 !important; border-radius: 8px; background: rgba(244, 183, 40, 0.07); color: #f4cf72 !important; font: 400 15px/1.6 var(--v2-read) !important; letter-spacing: 0 !important; padding: 10px 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__card { background: rgba(93, 255, 143, 0.025) !important; border: 1px solid var(--v2-line-soft) !important; border-radius: 12px !important; box-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__sees { background: transparent !important; border: 1px solid var(--v2-line-soft) !important; border-radius: 12px !important; box-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__col li::before { color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-how__cta { gap: 10px !important; }
+/* The glitch title rule stacks classes; out-stack it. */
+.public-page.room-v2.room-v2.room-v2.room-v2 .room-mobile-index__header h1.hidn-glitch-title.hidn-glitch-title { font-size: clamp(28px, 3.4vw, 40px) !important; letter-spacing: -0.01em !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__room { grid-template-columns: minmax(0, 1fr) auto !important; padding-left: 4px !important; }

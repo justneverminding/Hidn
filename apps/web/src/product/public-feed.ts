@@ -7,14 +7,14 @@ import { roomLinkByKey, roomLinkBySlug, roomLinkPath, roomNote, type RoomLink } 
 // (like, reply, post) asks the visitor to get a key first.
 
 const READ_CHANNELS: Array<{ key: string; label: string }> = [
-  { key: "general", label: "GENERAL" },
-  { key: "underground", label: "THINGS I'VE NEVER TOLD ANYONE" },
-  { key: "love", label: "TALK ABOUT YOUR EX" },
-  { key: "ragebait", label: "RAGEBAIT ME" },
-  { key: "wildest", label: "WILDEST THING YOU'VE DONE" },
-  { key: "students", label: "STUDENT SECRETS" },
-  { key: "crypto", label: "CRYPTO CONFESSIONS" },
-  { key: "haunted", label: "THINGS THAT HAUNT ME" },
+  { key: "general", label: "General" },
+  { key: "underground", label: "Things I've never told anyone" },
+  { key: "love", label: "Talk about your ex" },
+  { key: "ragebait", label: "Ragebait me" },
+  { key: "wildest", label: "Wildest thing you've done" },
+  { key: "students", label: "Student secrets" },
+  { key: "crypto", label: "Crypto confessions" },
+  { key: "haunted", label: "Things that haunt me" },
 ];
 
 function rerender(): void {
@@ -79,11 +79,11 @@ function feedFor(channel: string): ChannelFeed {
 
 function renderReadPost(post: RoomPost): string {
   return `<article class="hidn-read__post">
-    <header><span>ANONYMOUS</span><time datetime="${escapeHtml(post.time)}">${escapeHtml(timeAgo(post.time))}</time></header>
+    <header><span>Anonymous</span><time datetime="${escapeHtml(post.time)}">${escapeHtml(timeAgo(post.time))}</time></header>
     <p>${escapeHtml(post.text)}</p>
     <footer>
       <button type="button" data-read-join="like" aria-label="Like this post">♡ ${post.reactions}</button>
-      <button type="button" data-read-join="reply" aria-label="Reply to this post">↳ ${post.replies} ${post.replies === 1 ? "REPLY" : "REPLIES"}</button>
+      <button type="button" data-read-join="reply" aria-label="Reply to this post">↳ ${post.replies} ${post.replies === 1 ? "reply" : "replies"}</button>
     </footer>
   </article>`;
 }
@@ -95,11 +95,11 @@ function renderJoinPrompt(): string {
     <button class="hidn-read__join-backdrop" type="button" data-read-join-close aria-label="Keep reading"></button>
     <section class="hidn-read__join-panel">
       <p class="hidn-read__join-log">&gt; access required</p>
-      <h2 id="hidn-read-join-title">TO ${escapeHtml(verb.toUpperCase())}, GET A KEY.</h2>
+      <h2 id="hidn-read-join-title">To ${escapeHtml(verb)}, get a key.</h2>
       <p>It takes a few seconds. No email. No phone number. No name. Nobody, not even us, can see who you are.</p>
       <div class="hidn-read__join-actions">
-        <a class="hidn-read__btn hidn-read__btn--primary" href="/room/access">[ GET MY KEY ]</a>
-        <button class="hidn-read__btn" type="button" data-read-join-close>[ KEEP READING ]</button>
+        <a class="hidn-read__btn hidn-read__btn--primary" href="/room/access">Get my key</a>
+        <button class="hidn-read__btn" type="button" data-read-join-close>Keep reading</button>
       </div>
     </section>
   </div>`;
@@ -116,17 +116,17 @@ export function renderReadBody(channel: string, signedIn: boolean): string {
         ? feed.posts.map(renderReadPost).join("")
         : `<p class="hidn-read__status">&gt; nothing here yet. this room is waiting for its first voice.<span class="hidn-read__caret">▌</span></p>`;
   const cta = signedIn
-    ? `<a class="hidn-read__btn hidn-read__btn--primary" href="/room/rooms">[ YOU'RE IN · OPEN THE ROOM → ]</a>`
-    : `<button class="hidn-read__btn hidn-read__btn--primary" type="button" data-read-join="post">[ ✎ SAY SOMETHING ]</button>`;
+    ? `<a class="hidn-read__btn hidn-read__btn--primary" href="/room/rooms">Open the room →</a>`
+    : `<button class="hidn-read__btn hidn-read__btn--primary" type="button" data-read-join="post">Say something</button>`;
 
   return `<div class="hidn-read">
-    <p class="hidn-read__code">/// READ FIRST</p>
-    <h1 class="hidn-read__title" data-text="WHAT PEOPLE CAN'T SAY OUT LOUD.">WHAT PEOPLE CAN'T SAY OUT LOUD.</h1>
-    <p class="hidn-read__line">&gt; Real posts from real people. No names attached, ever. Read as long as you like.</p>
+    <p class="hidn-read__code">hidn://read</p>
+    <h1 class="hidn-read__title" data-text="What people can't say out loud.">What people can't say out loud.</h1>
+    <p class="hidn-read__line">Real posts from real people. No names attached, ever. Read as long as you like.</p>
     <nav class="hidn-read__tabs" aria-label="Rooms">${tabs}</nav>
     <div class="hidn-read__list">${list}</div>
     <div class="hidn-read__bar">
-      <span>&gt; ${signedIn ? "your key is active." : "want to say something? free, no email."}</span>
+      <span>${signedIn ? "Your key is active." : "Want to say something? Free, no email."}</span>
       ${cta}
     </div>
     ${renderJoinPrompt()}
