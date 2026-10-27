@@ -53,7 +53,8 @@ import {
   type AnonymousMerkleWitness,
 } from "@hidn/anonymous-zk";
 import * as QRCode from "qrcode";
-import { renderShareCard } from "./share-card";
+import { renderShareCard, type ShareCardSize } from "./share-card";
+import { openShareSheet } from "./share-sheet";
 import { terminalWindow } from "./terminal-gate";
 import { mountWelcome, renderWelcomeWatcher } from "./welcome";
 import { playPortal } from "./portal";
@@ -1761,6 +1762,7 @@ async function createThreadImage(
   focusReply?: ThreadImageReply,
   cardType: ShareCardType = "THREAD",
   suppliedReplies?: AnonymousReply[],
+  size: ShareCardSize = "post",
 ): Promise<Blob> {
   const replies = focusReply
     ? [focusReply.reply.text]
@@ -1769,10 +1771,11 @@ async function createThreadImage(
   return renderShareCard({
     text: confession.text,
     replies,
-    room: channel?.label ?? (confession.category || "The room"),
+    room: channel ? roomDisplayName(channel.label) : "The room",
     reference: confession.id,
     mark: String(confession.reference || `// ${confession.id.replace(/^THR-/, "").slice(0, 8)}`).toUpperCase(),
     theme: activeHidnTheme() === "signal" ? "signal" : "quiet",
+    size,
   });
 }
 
@@ -1898,58 +1901,55 @@ async function shareThreadImage(
   const reply = replyIndex === undefined ? undefined : repliesForThread(id)[replyIndex];
   const focusReply = reply && replyIndex !== undefined ? { index: replyIndex, reply } : undefined;
   const shareKey = focusReply ? `${id}:reply:${focusReply.index}` : id;
-  setThreadShareStatus(root, shareKey, "RENDERING IMAGE...");
+  const filename = `hidn-thread-${confession.id}.png`;
 
-  try {
-    const cardConfession = focusReply
-      ? { ...confession, reference: `// REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, text: focusReply.reply.text, time: focusReply.reply.time }
-      : confession;
-    const blob = await createThreadImage(cardConfession, undefined, focusReply ? "REPLY" : "TEXT");
-    const filename = focusReply
-      ? `hidn-reply-${confession.id}-${focusReply.index + 1}.png`
-      : `hidn-thread-${confession.id}.png`;
-    const file = new File([blob], filename, { type: "image/png" });
-
-    if (mode === "save") {
+  if (mode === "x") {
+    setThreadShareStatus(root, shareKey, "Making the image…");
+    try {
+      const cardConfession = focusReply
+        ? { ...confession, reference: `// REPLY ${String(focusReply.index + 1).padStart(2, "0")}`, text: focusReply.reply.text, time: focusReply.reply.time }
+        : confession;
+      const blob = await createThreadImage(cardConfession, undefined, focusReply ? "REPLY" : "TEXT", undefined, "wide");
       downloadThreadImage(blob, confession, filename);
-      setThreadShareStatus(root, shareKey, "IMAGE SAVED TO DEVICE");
-      return;
+      const xText = `“${focusReply?.reply.text ?? confession.text}” — HIDN / THE ROOM`;
+      const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(xText)}`;
+      const composer = window.open(xUrl, "_blank", "noopener,noreferrer");
+      setThreadShareStatus(root, shareKey, composer ? "Image saved. Attach it to your post on X." : "Image saved. Open X to attach it.");
+    } catch {
+      setThreadShareStatus(root, shareKey, "The image couldn't be made.");
     }
+    return;
+  }
 
-    const canShareImage =
-      typeof navigator.share === "function" &&
-      typeof navigator.canShare === "function" &&
-      navigator.canShare({ files: [file] });
+  // The sheet lists the thread's visible replies; a reply's own button opens it with that reply ticked.
+  const visible = repliesForThread(id)
+    .map((item, index) => ({ item, index }))
+    .filter(({ index }) => !isModerationHidden("reply", `${id}:reply:${index}`));
+  const preselect = focusReply ? [visible.findIndex(({ index }) => index === focusReply.index)].filter((index) => index >= 0) : [];
 
-    if (mode === "share" && canShareImage) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: focusReply ? "HIDN / anonymous reply" : "HIDN / anonymous thread",
-          text: focusReply ? "An anonymous reply from HIDN / THE ROOM." : "An anonymous thread from HIDN / THE ROOM.",
-        });
-        setThreadShareStatus(root, shareKey, "SHARE SHEET READY");
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          setThreadShareStatus(root, shareKey, "SHARE CANCELLED");
+  openShareSheet({
+    mode,
+    replies: visible.map(({ item }) => item.text),
+    preselect,
+    render: (size, texts) => createThreadImage(confession, undefined, "BATCH", texts.map((text) => ({ text, time: "" })), size),
+    confirm: async (blob, size, action) => {
+      const file = new File([blob], size === "post" ? filename : filename.replace(/\.png$/, `-${size}.png`), { type: "image/png" });
+      if (action === "share" && typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: "HIDN", text: "Said in the room with no name. hidn." });
+          setThreadShareStatus(root, shareKey, "Shared.");
           return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            setThreadShareStatus(root, shareKey, "");
+            return;
+          }
         }
       }
-    }
-
-    downloadThreadImage(blob, confession, filename);
-    const xText = `“${focusReply?.reply.text ?? confession.text}” — HIDN / THE ROOM`;
-    const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(xText)}`;
-    const composer = window.open(xUrl, "_blank", "noopener,noreferrer");
-    setThreadShareStatus(
-      root,
-      shareKey,
-      composer ? "IMAGE SAVED / X COMPOSER OPEN" : "IMAGE SAVED / OPEN X TO ATTACH",
-    );
-  } catch {
-    setThreadShareStatus(root, shareKey, "IMAGE SHARE UNAVAILABLE");
-  }
+      downloadThreadImage(blob, confession, file.name);
+      setThreadShareStatus(root, shareKey, action === "share" ? "This browser can't share images, so it was saved instead." : "Image saved.");
+    },
+  });
 }
 
 function selectionHostFromNode(node: Node): HTMLElement | null {

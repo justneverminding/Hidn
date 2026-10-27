@@ -625,9 +625,9 @@ async function shareMessageImage(messageId: string, mode: "share" | "save"): Pro
     const blob = await renderShareCard({
       text: message.text,
       replies: [],
-      room: "MY INBOX",
+      room: "My inbox",
       reference: message.id,
-      mark: "// SENT TO ME, NO NAME",
+      mark: "// sent to me",
       theme: "signal",
     });
     const filename = `hidn-message-${message.id.replace(/^MSG-/, "").slice(0, 8).toLowerCase()}.png`;
