@@ -1869,3 +1869,43 @@ html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !i
   .public-page.room-v2 .hidn-admin-head > p:last-child { font-size: 14.5px; }
   .public-page.room-v2 .hidn-admin-who b { font-size: 12.5px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+.public-page.room-v2.room-v2.room-v2 .hidn-me__tab-flag { background: rgba(244, 183, 40, 0.12); border-radius: 10px; color: var(--v2-amber) !important; font: 500 11px var(--v2-read) !important; margin-left: 4px; padding: 1px 7px; vertical-align: 2px; }
+
+/* ======================= Report sheet ======================= */
+html:has(.hidn-report-sheet), body:has(.hidn-report-sheet) { overflow: hidden !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet { align-items: center; background: rgba(0, 0, 0, 0.72) !important; display: flex !important; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 2200 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet::before { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet .hidn-report-dialog__backdrop { background: transparent !important; border: 0; inset: 0; position: absolute; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__panel {
+  background: #071009; border: 1px solid var(--v2-edge); border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); box-sizing: border-box; display: flex; flex-direction: column;
+  gap: 14px; max-height: calc(100dvh - 32px); max-width: 460px; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 20px; position: relative; width: 100%;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__panel :is(h2, p, span, legend, label, button, textarea, blockquote) { font-family: var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__head { align-items: center; display: flex; justify-content: space-between; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__head h2 { color: var(--v2-ink); font-size: 19px !important; font-weight: 600; margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__close { background: transparent; border: 0; color: var(--v2-muted); cursor: pointer; font-size: 24px; height: 44px; margin-right: -12px; width: 44px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__target { background: #040b07; border-left: 2px solid var(--v2-edge); border-radius: 0 8px 8px 0; color: var(--v2-text); font-size: 15px !important; line-height: 1.5; margin: 0; max-height: 7.5em; overflow: hidden; padding: 10px 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reasons { border: 0; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reasons legend { color: var(--v2-muted); font-size: 14px !important; font-weight: 500; margin-bottom: 6px; padding: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reason { align-items: center; border: 1px solid var(--v2-line-soft); border-radius: 8px; cursor: pointer; display: flex; gap: 12px; min-height: 44px; padding: 0 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reason input { accent-color: var(--v2-green); height: 18px; margin: 0; width: 18px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reason span { color: var(--v2-text); font-size: 15px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reason:has(input:checked) { background: rgba(93, 255, 143, 0.07); border-color: #2c6a46; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__details { display: flex; flex-direction: column; gap: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__details span { color: var(--v2-muted); font-size: 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__details textarea { background: #040b07 !important; border: 1px solid var(--v2-edge) !important; border-radius: 8px !important; box-sizing: border-box; color: var(--v2-ink) !important; font-size: 15px !important; padding: 10px 12px !important; width: 100%; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-report-sheet__note, .hidn-report-sheet__feedback) { color: var(--v2-dim); font-size: 13px !important; line-height: 1.5; margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__feedback { color: #ff9d9d; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__actions { display: grid; gap: 10px; grid-template-columns: 1fr 2fr; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__btn { background: transparent; border: 1px solid var(--v2-edge); border-radius: 3px; color: var(--v2-green); cursor: pointer; font-size: 15px !important; font-weight: 500; min-height: 48px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__btn--send { background: #ff6a5c; border-color: #ff6a5c; color: #1a0402; font-weight: 600; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__btn:disabled { cursor: wait; opacity: 0.6; }
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2 .hidn-report-sheet { align-items: flex-end; padding: 0; }
+  .public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__panel { border-bottom: 0; border-radius: 18px 18px 0 0; max-height: calc(100dvh - 40px); max-width: none; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .public-page.room-v2.room-v2.room-v2:has(.hidn-report-sheet) .hidn-tabs { display: none !important; }
+}
+.public-page.room-v2.room-v2.room-v2:has(.hidn-report-sheet) .public-page__window-chrome { z-index: 1 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet { z-index: 5000 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__target { -webkit-box-orient: vertical; -webkit-line-clamp: 3; display: -webkit-box; max-height: none; overflow: hidden; }
+.public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__target { flex: none !important; height: auto !important; line-height: 1.5 !important; min-height: 0 !important; }

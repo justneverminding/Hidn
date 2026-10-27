@@ -918,34 +918,30 @@ function renderReportDialog(): string {
     return "";
   }
 
-  return `<section class="hidn-report-dialog hidn-report-dialog--term" role="dialog" aria-modal="true" aria-labelledby="hidn-report-title">
-    <button class="hidn-report-dialog__backdrop" type="button" data-action="report-close" aria-label="Close report dialog"></button>
-    <form class="hidn-report-dialog__panel hidn-term hidn-term--report" novalidate>
-      <div class="hidn-term__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/report</span>
-        <button class="hidn-report__close-x" type="button" data-action="report-close" aria-label="Close report dialog">×</button>
-      </div>
-      <div class="hidn-term__body hidn-report">
-        <p class="hidn-report__log">hidn@room:~$ ./report --private</p>
-        <h2 id="hidn-report-title" class="hidn-report__title" data-text="REPORT THIS SIGNAL.">REPORT THIS SIGNAL.</h2>
-        <blockquote class="hidn-report__target"><span>// ${escapeHtml(activeReportTarget.label)}</span>${escapeHtml(activeReportTarget.targetExcerpt || "NO CONTENT SNAPSHOT")}</blockquote>
-        <fieldset class="hidn-report__reasons">
-          <legend>&gt; SELECT A REASON</legend>
-          ${REPORT_REASON_OPTIONS.map((option, index) => `<label class="hidn-report__reason">
-            <input type="radio" name="hidn-report-reason" value="${option.value}"${option.value === roomReportReason ? " checked" : ""} />
-            <span class="hidn-report__num" aria-hidden="true">[${index + 1}]</span>
-            <span>${escapeHtml(option.label.toUpperCase())}</span>
-          </label>`).join("")}
-        </fieldset>
-        <label class="hidn-report__details" for="hidn-report-details">
-          <span>&gt; DETAILS / OPTIONAL</span>
-          <textarea id="hidn-report-details" rows="3" maxlength="2000" placeholder="add context for the moderator_">${escapeHtml(roomReportDetails)}</textarea>
-        </label>
-        <p class="hidn-report__note">&gt; Your report carries a membership proof: it shows a member sent it, never which one. It is not shown publicly.</p>
-        ${roomReportFeedback ? `<p class="hidn-report__feedback" role="status">!! ${escapeHtml(roomReportFeedback)}</p>` : ""}
-        <div class="hidn-report__actions">
-          <button class="hidn-report__btn" type="button" data-action="report-close">[ CANCEL ]</button>
-          <button class="hidn-report__btn hidn-report__btn--send" type="button" data-action="report-submit"${roomReportSubmitting ? " disabled" : ""}>${roomReportSubmitting ? "[ PROVING &amp; SENDING… ]" : "[ SEND REPORT ]"}</button>
-        </div>
+  return `<section class="hidn-report-dialog hidn-report-sheet" role="dialog" aria-modal="true" aria-labelledby="hidn-report-title">
+    <button class="hidn-report-dialog__backdrop" type="button" data-action="report-close" aria-label="Close"></button>
+    <form class="hidn-report-sheet__panel" novalidate>
+      <header class="hidn-report-sheet__head">
+        <h2 id="hidn-report-title">Report this ${activeReportTarget.targetType === "reply" ? "reply" : "post"}</h2>
+        <button class="hidn-report-sheet__close" type="button" data-action="report-close" aria-label="Close">×</button>
+      </header>
+      <blockquote class="hidn-report-sheet__target">${escapeHtml(activeReportTarget.targetExcerpt || "No copy of the content is available.")}</blockquote>
+      <fieldset class="hidn-report-sheet__reasons">
+        <legend>What's wrong with it?</legend>
+        ${REPORT_REASON_OPTIONS.map((option) => `<label class="hidn-report-sheet__reason">
+          <input type="radio" name="hidn-report-reason" value="${option.value}"${option.value === roomReportReason ? " checked" : ""} />
+          <span>${escapeHtml(option.label.charAt(0).toUpperCase() + option.label.slice(1).toLowerCase())}</span>
+        </label>`).join("")}
+      </fieldset>
+      <label class="hidn-report-sheet__details" for="hidn-report-details">
+        <span>Anything the moderators should know? (optional)</span>
+        <textarea id="hidn-report-details" rows="3" maxlength="2000" placeholder="Add context">${escapeHtml(roomReportDetails)}</textarea>
+      </label>
+      <p class="hidn-report-sheet__note">Your report proves a member sent it, never which one. It isn't shown publicly.</p>
+      ${roomReportFeedback ? `<p class="hidn-report-sheet__feedback" role="status">${escapeHtml(roomReportFeedback)}</p>` : ""}
+      <div class="hidn-report-sheet__actions">
+        <button class="hidn-report-sheet__btn" type="button" data-action="report-close">Cancel</button>
+        <button class="hidn-report-sheet__btn hidn-report-sheet__btn--send" type="button" data-action="report-submit"${roomReportSubmitting ? " disabled" : ""}>${roomReportSubmitting ? "Sending…" : "Send report"}</button>
       </div>
     </form>
   </section>`;
@@ -2980,6 +2976,7 @@ function isRoomNotificationSurface(path = normalizePath(window.location.pathname
     || path === "/room/orb"
     || path === "/room/hall"
     || path === "/room/profile"
+    || path === "/room/inbox"
     || path === "/room/library"
     || path === "/room/rooms"
     || Boolean(roomChannelSurfaceFromPath(path))
@@ -5161,7 +5158,8 @@ function isMuseumPath(path: string): boolean {
 
 function renderRoomTabs(path: string): string {
   const inboxUnread = linkInboxUnreadCount();
-  const meUnread = roomNotifications?.unreadCount ?? 0;
+  // Likes and replies live behind the bell now; the Me tab only flags an unsaved key.
+  const meUnread = 0;
   const badge = (count: number): string => (count > 0 ? `<b class="hidn-tabs__badge" aria-label="${count} new">${count > 99 ? "99+" : count}</b>` : "");
   const icon = (d: string): string => `<svg class="hidn-tabs__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
   const item = (href: string, label: string, active: boolean, d: string, extra = "", className = ""): string =>
@@ -5518,7 +5516,7 @@ function renderProfileBody(
     profileView = keyUnsaved || window.location.hash === "#key" ? "key" : "posts";
   }
   const tab = (view: ProfileView, label: string, alert = false): string =>
-    `<button class="hidn-me__tab${profileView === view ? " hidn-me__tab--active" : ""}" type="button" role="tab" aria-selected="${profileView === view}" data-action="profile-view" data-view="${view}">${label}${alert ? ` <b aria-label="not saved">●</b>` : ""}</button>`;
+    `<button class="hidn-me__tab${profileView === view ? " hidn-me__tab--active" : ""}" type="button" role="tab" aria-selected="${profileView === view}" data-action="profile-view" data-view="${view}">${label}${alert ? ` <b class="hidn-me__tab-flag" title="Your key isn't saved yet">save it</b>` : ""}</button>`;
   const panel = profileView === "key"
     ? renderProfileKey()
     : profileView === "settings"
@@ -7280,6 +7278,24 @@ function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
     }
     case "room-notifications-toggle":
       roomNotificationsOpen = !roomNotificationsOpen;
+      if (roomNotificationsOpen) {
+        // Tapping anywhere else, or pressing Escape, closes the panel.
+        const closeOnOutside = (event: Event) => {
+          const target = event.target as Element | null;
+          if (target?.closest(".room-notifications")) return;
+          document.removeEventListener("pointerdown", closeOnOutside, true);
+          document.removeEventListener("keydown", closeOnEscape, true);
+          if (roomNotificationsOpen) { roomNotificationsOpen = false; rerenderProductRoute(); }
+        };
+        const closeOnEscape = (event: KeyboardEvent) => {
+          if (event.key !== "Escape") return;
+          closeOnOutside(new Event("pointerdown"));
+        };
+        window.setTimeout(() => {
+          document.addEventListener("pointerdown", closeOnOutside, true);
+          document.addEventListener("keydown", closeOnEscape, true);
+        }, 0);
+      }
       if (roomNotificationsOpen) {
         void refreshAccountNotifications();
       }
