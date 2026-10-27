@@ -2367,6 +2367,86 @@ async function updateAdminUser(adminId: string, request: Request, env: HidnWorke
   return jsonResponse({ status: "updated", adminId: normalizedAdminId, role, accountStatus: status });
 }
 
+/** Aggregate usage for the private metrics page: counts and daily totals only.
+ * Nothing here can tell members apart; posts are zero-knowledge, so there is
+ * no per-person activity to read. */
+async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+
+  const authorization = await requireAdminRole(request, env, ["super_admin"]);
+  if (authorization instanceof Response) {
+    return authorization;
+  }
+
+  const db = env.ROOM_DB!;
+  const days = 30;
+  const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+  const one = async (sql: string, ...binds: unknown[]): Promise<number> =>
+    Number((await db.prepare(sql).bind(...binds).first<{ n: number }>())?.n ?? 0);
+  const daily = async (table: string): Promise<Record<string, number>> => {
+    const rows = await db.prepare(
+      `SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS n FROM ${table} WHERE substr(created_at, 1, 10) >= ? GROUP BY day`,
+    ).bind(since).all<{ day: string; n: number }>();
+    return Object.fromEntries(rows.results.map((row) => [row.day, Number(row.n)]));
+  };
+
+  const [members, posts, replies, likes, links, linkMessages, tipPosts, tipMessages, reports, hiddenPosts] = await Promise.all([
+    one("SELECT COUNT(*) AS n FROM hidn_anonymous_members"),
+    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NULL"),
+    one("SELECT COUNT(*) AS n FROM hidn_replies WHERE hidden_at IS NULL"),
+    one("SELECT COUNT(*) AS n FROM hidn_reactions"),
+    one("SELECT COUNT(*) AS n FROM hidn_link_inboxes"),
+    one("SELECT COUNT(*) AS n FROM hidn_link_messages"),
+    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE tip_address IS NOT NULL AND tip_address != ''"),
+    one("SELECT COUNT(*) AS n FROM hidn_link_messages WHERE tip_code IS NOT NULL AND tip_code != ''"),
+    one("SELECT COUNT(*) AS n FROM hidn_reports"),
+    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NOT NULL"),
+  ]);
+  const [postsReplied, linksWithMessages, recentPosts] = await Promise.all([
+    one(`SELECT COUNT(*) AS n FROM hidn_threads t WHERE t.hidden_at IS NULL AND substr(t.created_at, 1, 10) >= ?
+         AND EXISTS (SELECT 1 FROM hidn_replies r WHERE r.thread_id = t.thread_id)`, since),
+    one("SELECT COUNT(DISTINCT link_id) AS n FROM hidn_link_messages"),
+    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NULL AND substr(created_at, 1, 10) >= ?", since),
+  ]);
+  const roomRows = await db.prepare(
+    `SELECT channel, COUNT(*) AS total, SUM(CASE WHEN substr(created_at, 1, 10) >= ? THEN 1 ELSE 0 END) AS recent
+     FROM hidn_threads WHERE hidden_at IS NULL GROUP BY channel ORDER BY total DESC`,
+  ).bind(since).all<{ channel: string; total: number; recent: number }>();
+  const [memberDays, postDays, replyDays, likeDays, messageDays] = await Promise.all([
+    daily("hidn_anonymous_members"),
+    daily("hidn_threads"),
+    daily("hidn_replies"),
+    daily("hidn_reactions"),
+    daily("hidn_link_messages"),
+  ]);
+  const series = Array.from({ length: days }, (_, index) => {
+    const day = new Date(Date.parse(`${since}T00:00:00Z`) + index * 86_400_000).toISOString().slice(0, 10);
+    return {
+      day,
+      members: memberDays[day] ?? 0,
+      posts: postDays[day] ?? 0,
+      replies: replyDays[day] ?? 0,
+      likes: likeDays[day] ?? 0,
+      messages: messageDays[day] ?? 0,
+    };
+  });
+
+  return jsonResponse({
+    generatedAt: new Date().toISOString(),
+    days,
+    totals: { members, posts, replies, likes, links, linkMessages, tipPosts, tipMessages, reports, hiddenPosts },
+    rates: {
+      repliedShare: recentPosts ? postsReplied / recentPosts : 0,
+      linksWithMessagesShare: links ? linksWithMessages / links : 0,
+    },
+    rooms: roomRows.results.map((row) => ({ room: row.channel, total: Number(row.total), recent: Number(row.recent ?? 0) })),
+    series,
+  }, 200, "no-store");
+}
+
 async function listAdminAudit(request: Request, env: HidnWorkerEnv): Promise<Response> {
   const unavailable = databaseUnavailable(env);
   if (unavailable) {
@@ -3397,6 +3477,18 @@ const worker = {
         return await updateAdminUser(decodeURIComponent(adminUserMatch[1]), request, env);
       } catch {
         return jsonResponse({ error: "Administrator record could not be updated." }, 500);
+      }
+    }
+
+    if (adminApiPath === "/api/admin/metrics") {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await getAdminMetrics(request, env);
+      } catch {
+        return jsonResponse({ error: "Metrics could not be loaded." }, 500);
       }
     }
 

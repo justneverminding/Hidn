@@ -110,6 +110,8 @@ import {
   fetchAnonymousPosts,
   fetchAnonymousThread,
   fetchAdminAudit,
+  fetchAdminMetrics,
+  type AdminMetrics,
   fetchAdminModerators,
   fetchAdminSession,
   createAdminModerator,
@@ -272,6 +274,8 @@ let adminModerators: AdminModerator[] | undefined;
 let adminModeratorsLoaded = false;
 let adminAuditEvents: AdminAuditEvent[] | undefined;
 let adminAuditLoaded = false;
+let adminMetrics: AdminMetrics | undefined;
+let adminMetricsLoaded = false;
 let adminReportFilter: ReportStatus | "all" = "all";
 let adminReportError = "";
 let adminReportLoading = false;
@@ -3505,7 +3509,7 @@ function renderAdminDashboard(): RenderedProductRoute {
           ${adminReportError ? AlertMessage("ADMIN RESPONSE", adminReportError, "danger") : ""}
           <nav class="admin-reports-summary" aria-label="Admin tools">
             <a class="ui-button ui-button--primary" href="/admin/reports">REPORT QUEUE →</a>
-            ${adminSession?.role === "super_admin" ? `<a class="ui-button ui-button--secondary" href="/admin/moderators">MODERATORS →</a><a class="ui-button ui-button--secondary" href="/admin/audit">AUDIT LOG →</a>` : ""}
+            ${adminSession?.role === "super_admin" ? `<a class="ui-button ui-button--secondary" href="/admin/moderators">MODERATORS →</a><a class="ui-button ui-button--secondary" href="/admin/audit">AUDIT LOG →</a><a class="ui-button ui-button--secondary" href="/admin/metrics">METRICS →</a>` : ""}
           </nav>
         </div>
       </main>`,
@@ -3554,6 +3558,79 @@ function renderAdminModerators(): RenderedProductRoute {
               </article>`).join("") : `<p class="admin-reports-empty">No administrator records yet.</p>`}
             </div>
           </section>
+        </div>
+      </main>`,
+      "public-page--admin",
+    ),
+  };
+}
+
+/** A small bar chart of one daily series, drawn inline (no chart library, no requests). */
+function metricsBars(series: AdminMetrics["series"], pick: (day: AdminMetrics["series"][number]) => number, label: string): string {
+  const values = series.map(pick);
+  const max = Math.max(1, ...values);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const width = 600, height = 120, gap = 3;
+  const bar = (width - gap * (values.length - 1)) / values.length;
+  const bars = values.map((value, index) => {
+    const h = Math.max(value ? 2 : 0, (value / max) * (height - 4));
+    return `<rect x="${(index * (bar + gap)).toFixed(1)}" y="${(height - h).toFixed(1)}" width="${bar.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"><title>${escapeHtml(series[index].day)}: ${value}</title></rect>`;
+  }).join("");
+  return `<figure class="hidn-metrics__chart">
+    <figcaption><span>${escapeHtml(label)}</span><b>${total.toLocaleString()}</b><small>last ${series.length} days${total ? ` · peak ${max.toLocaleString()} a day` : " · none yet"}</small></figcaption>
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} per day, last ${series.length} days">${bars}</svg>
+    <div class="hidn-metrics__axis"><span>${escapeHtml(series[0]?.day ?? "")}</span><span>today</span></div>
+  </figure>`;
+}
+
+function renderAdminMetrics(): RenderedProductRoute {
+  const m = adminMetrics;
+  const stat = (label: string, value: number, note = "") => `<div class="hidn-metrics__stat"><span>${escapeHtml(label)}</span><b>${value.toLocaleString()}</b>${note ? `<small>${escapeHtml(note)}</small>` : ""}</div>`;
+  const pct = (value: number) => `${Math.round(value * 100)}%`;
+  const sumOf = (pick: (day: AdminMetrics["series"][number]) => number) => (m ? m.series.reduce((sum, day) => sum + pick(day), 0) : 0);
+  const body = !m
+    ? `<p class="hidn-metrics__empty">${adminReportError ? "" : "Loading metrics…"}</p>`
+    : `<section class="hidn-metrics__stats" aria-label="All-time totals">
+        ${stat("Keys created", m.totals.members, `${sumOf((d) => d.members).toLocaleString()} in the last ${m.days} days`)}
+        ${stat("Confessions", m.totals.posts, `${sumOf((d) => d.posts).toLocaleString()} in the last ${m.days} days`)}
+        ${stat("Replies", m.totals.replies, `${sumOf((d) => d.replies).toLocaleString()} in the last ${m.days} days`)}
+        ${stat("Likes", m.totals.likes)}
+        ${stat("Private links", m.totals.links, `${pct(m.rates.linksWithMessagesShare)} have received a message`)}
+        ${stat("Link messages", m.totals.linkMessages, `${m.totals.tipMessages.toLocaleString()} with a tip`)}
+        ${stat("Posts open to tips", m.totals.tipPosts)}
+        ${stat("Reports", m.totals.reports, `${m.totals.hiddenPosts.toLocaleString()} posts hidden`)}
+      </section>
+      <p class="hidn-metrics__rate"><b>${pct(m.rates.repliedShare)}</b> of confessions in the last ${m.days} days got at least one reply.</p>
+      <section class="hidn-metrics__charts" aria-label="Daily activity">
+        ${metricsBars(m.series, (d) => d.members, "New keys")}
+        ${metricsBars(m.series, (d) => d.posts, "Confessions")}
+        ${metricsBars(m.series, (d) => d.replies, "Replies")}
+        ${metricsBars(m.series, (d) => d.messages, "Private link messages")}
+      </section>
+      <section class="hidn-metrics__rooms" aria-labelledby="hidn-metrics-rooms">
+        <h2 id="hidn-metrics-rooms">Confessions by room</h2>
+        <table><thead><tr><th scope="col">Room</th><th scope="col">Last ${m.days} days</th><th scope="col">All time</th></tr></thead>
+        <tbody>${m.rooms.map((row) => `<tr><td>${escapeHtml(roomDisplayName(roomChannelOptions.find((option) => option.key === row.room)?.label ?? row.room))}</td><td>${row.recent.toLocaleString()}</td><td>${row.total.toLocaleString()}</td></tr>`).join("")}</tbody></table>
+      </section>
+      <p class="hidn-metrics__note">Counts only. Posts are zero-knowledge, so HIDN can't tell members apart: there is no per-person activity, daily-active-user count or retention to show. Updated ${escapeHtml(new Date(m.generatedAt).toLocaleString())}.</p>`;
+  return {
+    metadata: {
+      kind: "admin",
+      title: "Metrics · HIDN",
+      description: "Private HIDN usage metrics.",
+      canonicalPath: "/admin/metrics",
+    },
+    html: publicFrame(
+      "/admin/metrics",
+      `<main id="main-content" class="public-main admin-main">
+        <div class="hidn-container--wide hidn-metrics">
+          <header class="hidn-metrics__head">
+            <p class="hidn-metrics__path">hidn://admin/metrics</p>
+            <h1>Metrics</h1>
+            <p>How HIDN is being used, from counts the database already keeps. <a href="/admin">Back to admin</a></p>
+          </header>
+          ${adminReportError ? AlertMessage("METRICS", adminReportError, "danger") : ""}
+          ${body}
         </div>
       </main>`,
       "public-page--admin",
@@ -6076,6 +6153,10 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return renderAdminAudit();
   }
 
+  if (normalizedPath === "/admin/metrics") {
+    return renderAdminMetrics();
+  }
+
   if (normalizedPath === "/explore" || normalizedPath === "/room/rooms") {
     // The social rooms section: every room's feed, without the 3D museum.
     if (normalizedPath === "/explore") window.history.replaceState({}, "", "/room/rooms");
@@ -6482,6 +6563,27 @@ async function loadAdminModerators(): Promise<void> {
     adminReportError = error instanceof Error ? error.message : "Administrator records could not be loaded.";
   }
   if (normalizePath(window.location.pathname) === "/admin/moderators") {
+    rerenderProductRoute();
+  }
+}
+
+async function loadAdminMetrics(): Promise<void> {
+  adminMetricsLoaded = true;
+  const hasSession = adminSession ? true : await loadAdminSessionState();
+  if (!hasSession || adminSession?.role !== "super_admin") {
+    adminReportError = "A super-admin Cloudflare Access session is required for metrics.";
+    rerenderProductRoute();
+    return;
+  }
+
+  try {
+    adminMetrics = await fetchAdminMetrics(adminReportToken);
+    adminReportError = "";
+  } catch (error) {
+    adminMetrics = undefined;
+    adminReportError = error instanceof Error ? error.message : "Metrics could not be loaded.";
+  }
+  if (normalizePath(window.location.pathname) === "/admin/metrics") {
     rerenderProductRoute();
   }
 }
@@ -7686,7 +7788,7 @@ export function bindProductRoute(root: ParentNode = document): void {
   if (isModerationSurfacePath(normalizedPath)) {
     void refreshModerationVisibility();
   }
-  const isAdminPath = ["/admin", "/admin/reports", "/admin/moderators", "/admin/audit"].includes(normalizedPath);
+  const isAdminPath = ["/admin", "/admin/reports", "/admin/moderators", "/admin/audit", "/admin/metrics"].includes(normalizedPath);
   if (!isAdminPath && (adminReportToken || adminSession || adminReports || adminModerators || adminAuditEvents || adminReportError)) {
     adminReportToken = "";
     adminSession = undefined;
@@ -7696,6 +7798,8 @@ export function bindProductRoute(root: ParentNode = document): void {
     adminModeratorsLoaded = false;
     adminAuditEvents = undefined;
     adminAuditLoaded = false;
+    adminMetrics = undefined;
+    adminMetricsLoaded = false;
     adminReportError = "";
     adminReportFilter = "all";
   }
@@ -7709,6 +7813,9 @@ export function bindProductRoute(root: ParentNode = document): void {
   }
   if (normalizedPath === "/admin/moderators" && !adminModeratorsLoaded) {
     void loadAdminModerators();
+  }
+  if (normalizedPath === "/admin/metrics" && !adminMetricsLoaded) {
+    void loadAdminMetrics();
   }
   if (normalizedPath === "/admin/audit" && !adminAuditLoaded) {
     void loadAdminAudit();

@@ -453,6 +453,19 @@ export function updateAdminModerator(
   });
 }
 
+export interface AdminMetrics {
+  generatedAt: string;
+  days: number;
+  totals: { members: number; posts: number; replies: number; likes: number; links: number; linkMessages: number; tipPosts: number; tipMessages: number; reports: number; hiddenPosts: number };
+  rates: { repliedShare: number; linksWithMessagesShare: number };
+  rooms: Array<{ room: string; total: number; recent: number }>;
+  series: Array<{ day: string; members: number; posts: number; replies: number; likes: number; messages: number }>;
+}
+
+export function fetchAdminMetrics(token = ""): Promise<AdminMetrics> {
+  return adminRequest<AdminMetrics>("/api/admin/metrics", token);
+}
+
 export function fetchAdminAudit(token = "", limit = 100): Promise<{ events: AdminAuditEvent[] }> {
   return adminRequest<{ events: AdminAuditEvent[] }>(`/api/admin/audit?limit=${encodeURIComponent(String(limit))}`, token);
 }

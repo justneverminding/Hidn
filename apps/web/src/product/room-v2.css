@@ -1636,3 +1636,39 @@ html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !i
   .public-page.room-v2.room-v2.room-v2 .room-menu__label { font-size: 13px !important; }
   .public-page.room-v2.room-v2.room-v2 .room-menu__icon { transform: scale(0.8); }
 }
+
+/* ======================= Admin metrics (/admin/metrics) ======================= */
+.public-page .hidn-metrics { --m-green: #5dff8f; --m-ink: #eef5ef; --m-muted: #8aa18e; --m-dim: #6f8f78; --m-line: #0f2b1d; box-sizing: border-box; color: #d7e4d8; font-family: "IBM Plex Sans", system-ui, sans-serif; margin: 0 auto; max-width: 1080px; padding: 32px 20px 64px; }
+.public-page .hidn-metrics * { letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page .hidn-metrics__path { color: var(--m-dim); font: 400 12px "IBM Plex Mono", monospace; margin: 0 0 6px; }
+.public-page .hidn-metrics__head h1 { color: var(--m-green); font: 600 32px/1.15 "IBM Plex Mono", monospace; margin: 0 0 8px; }
+.public-page .hidn-metrics__head p { color: var(--m-muted); font: 400 15px/1.5 "IBM Plex Sans", sans-serif; margin: 0 0 24px; }
+.public-page .hidn-metrics__head a { color: var(--m-green); }
+.public-page .hidn-metrics__stats { display: grid; gap: 1px; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--m-line); border: 1px solid var(--m-line); border-radius: 12px; overflow: hidden; }
+.public-page .hidn-metrics__stat { background: #040b07; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; }
+.public-page .hidn-metrics__stat span { color: var(--m-muted); font: 500 13px "IBM Plex Sans", sans-serif; }
+.public-page .hidn-metrics__stat b { color: var(--m-ink); font: 600 28px/1.1 "IBM Plex Mono", monospace; }
+.public-page .hidn-metrics__stat small { color: var(--m-dim); font: 400 12px/1.4 "IBM Plex Sans", sans-serif; }
+.public-page .hidn-metrics__rate { color: var(--m-muted); font: 400 15px "IBM Plex Sans", sans-serif; margin: 18px 0 8px; }
+.public-page .hidn-metrics__rate b { color: var(--m-green); font: 600 18px "IBM Plex Mono", monospace; }
+.public-page .hidn-metrics__charts { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
+.public-page .hidn-metrics__chart { border: 1px solid var(--m-line); border-radius: 12px; margin: 0; padding: 14px 16px 10px; }
+.public-page .hidn-metrics__chart figcaption { align-items: baseline; display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 10px; }
+.public-page .hidn-metrics__chart figcaption span { color: var(--m-ink); font: 600 14px "IBM Plex Sans", sans-serif; }
+.public-page .hidn-metrics__chart figcaption b { color: var(--m-green); font: 600 15px "IBM Plex Mono", monospace; }
+.public-page .hidn-metrics__chart figcaption small { color: var(--m-dim); flex-basis: 100%; font: 400 12px "IBM Plex Sans", sans-serif; }
+.public-page .hidn-metrics__chart svg { display: block; fill: var(--m-green); height: 110px; width: 100%; }
+.public-page .hidn-metrics__chart svg rect { opacity: 0.85; }
+.public-page .hidn-metrics__chart svg rect:hover { opacity: 1; }
+.public-page .hidn-metrics__axis { color: var(--m-dim); display: flex; font: 400 11px "IBM Plex Mono", monospace; justify-content: space-between; margin-top: 6px; }
+.public-page .hidn-metrics__rooms { margin-top: 24px; }
+.public-page .hidn-metrics__rooms h2 { color: var(--m-ink); font: 600 16px "IBM Plex Sans", sans-serif; margin: 0 0 10px; }
+.public-page .hidn-metrics__rooms table { border-collapse: collapse; font: 400 14px "IBM Plex Sans", sans-serif; width: 100%; }
+.public-page .hidn-metrics__rooms th { border-bottom: 1px solid var(--m-line); color: var(--m-dim); font: 500 12px "IBM Plex Sans", sans-serif; padding: 8px 10px; text-align: left; }
+.public-page .hidn-metrics__rooms td { border-bottom: 1px solid var(--m-line); color: #d7e4d8; padding: 10px; }
+.public-page .hidn-metrics__rooms :is(th, td):not(:first-child) { font-family: "IBM Plex Mono", monospace; text-align: right; }
+.public-page .hidn-metrics__note, .public-page .hidn-metrics__empty { color: var(--m-dim); font: 400 13px/1.55 "IBM Plex Sans", sans-serif; margin-top: 20px; max-width: 70ch; }
+@media (max-width: 760px) {
+  .public-page .hidn-metrics__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .public-page .hidn-metrics__charts { grid-template-columns: 1fr; }
+}
