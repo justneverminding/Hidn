@@ -19319,3 +19319,8 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
   text-decoration: none;
 }
 .hidn-me__pfp-link:hover, .hidn-me__pfp-link:focus-visible { background: #4dff6e; color: #010201; outline: none; }
+/* Size: −/+ buttons around the slider, so the face cover is easy to tune on a phone. */
+.mask__ctl p small { color: #6c6c74; font: 400 10px var(--hidn-font-mono); letter-spacing: .04em; margin-left: 6px; text-transform: none; }
+.mask__size { align-items: center; display: grid; gap: 10px; grid-template-columns: 40px minmax(0, 1fr) 40px; }
+.mask__size button { background: transparent; border: 1px solid #2a2a30; border-radius: 6px; color: #4dff6e; cursor: pointer; font: 600 20px/1 var(--hidn-font-mono); height: 40px; width: 40px; }
+.mask__size button:is(:hover, :focus-visible) { border-color: #4dff6e; }

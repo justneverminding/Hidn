@@ -230,7 +230,7 @@ export function renderMaskBody(): string {
         </div>
         <input class="mask__file" type="file" accept="image/*" data-mask-file aria-label="Choose a photo" />
         ${state.error ? `<p class="mask__error" role="alert">${escapeHtml(state.error)}</p>` : ""}
-        <p class="mask__privacy"><b>Masks hide your face, not everything.</b> Hair, clothes and the background can still give you away, so don't use a photo people have already seen. Line the guide up on your eyes so the whole face is covered.</p>
+        <p class="mask__privacy"><b>Masks hide your face, not everything.</b> Hair, clothes and the background can still give you away, so don't use a photo people have already seen. Drag the cover onto your eyes, then use − and + (or pinch) until it covers your face and no more.</p>
           <p class="mask__privacy">Your photo stays in this tab's memory. It's never sent to us or anyone, never saved in your browser, and it's gone when you leave this page.${own ? ` <button type="button" data-mask-action="forget">FORGET MY PHOTO NOW</button>` : ""}</p>
       </div>
       <div class="mask__side">
@@ -281,7 +281,7 @@ function renderControls(): string {
       `<button type="button" class="mask__chip${opts[control.key] ? " is-on" : ""}" data-mask-toggle="${control.key}" aria-pressed="${Boolean(opts[control.key])}">${opts[control.key] ? "✓ " : ""}${escapeHtml(control.label)}</button>`).join("")}</div></div>`);
   }
   if (spec.positioned && spec.sizeLabel) {
-    rows.push(`<label class="mask__ctl"><p>${escapeHtml(spec.sizeLabel)}</p><input type="range" min="0.5" max="1.7" step="0.01" value="${state.place.size}" data-mask-range="size" /></label>`);
+    rows.push(`<div class="mask__ctl mask__ctl--size"><p>${escapeHtml(spec.sizeLabel)} <small>covers the face too</small></p><div class="mask__size"><button type="button" data-mask-size-step="-0.08" aria-label="Smaller">−</button><input type="range" min="0.3" max="1.7" step="0.01" value="${state.place.size}" data-mask-range="size" aria-label="${escapeHtml(spec.sizeLabel)}" /><button type="button" data-mask-size-step="0.08" aria-label="Bigger">+</button></div></div>`);
   }
   if (spec.spacing) {
     rows.push(`<label class="mask__ctl"><p>EYE SPACING</p><input type="range" min="0.6" max="1.5" step="0.01" value="${state.place.spread}" data-mask-range="spread" /></label>`);
@@ -343,6 +343,17 @@ export function bindMaskPage(root: ParentNode): void {
       state.place.tilt = 0;
       const range = controls.querySelector<HTMLInputElement>('[data-mask-range="tilt"]');
       if (range) range.value = "0";
+      drawHero(page);
+      scheduleThumbs(page);
+      return;
+    }
+    const step = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-mask-size-step]");
+    if (step) {
+      event.preventDefault();
+      state.place.size = Math.min(1.7, Math.max(0.3, state.place.size + Number(step.dataset.maskSizeStep)));
+      const range = controls.querySelector<HTMLInputElement>('[data-mask-range="size"]');
+      if (range) range.value = String(state.place.size);
+      state.saved = false;
       drawHero(page);
       scheduleThumbs(page);
       return;
@@ -630,11 +641,11 @@ function renderMask(key: MaskKey, S: number): HTMLCanvasElement | null {
   return out;
 }
 
-/** Where the whole face sits, from the eye line the person lined up: wider and
- * longer than any bar, and never smaller than a typical face at this size. */
+/** Where the face sits, from the eye line the person lined up. It follows the
+ * size slider (and pinch), so a small face in a wide photo can be covered
+ * without hiding the whole head. */
 function faceOval(S: number, eye: { x: number; y: number }, size: number): { cx: number; cy: number; rx: number; ry: number } {
-  const s = Math.max(0.85, size);
-  return { cx: eye.x, cy: eye.y + S * 0.07 * s, rx: S * 0.27 * s, ry: S * 0.37 * s };
+  return { cx: eye.x, cy: eye.y + S * 0.065 * size, rx: S * 0.23 * size, ry: S * 0.32 * size };
 }
 
 /** Replaces the face with coarse, noisy blocks pulled toward the face's
@@ -863,13 +874,13 @@ const DRAW: Record<MaskKey, (k: Kit, backdrop?: Uint8Array) => void> = {
     k.x.fillStyle = hollow;
     k.x.beginPath(); k.x.arc(0, 0, rx * 1.02, 0, Math.PI * 2); k.x.fill();
     k.x.restore();
-    const half = k.S * 0.075 * k.spread * Math.max(0.85, k.size);
+    const half = k.S * 0.075 * k.spread * k.size;
     k.x.save();
     k.x.translate(k.eye.x, k.eye.y);
     k.x.rotate(k.tilt);
     k.x.globalCompositeOperation = "lighter";
     for (const ex of [-half, half]) {
-      const R = 30 * k.u * Math.max(0.85, k.size);
+      const R = 30 * k.u * k.size;
       const g = k.x.createRadialGradient(ex, 0, 0, ex, 0, R);
       g.addColorStop(0, "rgba(255, 240, 210, 1)"); g.addColorStop(0.25, "rgba(255, 150, 40, 0.95)"); g.addColorStop(1, "rgba(255, 90, 0, 0)");
       k.x.fillStyle = g;
@@ -1242,7 +1253,7 @@ function bindDrag(canvas: HTMLCanvasElement, page: HTMLElement): void {
       if (turn > Math.PI) turn -= Math.PI * 2;
       if (turn < -Math.PI) turn += Math.PI * 2;
       state.place.tilt = Math.min(0.6, Math.max(-0.6, gesture.tilt + turn));
-      state.place.size = Math.min(1.7, Math.max(0.5, gesture.size * (now.dist / gesture.dist)));
+      state.place.size = Math.min(1.7, Math.max(0.3, gesture.size * (now.dist / gesture.dist)));
       state.saved = false;
       syncSliders();
       if (!frame) frame = requestAnimationFrame(() => { frame = 0; drawHero(page); });
@@ -1262,6 +1273,18 @@ function bindDrag(canvas: HTMLCanvasElement, page: HTMLElement): void {
   };
   canvas.addEventListener("pointerup", end);
   canvas.addEventListener("pointercancel", end);
+  // Desktop: scroll over the picture to resize the cover.
+  let wheelTimer = 0;
+  canvas.addEventListener("wheel", (event) => {
+    if (!hasOwnPhoto() || !MASKS[state.style].positioned) return;
+    event.preventDefault();
+    state.place.size = Math.min(1.7, Math.max(0.3, state.place.size * Math.exp(-event.deltaY * 0.0015)));
+    state.saved = false;
+    syncSliders();
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; drawHero(page); });
+    window.clearTimeout(wheelTimer);
+    wheelTimer = window.setTimeout(() => scheduleThumbs(page), 250);
+  }, { passive: false });
 }
 
 // MARK: Saving and sharing (to the visitor's own device only)
