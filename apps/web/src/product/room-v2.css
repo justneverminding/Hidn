@@ -1105,3 +1105,50 @@ html[data-perf="lite"] .public-page--theme-signal.room-v2::after { background: r
   .public-page.room-v2.room-v2.room-v2.public-page--mixed-feed :is(.explore-layout, .explore-feed, .explore-feed__list) { padding-left: 0 !important; padding-right: 0 !important; margin-left: 0 !important; margin-right: 0 !important; }
   .public-page.room-v2.room-v2.room-v2.public-page--mixed-feed .explore-tabs { margin: 6px 0 0 !important; }
 }
+
+/* ======================= Activity bell in the top bar ======================= */
+.public-page.room-v2.room-v2.room-v2 .public-page__window-actions { align-items: center; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications { margin: 0 !important; position: relative; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle {
+  align-items: center !important; background: transparent !important; border: 1px solid var(--v2-edge) !important; border-radius: 8px !important; box-shadow: none !important; color: var(--v2-green) !important;
+  display: inline-flex !important; height: 36px !important; justify-content: center !important; min-height: 36px !important; padding: 0 !important; position: relative; width: 40px !important;
+}
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle::before,
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle-copy { display: none !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__bell { display: inline-flex; position: relative; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__bell-icon { fill: none; height: 19px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; width: 19px; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__badge {
+  background: var(--v2-amber) !important; border-radius: 9px; color: #1a1200 !important; font: 700 10px/18px var(--v2-read) !important; height: 18px; letter-spacing: 0 !important;
+  min-width: 18px; padding: 0 4px; position: absolute; right: -12px; text-align: center; top: -10px; box-sizing: border-box;
+}
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications--open .room-notifications__toggle { background: rgba(93, 255, 143, 0.08) !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__panel {
+  background: #071009 !important; border: 1px solid var(--v2-edge) !important; border-radius: 12px !important; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7) !important; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 8px; max-height: min(70vh, 520px); overflow-y: auto; padding: 12px !important; position: absolute; right: 0; top: calc(100% + 10px); width: 340px; z-index: 300;
+}
+.public-page.room-v2.room-v2.room-v2 .room-notifications__header { align-items: baseline; border: 0 !important; display: flex; justify-content: space-between; padding: 2px 4px 6px !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__header span:first-child { color: var(--v2-ink) !important; font: 600 15px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__header span:last-child { color: var(--v2-muted) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__list { display: flex; flex-direction: column; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__link { border-radius: 8px; display: flex !important; flex-direction: column; gap: 2px; padding: 10px !important; text-decoration: none; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__link:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.07); }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__label { color: var(--v2-text) !important; font: 400 14px/1.4 var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__item--unread .room-notifications__label { color: var(--v2-ink) !important; font-weight: 600 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__item--unread .room-notifications__link { background: rgba(93, 255, 143, 0.04); }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__meta { color: var(--v2-dim) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__empty { color: var(--v2-muted) !important; font: 400 14px/1.5 var(--v2-read) !important; letter-spacing: 0 !important; margin: 0 !important; padding: 6px 4px !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__actions .ui-button { background-image: none !important; border-radius: 8px !important; font: 500 14px var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; width: 100%; }
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle { height: 44px !important; width: 44px !important; }
+  .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__panel { left: 12px; position: fixed; right: 12px; top: 76px; width: auto; }
+}
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle,
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__toggle * { color: var(--v2-green) !important; opacity: 1 !important; }
+.public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__badge { color: #1a1200 !important; border: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .room-notifications__meta { text-transform: lowercase !important; }
+@media (min-width: 761px) {
+  /* The top bar clips overflow, so the panel is placed against the window. */
+  .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__panel { position: fixed; right: 40px; top: 60px; }
+}
+.public-page.room-v2.room-v2.room-v2:has(.room-notifications--open) .public-page__window-chrome { z-index: 400 !important; }

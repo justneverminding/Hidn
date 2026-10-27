@@ -2240,7 +2240,7 @@ function publicWindowTitle(path: string): string {
   return normalizedPath.slice(1).replace(/[^a-z0-9]+/gi, "_").toUpperCase();
 }
 
-function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus = false): string {
+function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus = false, showNotifications = false): string {
   const normalizedPath = normalizePath(path);
 
   if (activeHidnTheme() === "signal") {
@@ -2256,6 +2256,7 @@ function publicWindowChrome(path: string, showRoomMenu = false, showZcashStatus 
           ${showZcashStatus ? `<span class="public-page__window-zcash-status" data-zcash-status>BUILT ON ZCASH</span>` : ""}
           ${renderAmbientAudioControl()}
           ${renderVisitorTimeSignal("public-page__window-meta")}
+          ${showNotifications ? renderRoomNotifications() : ""}
         </div>
         ${showRoomMenu ? renderRoomMenu() : ""}
       </div>
@@ -2328,7 +2329,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
-    ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile")}
+    ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile", false, isRoomSurface)}
     ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
     ${showsRoomTabs(normalizedPath) ? renderRoomTabs(normalizedPath) : ""}
     ${main}
@@ -4100,8 +4101,9 @@ function renderRoomChannelMuseum(roomKey: RoomChannel): string {
 }
 
 function roomNotificationLabel(notification: AccountNotification): string {
-  const actor = notification.actorAlias || "ANON-SIGNAL";
-  return notification.type === "reaction" ? `${actor} / LIKED YOUR THREAD` : `${actor} / REPLIED TO YOUR THREAD`;
+  const alias = notification.actorAlias?.trim() ?? "";
+  const actor = alias && alias.toUpperCase() !== "ANONYMOUS" ? alias : "Someone";
+  return notification.type === "reaction" ? `${actor} liked your post` : `${actor} replied to your post`;
 }
 
 function roomNotificationTargetPath(notification: AccountNotification): string {
@@ -4119,16 +4121,17 @@ function renderRoomNotifications(): string {
   const unreadCount = roomNotifications?.unreadCount ?? 0;
   const content = roomNotificationsError
     ? `<p class="room-notifications__empty" role="status">${escapeHtml(roomNotificationsError)}</p>`
-      : !roomNotifications
-        ? `<p class="room-notifications__empty" role="status">READING PRIVATE ACTIVITY...</p>`
+      // A member who has never posted or replied has nothing to be notified about yet.
+      : !roomNotifications && loadNotificationKeys().length
+        ? `<p class="room-notifications__empty" role="status">Checking for activity…</p>`
         : notifications.length
           ? `<ul class="room-notifications__list">${notifications.map((notification) => `<li class="room-notifications__item${notification.readAt ? "" : " room-notifications__item--unread"}">
             <a href="${escapeHtml(roomNotificationTargetPath(notification))}" class="room-notifications__link" data-room-notification-link data-notification-id="${escapeHtml(notification.id)}" aria-label="Open ${escapeHtml(roomNotificationLabel(notification))}">
               <span class="room-notifications__label">${escapeHtml(roomNotificationLabel(notification))}</span>
-              <span class="room-notifications__meta">PRIVATE ACTIVITY / ${escapeHtml(formatNotificationDateTime(notification.createdAt))}</span>
+              <span class="room-notifications__meta">${escapeHtml(formatNotificationDateTime(notification.createdAt))}</span>
             </a>
           </li>`).join("")}</ul>`
-        : `<p class="room-notifications__empty">NO PRIVATE ACTIVITY YET.</p>`;
+        : `<p class="room-notifications__empty">Nothing yet. When someone likes or replies to your posts, it shows up here.</p>`;
 
   const hasUnreadActivity = unreadCount > 0;
   const notificationLabel = hasUnreadActivity
@@ -4143,15 +4146,15 @@ function renderRoomNotifications(): string {
         </svg>
         ${hasUnreadActivity ? `<span class="room-notifications__badge">${unreadCount > 99 ? "99+" : unreadCount}</span>` : ""}
       </span>
-      <span class="room-notifications__toggle-copy">PRIVATE ACTIVITY${unreadCount ? ` / ${unreadCount} NEW` : ""}</span>
+      <span class="room-notifications__toggle-copy">Activity</span>
     </button>
     ${roomNotificationsOpen ? `<div class="room-notifications__panel" id="room-notifications-panel">
       <header class="room-notifications__header">
-        <span>ACCOUNT SIGNALS / PRIVATE</span>
-        ${unreadCount ? `<span>${unreadCount.toString().padStart(2, "0")} UNREAD</span>` : "<span>CAUGHT UP</span>"}
+        <span>Your activity</span>
+        ${unreadCount ? `<span>${unreadCount} unread</span>` : "<span>All caught up</span>"}
       </header>
       ${content}
-      ${unreadCount ? `<div class="room-notifications__actions">${SecondaryButton({ label: roomNotificationsMarkingRead ? "MARKING READ..." : "MARK ALL READ", disabled: roomNotificationsMarkingRead, dataAction: "room-notifications-read" })}</div>` : ""}
+      ${unreadCount ? `<div class="room-notifications__actions">${SecondaryButton({ label: roomNotificationsMarkingRead ? "Marking read…" : "Mark all read", disabled: roomNotificationsMarkingRead, dataAction: "room-notifications-read" })}</div>` : ""}
     </div>` : ""}
   </section>`;
 }
@@ -4424,7 +4427,7 @@ function renderMobileRoomIndex(): string {
           <h1 class="hidn-glitch-title" data-text="Choose a r&nbsp;&nbsp;m">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m</h1>
           <p>Read quietly, or leave a thought without a name.</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; ls /rooms · ${visibleRoomChannelOptions().length} open · listening<span class="hidn-feed-log__caret">▌</span></p>
-          <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
+          <div class="room-mobile-index__status">${renderRoomZcashStatus()}</div>
           ${renderMobilePostSurface()}
         </header>
         ${isRoomDesktopViewport() ? "" : renderRoomStandings()}
@@ -4510,7 +4513,7 @@ function renderExplore(path = "/room"): string {
           ${isChannelRoute ? renderRoomStandingChip(channel.key) : ""}
           ${channelKey && roomLinkByKey(channelKey) && roomNote(roomLinkByKey(channelKey)!) ? `<p class="room-channel-care">${escapeHtml(roomNote(roomLinkByKey(channelKey)!)!)}</p>` : ""}
           ${renderKeyReminder(roomAccountRecoveryCode)}
-          ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>` : ""}
+          ${isChannelRoute && !signalMode ? `<div class="room-channel-header__signals">${renderRoomZcashStatus()}</div>` : ""}
           ${isRoomMobileViewport() ? renderMobilePostSurface() : ""}
         </header>
         <div class="explore-layout">
@@ -4520,7 +4523,7 @@ function renderExplore(path = "/room"): string {
                 ${TerminalLabel("CURRENT ROOM / ANONYMOUS THREADS")}
                 <h2 id="explore-feed-title" class="type-heading-2">// ${escapeHtml(roomChannelOption(activeRoomChannel).label)} / THOUGHTS IN MOTION</h2>
               </div>
-              <div class="explore-feed__signals">${renderRoomZcashStatus()}${renderRoomNotifications()}</div>
+              <div class="explore-feed__signals">${renderRoomZcashStatus()}</div>
             </div>` : ""}
             ${renderExploreTabs()}
             <div class="explore-feed__list" id="explore-feed-list" aria-live="polite">${renderTransmissionRows(activeFeedTab)}</div>
