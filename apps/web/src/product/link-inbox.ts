@@ -33,7 +33,7 @@ function linkUrl(slug: string): string {
 }
 
 function button(label: string, action: string, options: { primary?: boolean; disabled?: boolean; type?: "button" | "submit" } = {}): string {
-  return `<button class="hidn-link__btn${options.primary ? " hidn-link__btn--primary" : ""}" type="${options.type ?? "button"}" data-link-action="${action}"${options.disabled ? " disabled" : ""}>[ ${escapeHtml(label)} ]</button>`;
+  return `<button class="hidn-link__btn hidn-link__btn--plain${options.primary ? " hidn-link__btn--primary" : ""}" type="${options.type ?? "button"}" data-link-action="${action}"${options.disabled ? " disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
 /** The owner's inbox (a room page) speaks in sentence case, without brackets. */
@@ -71,7 +71,7 @@ function hydrateQr(root: ParentNode): void {
       width: 200,
       margin: 1,
       errorCorrectionLevel: "M",
-      color: { dark: "#010301", light: "#7dff9a" },
+      color: { dark: "#010301", light: "#e8f2e9" },
     }).catch(() => undefined);
   });
 }
@@ -128,78 +128,82 @@ function sendState(slug: string): SendState {
 
 export function renderLinkSendBody(slug: string): string {
   const state = sendState(slug);
+  const ownLink = `<a class="hidn-link__btn hidn-link__btn--plain" href="/">Get your own link</a>`;
   if (state.status === "loading") {
-    return `<div class="hidn-link"><p class="hidn-link__log">&gt; resolving room ${escapeHtml(slug)}...<span class="hidn-link__caret">▌</span></p></div>`;
+    return `<div class="hidn-link hidn-link--send"><p class="hidn-link__status">Opening the link…</p></div>`;
   }
   if (state.status === "missing" || state.status === "error" || !state.link) {
-    return `<div class="hidn-link">
-      <p class="hidn-link__log"><b>[FAIL]</b> ${state.status === "missing" ? "ROOM NOT FOUND" : "SIGNAL LOST"}</p>
-      <h1 class="hidn-link__title" data-text="NO ROOM HERE.">NO ROOM HERE.</h1>
-      <p class="hidn-link__line">&gt; ${state.status === "missing" ? "This link does not exist, or its owner replaced it with a new one." : "The room could not be reached. Try again in a moment."}</p>
-      <div class="hidn-link__actions"><a class="hidn-link__btn" href="/">[ GET YOUR OWN LINK → ]</a></div>
+    return `<div class="hidn-link hidn-link--send">
+      <p class="hidn-link__eyebrow">hidn://to/${escapeHtml(slug)}</p>
+      <h1 class="hidn-link__title">${state.status === "missing" ? "This link doesn't exist." : "We couldn't reach this link."}</h1>
+      <p class="hidn-link__line">${state.status === "missing" ? "It may be mistyped, or its owner replaced it with a new one." : "Try again in a moment."}</p>
+      <div class="hidn-link__actions">${ownLink}</div>
     </div>`;
   }
 
   const link = state.link;
   if (state.sent) {
     const tip = state.sent.tipCode && link.tipAddress ? tipPaymentUri(link.tipAddress, state.sent.tipCode) : "";
-    return `<div class="hidn-link">
-      <p class="hidn-link__log"><b>[ OK ]</b> TRANSMITTED</p>
-      <p class="hidn-link__log"><b>[ OK ]</b> SENDER: <span class="hidn-link__redact" aria-label="withheld"></span> · NOTHING KEPT</p>
-      <h1 class="hidn-link__title" data-text="IT'S IN THE ROOM.">IT'S IN THE ROOM.</h1>
-      <p class="hidn-link__line">&gt; They will read it without ever knowing who said it.</p>
-      ${tip ? `<section class="hidn-link__tip">
-        <p class="hidn-link__label">&gt; NOW SEND THE ZEC / SHIELDED MAINNET</p>
+    return `<div class="hidn-link hidn-link--send">
+      <p class="hidn-link__eyebrow"><span class="hidn-link__dot" aria-hidden="true"></span>Sent anonymously</p>
+      <h1 class="hidn-link__title">It's in their inbox.</h1>
+      <p class="hidn-link__line">They'll read it without ever knowing who said it. Nothing about you was kept.</p>
+      ${tip ? `<section class="hidn-link__tip" aria-labelledby="hidn-link-tip-title">
+        <h2 id="hidn-link-tip-title" class="hidn-link__tip-title">Now send your ZEC tip</h2>
+        <p class="hidn-link__note">Pay any amount from a shielded wallet. The memo carries this code, so they can match the tip to your message.</p>
         <div class="hidn-link__tip-grid">
           <canvas class="hidn-link__qr" data-link-qr="${escapeHtml(tip)}" width="200" height="200" aria-label="QR code for the Zcash tip"></canvas>
-          <div>
-            <p class="hidn-link__note">Pay any amount from a shielded wallet. The memo carries your tip code, so they can match it to your message:</p>
+          <div class="hidn-link__tip-side">
+            <span class="hidn-link__code-label">Tip code</span>
             <code class="hidn-link__code">${escapeHtml(state.sent.tipCode)}</code>
-            <div class="hidn-link__actions">
-              <a class="hidn-link__btn hidn-link__btn--primary" href="${escapeHtml(tip)}">[ OPEN IN WALLET ↗ ]</a>
-              ${button(state.copied ? "COPIED" : "COPY REQUEST", "copy-tip")}
-            </div>
-            <p class="hidn-link__note">Scan with a shielded Zcash wallet such as ZODL or Vizor. HIDN never holds the funds and cannot confirm the payment.</p>
+            <a class="hidn-link__btn hidn-link__btn--plain hidn-link__btn--zec" href="${escapeHtml(tip)}">Open in wallet</a>
+            ${button(state.copied ? "Copied" : "Copy payment request", "copy-tip")}
           </div>
         </div>
+        <p class="hidn-link__note">Works with shielded Zcash wallets such as ZODL or Vizor. HIDN never holds the money and can't confirm the payment.</p>
       </section>` : ""}
       <div class="hidn-link__actions">
-        ${button("SAY SOMETHING ELSE", "send-again")}
-        <a class="hidn-link__btn hidn-link__btn--primary" href="/">[ GET YOUR OWN LINK → ]</a>
+        ${button("Say something else", "send-again")}
+        ${ownLink.replace("hidn-link__btn--plain", "hidn-link__btn--plain hidn-link__btn--primary")}
       </div>
     </div>`;
   }
 
   if (link.status === "closed") {
-    return `<div class="hidn-link">
-      <p class="hidn-link__log"><b>[LOCK]</b> ROOM CLOSED BY ITS OWNER</p>
-      <h1 class="hidn-link__title" data-text="THE DOOR IS SHUT.">THE DOOR IS SHUT.</h1>
-      <p class="hidn-link__line">&gt; This room is not taking messages right now.</p>
-      <div class="hidn-link__actions"><a class="hidn-link__btn hidn-link__btn--primary" href="/">[ GET YOUR OWN LINK → ]</a></div>
+    return `<div class="hidn-link hidn-link--send">
+      <p class="hidn-link__eyebrow">hidn://to/${escapeHtml(link.slug)}</p>
+      <h1 class="hidn-link__title">This link is closed.</h1>
+      <p class="hidn-link__line">Its owner isn't taking messages right now.</p>
+      <div class="hidn-link__actions">${ownLink.replace("hidn-link__btn--plain", "hidn-link__btn--plain hidn-link__btn--primary")}</div>
     </div>`;
   }
 
   const prompt = link.prompt || DEFAULT_PROMPT;
-  return `<form class="hidn-link" data-link-send-form novalidate>
-    <p class="hidn-link__log">&gt; open room --to ${escapeHtml(link.slug)} --anonymous</p>
-    <p class="hidn-link__log">&gt; owner: <span class="hidn-link__redact" aria-label="withheld"></span> · you: <span class="hidn-link__redact" aria-label="withheld"></span></p>
-    <p class="hidn-link__code-line">/// SOMEONE OPENED A ROOM FOR YOU</p>
-    <h1 class="hidn-link__title" data-text="SAY IT. NO NAMES.">SAY IT. NO NAMES.</h1>
-    <p class="hidn-link__prompt">&gt; ${escapeHtml(prompt)}</p>
+  return `<form class="hidn-link hidn-link--send" data-link-send-form novalidate>
+    <p class="hidn-link__eyebrow"><span class="hidn-link__dot" aria-hidden="true"></span>Someone shared their private link with you</p>
+    <h1 class="hidn-link__title">Say it. No names.</h1>
+    <figure class="hidn-link__ask">
+      <figcaption>They asked</figcaption>
+      <blockquote>${escapeHtml(prompt)}</blockquote>
+    </figure>
     <label class="hidn-link__field">
-      <span class="hidn-term__sr">Your anonymous message</span>
-      <textarea data-link-draft maxlength="${LINK_MESSAGE_MAX_LENGTH}" rows="6" placeholder="type here. nobody signs." spellcheck="true">${escapeHtml(state.draft)}</textarea>
+      <span class="hidn-link__field-label">Your message</span>
+      <textarea data-link-draft maxlength="${LINK_MESSAGE_MAX_LENGTH}" rows="6" placeholder="Type here. Nobody signs." spellcheck="true">${escapeHtml(state.draft)}</textarea>
       <span class="hidn-link__count" data-link-count>${state.draft.length} / ${LINK_MESSAGE_MAX_LENGTH}</span>
     </label>
     ${link.tipAddress ? `<label class="hidn-link__check">
       <input type="checkbox" data-link-attach-zec${state.attachZec ? " checked" : ""} />
-      <span>+ ATTACH ZEC <em>you pay in your own wallet after sending</em></span>
+      <span><b>Add a ZEC tip</b><em>You pay from your own wallet after sending.</em></span>
     </label>` : ""}
-    ${state.error ? `<p class="hidn-link__error" role="alert">&gt; ${escapeHtml(state.error)}</p>` : ""}
+    ${state.error ? `<p class="hidn-link__error" role="alert">${escapeHtml(state.error)}</p>` : ""}
     <div class="hidn-link__actions">
-      ${button(state.sending ? "TRANSMITTING..." : "TRANSMIT", "send", { primary: true, disabled: state.sending, type: "submit" })}
+      ${button(state.sending ? "Sending…" : "Send anonymously", "send", { primary: true, disabled: state.sending, type: "submit" })}
     </div>
-    <p class="hidn-link__note">&gt; No account. No name. No trace kept of who sent it. The owner only sees the words.</p>
+    <ul class="hidn-link__promises">
+      <li>No account, email or phone number.</li>
+      <li>Your name is never attached.</li>
+      <li>They only see the words.</li>
+    </ul>
   </form>`;
 }
 

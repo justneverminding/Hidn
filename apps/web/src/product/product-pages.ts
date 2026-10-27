@@ -693,39 +693,36 @@ function renderRoomTipDialog(): string {
   const paymentUri = roomTipPaymentUri(post);
   const settled = roomTipIntroPlayedFor === post.id;
   roomTipIntroPlayedFor = post.id;
-  return `<div class="room-tip-dialog room-tip-dialog--term${settled ? " room-tip-dialog--settled" : ""}" role="dialog" aria-modal="true" aria-labelledby="room-tip-dialog-title">
-    <button class="room-tip-dialog__backdrop" type="button" data-action="room-tip-close" aria-label="Close mainnet tip dialog"></button>
-    <section class="room-tip-dialog__panel hidn-term hidn-term--tip">
-      <div class="hidn-term__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/tip</span>
-        <button class="room-tip-dialog__close" type="button" data-action="room-tip-close" aria-label="Close mainnet tip dialog">×</button>
+  return `<div class="room-tip-dialog room-tip-dialog--v2${settled ? " room-tip-dialog--settled" : ""}" role="dialog" aria-modal="true" aria-labelledby="room-tip-dialog-title">
+    <button class="room-tip-dialog__backdrop" type="button" data-action="room-tip-close" aria-label="Close"></button>
+    <section class="room-tip-dialog__panel">
+      <header class="room-tip-dialog__head">
+        <h2 id="room-tip-dialog-title">Tip this post</h2>
+        <button class="room-tip-dialog__close" type="button" data-action="room-tip-close" aria-label="Close">×</button>
+      </header>
+      <p class="room-tip-dialog__lead">Send any amount of ZEC from a shielded wallet, straight to whoever wrote this. You pick the amount in your wallet.</p>
+      <div class="room-tip-dialog__qr-frame">
+        <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code to tip this post in Zcash"></canvas>
+        <span>Scan with a Zcash wallet</span>
       </div>
-      <div class="hidn-term__body hidn-tip">
-        <p class="hidn-tip__log">&gt; open tip --network mainnet --shielded</p>
-        <p class="hidn-tip__log">&gt; author: <span class="hidn-tip__redact" aria-label="name withheld"></span> · funds never touch hidn</p>
-        <h2 id="room-tip-dialog-title" class="hidn-tip__title" data-text="SUPPORT THIS THOUGHT.">SUPPORT THIS THOUGHT.</h2>
-        <p class="hidn-tip__line">Send any amount of ZEC from a shielded wallet straight to the author. You choose the amount in your wallet.</p>
-        <div class="room-tip-dialog__request">
-          <div class="hidn-tip__qr-frame">
-            <canvas class="room-tip-dialog__qr" data-tip-qr data-tip-uri="${escapeHtml(paymentUri)}" width="220" height="220" aria-label="QR code for a direct Zcash mainnet tip"></canvas>
-            <span>SCAN WITH A ZCASH WALLET</span>
-          </div>
-          <div class="room-tip-dialog__details">
-            <span class="room-tip-dialog__label">&gt; DESTINATION / SHIELDED MAINNET</span>
-            <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy shielded mainnet destination">
-              <code>${escapeHtml(post.tipAddress)}</code>
-              <span>${roomTipAddressCopyFeedback ? `[ ${roomTipAddressCopyFeedback} ]` : "[ TAP TO COPY ADDRESS ]"}</span>
-            </button>
-            <span class="room-tip-dialog__label">&gt; PAYMENT REQUEST</span>
-            <code class="room-tip-dialog__uri">${escapeHtml(paymentUri)}</code>
-          </div>
-        </div>
-        <div class="room-tip-dialog__actions">
-          <a class="ui-button ui-button--primary" href="${escapeHtml(paymentUri)}">[ OPEN IN WALLET ↗ ]</a>
-          <button class="ui-button ui-button--secondary" type="button" data-action="room-tip-copy" data-tip-uri="${escapeHtml(paymentUri)}">[ ${roomTipCopyFeedback || "COPY PAYMENT REQUEST"} ]</button>
-        </div>
-        <p class="room-tip-dialog__wallet-note">&gt; No wallet opened? Copy the request and paste it into your Zcash wallet.</p>
-        <p class="room-tip-dialog__note">MAINNET · REAL ZEC · HIDN never holds the funds, and does not confirm payments or issue receipts.<span class="hidn-tip__caret" aria-hidden="true">▌</span></p>
+      <div class="room-tip-dialog__actions">
+        <a class="room-tip-dialog__btn room-tip-dialog__btn--primary" href="${escapeHtml(paymentUri)}">Open in wallet</a>
+        <button class="room-tip-dialog__btn" type="button" data-action="room-tip-copy" data-tip-uri="${escapeHtml(paymentUri)}">${escapeHtml(roomTipCopyFeedback || "Copy payment request")}</button>
       </div>
+      <p class="room-tip-dialog__hint">No wallet opened? Copy the request and paste it into your Zcash wallet.</p>
+      <div class="room-tip-dialog__address-block">
+        <span class="room-tip-dialog__label">Their shielded address</span>
+        <button class="room-tip-dialog__address" type="button" data-action="room-tip-copy-address" data-tip-address="${escapeHtml(post.tipAddress)}" aria-label="Copy the shielded address">
+          <code>${escapeHtml(post.tipAddress)}</code>
+          <span>${escapeHtml(roomTipAddressCopyFeedback || "Tap to copy")}</span>
+        </button>
+      </div>
+      <ul class="room-tip-dialog__facts">
+        <li>Real ZEC on Zcash mainnet.</li>
+        <li>HIDN never holds the money, can't confirm payments and doesn't issue receipts.</li>
+        <li>The writer stays anonymous. HIDN never learns who they are.</li>
+      </ul>
+      <a class="room-tip-dialog__learn" href="/how-it-works#tips" target="_blank" rel="noopener">How tips work →</a>
     </section>
   </div>`;
 }
@@ -744,7 +741,7 @@ function hydrateRoomTipQr(root: ParentNode): void {
     color: {
       // Dark modules on phosphor green: on brand, and still scannable.
       dark: "#010301",
-      light: "#7dff9a",
+      light: "#e8f2e9",
     },
   }).catch(() => {
     canvas.dataset.state = "unavailable";
@@ -789,7 +786,7 @@ async function copyRoomTipRequest(button: HTMLButtonElement): Promise<void> {
 
   const copied = await copyRoomTipText(paymentUri);
 
-  roomTipCopyFeedback = copied ? "PAYMENT REQUEST COPIED" : "COPY FAILED / SELECT THE REQUEST";
+  roomTipCopyFeedback = copied ? "Copied" : "Couldn't copy. Select it instead.";
   rerenderProductRoute();
   window.setTimeout(() => {
     if (roomTipCopyFeedback) {
@@ -808,7 +805,7 @@ async function copyRoomTipAddress(button: HTMLButtonElement): Promise<void> {
   }
 
   const copied = await copyRoomTipText(address);
-  roomTipAddressCopyFeedback = copied ? "ADDRESS COPIED" : "COPY FAILED / SELECT THE ADDRESS";
+  roomTipAddressCopyFeedback = copied ? "Copied" : "Couldn't copy. Select it instead.";
   rerenderProductRoute();
   window.setTimeout(() => {
     if (roomTipAddressCopyFeedback) {
@@ -2327,7 +2324,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     : [{ label: "HOW IT WORKS", href: "/how-it-works" }];
 
   // room-v2: the 2026-10 redesign (room-v2.css). Remove to restore the old look.
-  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" ? " room-v2" : "";
+  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" || normalizedPath.startsWith("/to/") ? " room-v2" : "";
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
@@ -2537,7 +2534,7 @@ function renderMixedFeed(): RenderedProductRoute {
             <header class="explore-header">
               ${TerminalLabel("hidn://feed")}
               <h1 class="type-display-lg hidn-desk__title">Every room</h1>
-              <p>Newest confessions from every room. No names, ever.</p>
+              <p>The newest from every room. No names.</p>
               ${roomStandings ? renderStandingsTicker(roomStandings, (channel) => roomDisplayName(roomChannelOption(channel as RoomChannel).label)) : ""}
               <p class="hidn-feed-log" aria-hidden="true">&gt; tail -f /rooms/* · listening<span class="hidn-feed-log__caret">▌</span></p>
               ${renderKeyReminder(roomAccountRecoveryCode)}
@@ -3249,6 +3246,7 @@ function renderRoomPostTipControls(): string {
         <span>Allow tips on this post</span>
       </label>
       <p class="room-post-tips__note">Readers can send you shielded ZEC, straight to your wallet.</p>
+      <a class="room-post-tips__learn" href="/how-it-works#tips" target="_blank" rel="noopener">How tips work →</a>
     </fieldset>`;
   }
 
@@ -3264,6 +3262,7 @@ function renderRoomPostTipControls(): string {
     </label>
     <p class="room-post-tips__note">Use your saved default address or enter a different public shielded mainnet address for this post.</p>
     <p class="room-post-tips__warning" data-warning="REUSING AN ADDRESS MAY MAKE POSTS EASIER TO ASSOCIATE." role="note">Reusing an address may make posts easier to associate.</p>
+    <a class="room-post-tips__learn" href="/how-it-works#tips" target="_blank" rel="noopener">How tips work →</a>
   </fieldset>`;
 }
 
@@ -4588,6 +4587,8 @@ function renderDetail(id: string): RenderedProductRoute {
   const confession = mockConfession ?? (livePost ? mockConfessionFromRoomPost(livePost) : undefined);
   const isLivePost = Boolean(livePost);
   const detailReplyCount = replyCountForThread(id, livePost?.replies);
+  const detailRoom = roomChannelOptions.find((room) => room.key === (livePost?.channel ?? confession?.channel));
+  const detailRoomName = detailRoom ? roomDisplayName(detailRoom.label) : "";
   const metadata: HidnMetadata = {
     kind: "anonymous-confession",
     title: "HIDN — Anonymous confession",
@@ -4661,9 +4662,7 @@ function renderDetail(id: string): RenderedProductRoute {
         <div class="hidn-container--reading detail-page">
           <header class="detail-header">
             ${livePost ? `<a class="hidn-detail__back" href="/room/channel/${escapeHtml(livePost.channel)}/feed">← ${escapeHtml(roomDisplayName(roomChannelOption(livePost.channel as RoomChannel).label))}</a>` : ""}
-            <p class="hidn-detail__log">hidn@room:~$ cat /rooms/${escapeHtml(livePost?.channel ?? "archive")}/${escapeHtml(confession.reference.replace(/^\/\/\s*/, "").toLowerCase())}.txt</p>
-            <h1 class="detail-page__title hidn-detail__title" data-text="Anonymous confession">Anonymous confession</h1>
-            <div class="detail-header__meta"><span>[rx] ${escapeHtml(confession.reference)}</span><time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></div>
+            <h1 class="hidn-detail__context">An anonymous post${detailRoomName ? ` in <b>${escapeHtml(detailRoomName)}</b>` : ""} <span aria-hidden="true">·</span> <time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></h1>
           </header>
           <article class="detail-card" aria-labelledby="detail-thought">
             <p class="hidn-detail__signed" aria-label="Signed: name withheld">signed <span class="hidn-detail__redact" aria-hidden="true"></span> name withheld</p>
@@ -4678,15 +4677,20 @@ function renderDetail(id: string): RenderedProductRoute {
             <div><span>COMMENTS</span><strong>${escapeHtml(String(detailReplyCount))}</strong></div>
             <div><span>POSTED</span><strong>${escapeHtml(confession.relativeTime)}</strong></div>
           </div>
-          <div class="detail-actions" aria-label="Confession actions">
-            <button class="room-message__action" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}"${hasRoomSession() ? "" : " disabled"}>♡ ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
-            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">${detailReplyCount ? `${detailReplyCount} ${detailReplyCount === 1 ? "reply" : "replies"}` : "Reply"}</a>
-            <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">Quote</a>
-            <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">Save image</button>
-            <button class="room-message__action" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">Share image</button>
-            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">Tip in ZEC</button>` : ""}
-            <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">Post to X</button>
-            <button class="room-message__action" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">Report</button>
+          <div class="detail-actions" aria-label="Post actions">
+            <button class="room-message__action detail-actions__main" type="button" data-action="room-like" data-thread-id="${escapeHtml(confession.id)}" aria-pressed="${roomLikedIds.has(confession.id)}" aria-label="Like"${hasRoomSession() ? "" : " disabled"}><span aria-hidden="true">♡</span> ${escapeHtml(String(reactionCountForThread(confession.id, confession.reactions)))}</button>
+            <a class="room-message__action detail-actions__main" href="#thread-reply-${escapeHtml(confession.id)}">Reply</a>
+            <button class="room-message__action detail-actions__main" type="button" data-action="thread-share-image" data-thread-id="${escapeHtml(confession.id)}">Share</button>
+            ${livePost?.tipAddress ? `<button class="room-message__action room-message__action--tip detail-actions__main" type="button" data-action="room-tip" data-thread-id="${escapeHtml(confession.id)}">Tip in ZEC</button>` : ""}
+            <details class="detail-actions__more">
+              <summary class="room-message__action detail-actions__main" aria-label="More actions">More</summary>
+              <div class="detail-actions__menu">
+                <button class="room-message__action" type="button" data-action="thread-save-image" data-thread-id="${escapeHtml(confession.id)}">Save as image</button>
+                <button class="room-message__action" type="button" data-action="thread-x-share" data-thread-id="${escapeHtml(confession.id)}">Post to X</button>
+                <a class="room-message__action" href="#thread-reply-${escapeHtml(confession.id)}">Quote in a reply</a>
+                <button class="room-message__action detail-actions__report" type="button" data-action="report-open" data-report-target-type="thread" data-report-target-id="${escapeHtml(confession.id)}" data-report-target-label="${escapeHtml(confession.reference)}" data-report-target-excerpt="${escapeHtml(confession.text)}">Report</button>
+              </div>
+            </details>
           </div>
           <p class="thread-share-status thread-share-status--detail" data-share-status="${escapeHtml(confession.id)}" role="status" aria-live="polite"></p>
           ${roomReportNotice ? `<p class="thread-share-status thread-share-status--detail" role="status">${escapeHtml(roomReportNotice)}</p>` : ""}
@@ -5609,9 +5613,19 @@ function renderHowItWorks(): RenderedProductRoute {
             <h2 id="hidn-how-extras" class="hidn-how__label">Also</h2>
             <div class="hidn-how__cards">
               ${extra("Your private link", "Get your own link and share it. Anyone can send you an anonymous message through it, up to 120 a day. You read them in Inbox.")}
-              ${extra("Tips in ZEC", "Love a post? Tip it in Zcash, straight from your wallet to theirs. HIDN never touches the money.")}
+              ${extra("Tips in ZEC", `Love a post? Tip it in Zcash, straight from your wallet to theirs. HIDN never touches the money. <a href="#tips">How tips work ↓</a>`)}
               ${extra("The lobby", "Walk a 3D museum where real posts hang on the walls. Open Lobby and look around.")}
             </div>
+          </section>
+
+          <section id="tips" class="hidn-how__tips" aria-labelledby="hidn-how-tips">
+            <h2 id="hidn-how-tips" class="hidn-how__label">Tips in ZEC</h2>
+            <ol class="hidn-how__steps">
+              ${step("01", "Turn tips on", "When you post, tick Allow tips on this post and add your shielded Zcash address. You can also save a default address in Me, under Get tipped in ZEC.")}
+              ${step("02", "Readers tip from their wallet", "Readers tap Tip in ZEC on your post and pay from their own wallet straight to yours. HIDN never holds, sends or sees the money.")}
+              ${step("03", "It stays private", "Use a shielded address (it starts with u1), so the payment stays private on Zcash. Nobody learns who you are from a tip.", "Using the same address on many posts can make those posts easier to link together. A different address per post keeps them apart.")}
+              ${step("04", "Tips on your private link", "Your private link can take tips too. Each tipped message shows a code, and the same code arrives in the payment memo, so you know which message it was for.")}
+            </ol>
           </section>
 
           <section aria-labelledby="hidn-how-why">
@@ -7379,7 +7393,20 @@ let homeTickerCleanup: (() => void) | undefined;
 
 let terminalFeedCleanup: (() => void) | undefined;
 
+let scrolledHashFor = "";
+
+/** Jumps to a section like /how-it-works#tips once per arrival, not on every re-render. */
+function scrollToHashOnce(root: ParentNode): void {
+  const key = `${window.location.pathname}${window.location.hash}`;
+  if (!window.location.hash || scrolledHashFor === key) return;
+  const target = root.querySelector<HTMLElement>(window.location.hash.replace(/[^#\w-]/g, ""));
+  if (!target) return;
+  scrolledHashFor = key;
+  window.requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
+}
+
 export function bindProductRoute(root: ParentNode = document): void {
+  scrollToHashOnce(root);
   welcomeCleanup?.();
   welcomeCleanup = mountWelcome(root);
   homeTickerCleanup?.();
