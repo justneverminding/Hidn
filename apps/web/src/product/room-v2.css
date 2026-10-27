@@ -1364,3 +1364,23 @@ html[data-perf="lite"] .public-page--theme-signal.room-v2::after { background: r
 .public-page.room-v2.room-v2.room-v2 .hidn-auth :is(.hidn-auth__step, .hidn-auth__note-label, .hidn-auth__divider, .hidn-key__label span) { letter-spacing: 0 !important; text-shadow: none !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-auth__top .hidn-auth__back { font-family: var(--v2-read) !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-auth__top { width: 100%; box-sizing: border-box; }
+
+/* Sound button in the new headers (homepage, sign-in): an icon, muted or on. */
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle {
+  align-items: center; background: transparent !important; border: 1px solid var(--v2-edge) !important; border-radius: 8px !important; box-shadow: none !important; color: var(--v2-green) !important;
+  cursor: pointer; display: inline-flex !important; height: 40px; justify-content: center; min-height: 40px; padding: 0 !important; width: 40px;
+}
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle > span { display: none !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle::before,
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle::after { content: none !important; }
+.home-room-audio-toggle__icon { display: none; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle__icon { display: block; fill: none; height: 20px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; width: 20px; }
+.public-page.room-v2.room-v2.room-v2 .home-room-audio-toggle__icon path:first-child { fill: currentColor; stroke: none; }
+.public-page.room-v2.room-v2.room-v2 .home-room-audio-toggle:not([data-state="on"]) .home-room-audio-toggle__waves { display: none; }
+.public-page.room-v2.room-v2.room-v2 .home-room-audio-toggle[data-state="on"] .home-room-audio-toggle__mute { display: none; }
+.public-page.room-v2.room-v2.room-v2 .home-room-audio-toggle:not([data-state="on"]) { color: var(--v2-muted) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__sound { justify-self: end; }
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__links { gap: 14px; }
+  .public-page.room-v2.room-v2.room-v2 :is(.hidn-home__links, .hidn-auth__sound) .home-room-audio-toggle { height: 44px; width: 44px; }
+}

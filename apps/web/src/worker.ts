@@ -3065,28 +3065,57 @@ async function routeLinkApi(url: URL, request: Request, env: HidnWorkerEnv): Pro
 
 interface SharePreview { title: string; description: string; image: string; imageAlt: string }
 
-const INFO_IMAGE = "/brand/hidn-og-terminal.png";
-const INFO_IMAGE_ALT = "HIDN — Welcome to HIDN. Are you sure you're in the right place?";
+// Every preview shares one look (public/brand/og) and one title format: "Page · HIDN".
+const OG = (name: string): string => `/brand/og/${name}.png`;
 const INFO_PAGES: Record<string, SharePreview> = {
+  "/": {
+    title: "HIDN · Say what you can't say out loud",
+    description: "A private room with no names. Say what you can't say out loud, and nobody, not even HIDN, knows it was you.",
+    image: OG("home"),
+    imageAlt: "HIDN: say what you can't say out loud. A private room with no names.",
+  },
+  "/read": {
+    title: "What people can't say out loud · HIDN",
+    description: "Real posts from real people, with no names attached. Read as long as you like, no account needed.",
+    image: OG("read"),
+    imageAlt: "HIDN: what people can't say out loud. Real posts, no names attached.",
+  },
+  "/room/access": {
+    title: "Get in without a name · HIDN",
+    description: "No email, no phone number, no username. A private key made in your browser is your way in.",
+    image: OG("access"),
+    imageAlt: "HIDN: get in without a name. No email, no phone number, no username.",
+  },
   "/how-it-works": {
-    title: "How HIDN works · anonymous posts with zero-knowledge proofs",
-    description: "No account, no email, no name. Your browser keeps a secret and proves you're a member without saying which one. Here's how HIDN keeps you anonymous.",
-    image: INFO_IMAGE,
-    imageAlt: INFO_IMAGE_ALT,
+    title: "How it works · HIDN",
+    description: "No account, no email, no name. Your browser proves you're a member without saying which one. Here's how HIDN keeps you anonymous.",
+    image: OG("how-it-works"),
+    imageAlt: "HIDN: how HIDN keeps you anonymous. Your browser proves you're a member, never which one.",
   },
   "/manifesto": {
-    title: "The HIDN manifesto · a room without names",
+    title: "Manifesto · HIDN",
     description: "Why HIDN exists: a place to say what you can't say anywhere else, where nobody, not even us, knows it was you.",
-    image: INFO_IMAGE,
-    imageAlt: INFO_IMAGE_ALT,
+    image: OG("manifesto"),
+    imageAlt: "HIDN manifesto: show the thought, hide the person.",
   },
   "/privacy": {
-    title: "HIDN privacy · what we can and can't see",
-    description: "What HIDN stores, what it never sees, and where its privacy limits are today. Plain answers about anonymous posts, links and tips.",
-    image: INFO_IMAGE,
-    imageAlt: INFO_IMAGE_ALT,
+    title: "Privacy · HIDN",
+    description: "What HIDN stores, what it never sees, and where its privacy limits are today. Plain answers about posts, links and tips.",
+    image: OG("privacy"),
+    imageAlt: "HIDN privacy: what HIDN can and can't see.",
   },
 };
+
+/** "THINGS I'VE NEVER TOLD ANYONE" reads as "Things I've never told anyone". */
+function roomTitle(label: string): string {
+  const lower = label.toLowerCase().replace(/\bi\b/g, "I").replace(/\bzec\b/g, "ZEC");
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function sentence(text: string): string {
+  const trimmed = text.trim().replace(/[.!?]*$/, "");
+  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}.`;
+}
 
 /** Chat apps and social sites read a link's preview from the HTML without
  * running the page, so shared rooms and personal links get theirs here. */
@@ -3096,30 +3125,30 @@ function sharePreviewFor(pathname: string): SharePreview | null {
     const link = roomLinkBySlug(room[1]);
     if (!link) return null;
     return {
-      title: `${link.title} · HIDN`,
-      description: `${link.description}. No names, ever.`,
-      image: `/brand/rooms/${link.slug}.png`,
-      imageAlt: `${link.title} on HIDN: ${link.description}.`,
+      title: `${roomTitle(link.title)} · HIDN`,
+      description: `${sentence(link.description)} An anonymous room on HIDN. No names, ever.`,
+      image: OG(`room-${link.slug}`),
+      imageAlt: `${roomTitle(link.title)} on HIDN: ${sentence(link.description)}`,
     };
   }
   // The public info pages each need their own title, description and
   // canonical, or search engines fold them into the homepage.
-  const info = INFO_PAGES[pathname.replace(/\/+$/, "")];
+  const info = INFO_PAGES[pathname === "/" ? "/" : pathname.replace(/\/+$/, "")] ?? (/^\/read\/[a-z-]+\/?$/.test(pathname) ? INFO_PAGES["/read"] : undefined);
   if (info) return info;
   if (/^\/mask\/?$/.test(pathname)) {
     return {
-      title: "Go anonymous · 12 masks for your pfp",
-      description: "Neon eyes, CCTV, thermal, glitch and more. Made on your device: your photo is never uploaded or stored.",
+      title: "Go anonymous · HIDN",
+      description: "12 masks for your profile picture: neon eyes, CCTV, thermal, glitch and more. Made on your device; your photo is never uploaded or stored.",
       image: "/brand/rooms/mask-share.jpg",
       imageAlt: "Go anonymous: six of the twelve profile picture masks, from HIDN and neon eyes to CCTV and thermal.",
     };
   }
   if (/^\/to\/[a-z2-9]{8}\/?$/.test(pathname)) {
     return {
-      title: "Someone opened a room for you · HIDN",
+      title: "Someone shared their private link with you · HIDN",
       description: "Say what you never said to them. No account, no name. They'll never know it was you.",
-      image: "/brand/rooms/personal-link.png",
-      imageAlt: "HIDN: say it. no names.",
+      image: OG("link"),
+      imageAlt: "HIDN: say it. No names. They'll never know it was you.",
     };
   }
   return null;
@@ -3133,7 +3162,7 @@ function withSharePreview(html: string, preview: SharePreview, url: URL): string
   // Canonical URLs always name the production origin, without a trailing slash.
   const path = url.pathname === "/" ? "/" : url.pathname.replace(/\/+$/, "");
   const absoluteUrl = `${CANONICAL_ORIGIN}${path}`;
-  const image = `${CANONICAL_ORIGIN}${preview.image}?v=1`;
+  const image = `${CANONICAL_ORIGIN}${preview.image}?v=2`;
   const set = (text: string, pattern: RegExp, value: string): string =>
     text.replace(pattern, (_match, before: string, after: string) => `${before}${escapeAttribute(value)}${after}`);
   let out = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeAttribute(preview.title)}</title>`);

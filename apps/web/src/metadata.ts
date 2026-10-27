@@ -29,15 +29,15 @@ const HOME_STRUCTURED_DATA: Record<string, unknown> = {
       "@id": `${PUBLIC_SITE_ORIGIN}/#website`,
       url: `${PUBLIC_SITE_ORIGIN}/`,
       name: "HIDN",
-      alternateName: "HIDN — A room without names",
-      description: "A privacy-first space for anonymous thoughts and unnamed conversations.",
+      alternateName: "HIDN · Say what you can't say out loud",
+      description: "A private room with no names. Say what you can't say out loud, and nobody, not even HIDN, knows it was you.",
       publisher: { "@id": `${PUBLIC_SITE_ORIGIN}/#organization` },
     },
     {
       "@type": "Organization",
       "@id": `${PUBLIC_SITE_ORIGIN}/#organization`,
       name: "HIDN",
-      alternateName: "HIDN — A room without names",
+      alternateName: "HIDN · Say what you can't say out loud",
       url: `${PUBLIC_SITE_ORIGIN}/`,
       logo: `${PUBLIC_SITE_ORIGIN}/brand/hidn-mark.png`,
     },
@@ -46,40 +46,40 @@ const HOME_STRUCTURED_DATA: Record<string, unknown> = {
 
 export const SHELL_METADATA: HidnMetadata = {
   kind: "shell",
-  title: "Hidn - A room without names",
+  title: "HIDN · Say what you can't say out loud",
   description:
-    "HIDN is an anonymous confession platform designed around privacy by default.",
+    "A private room with no names. Say what you can't say out loud, and nobody, not even HIDN, knows it was you.",
   canonicalPath: "/",
 };
 
 export const HOME_METADATA: HidnMetadata = {
   kind: "public-home",
-  title: "Hidn - A room without names",
+  title: "HIDN · Say what you can't say out loud",
   description:
-    "HIDN is a privacy-first space for anonymous thoughts and unnamed conversations, built to reveal less by default.",
+    "A private room with no names. Say what you can't say out loud, and nobody, not even HIDN, knows it was you.",
   canonicalPath: "/",
-  imagePath: "/brand/hidn-og-terminal.png?v=20261012",
+  imagePath: "/brand/og/home.png?v=2",
   structuredData: HOME_STRUCTURED_DATA,
 };
 
 export const EXPLORE_METADATA: HidnMetadata = {
   kind: "private-room",
-  title: "HIDN — The Room",
-  description: "HIDN's private room for anonymous thoughts and unnamed conversations.",
+  title: "The room · HIDN",
+  description: "A private room with no names. Say what you can't say out loud, and nobody, not even HIDN, knows it was you.",
   canonicalPath: "/room",
-  imagePath: "/brand/hidn-og-terminal.png?v=20261012",
+  imagePath: "/brand/og/home.png?v=2",
 };
 
 export const ROOM_METADATA: HidnMetadata = {
   kind: "private-room",
-  title: "HIDN — Enter the Private Room",
-  description: "Enter HIDN's private room with a pseudonymous handle and recovery key.",
+  title: "Get in without a name · HIDN",
+  description: "No email, no phone number, no username. A private key made in your browser is your way in.",
   canonicalPath: "/room/access",
 };
 
 export const SYSTEM_METADATA: HidnMetadata = {
   kind: "design-system",
-  title: "HIDN — Visual Design System",
+  title: "Visual design system · HIDN",
   description: "Internal HIDN visual system preview. Not a public product page.",
   canonicalPath: "/system",
 };

@@ -1342,6 +1342,7 @@ function renderAmbientAudioToggle(): string {
   return `<button class="home-room-audio-toggle" id="home-audio-toggle" type="button" aria-pressed="${remembered}" data-state="${remembered ? "on" : "off"}" aria-label="${remembered ? "Turn off analog room signal" : "Turn on analog room signal"}">
     <span class="home-room-audio-toggle__label">SIGNAL</span>
     <span data-home-audio-label>${remembered ? "ON" : "OFF"}</span>
+    <svg class="home-room-audio-toggle__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"></path><path class="home-room-audio-toggle__waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"></path><path class="home-room-audio-toggle__mute" d="M16 9l5 6M21 9l-5 6"></path></svg>
   </button>`;
 }
 
@@ -2329,7 +2330,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
-    ${publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile", false, isRoomSurface)}
+    ${isHome || isRoomCreation ? "" : publicWindowChrome(path, isRoomSurface && normalizedPath !== "/room/profile", false, isRoomSurface)}
     ${isRoomSurface || isAdminPage || isRoomCreation || isHome ? "" : publicNavigation(path)}
     ${showsRoomTabs(normalizedPath) ? renderRoomTabs(normalizedPath) : ""}
     ${main}
@@ -2507,7 +2508,7 @@ function renderMixedFeed(): RenderedProductRoute {
     { key: "felt", label: "Felt" },
   ];
   return {
-    metadata: { ...EXPLORE_METADATA, title: "HIDN — Feed", canonicalPath: MIXED_FEED_PATH },
+    metadata: { ...EXPLORE_METADATA, title: "Every room · HIDN", canonicalPath: MIXED_FEED_PATH },
     html: !hasRoomSession()
       ? publicFrame(MIXED_FEED_PATH, renderConnectionLost(), "public-page--explore")
       : isRoomDesktopViewport()
@@ -3401,7 +3402,7 @@ function renderAdminReports(): RenderedProductRoute {
   return {
     metadata: {
       kind: "admin",
-      title: "HIDN — Report Console",
+      title: "Report console · HIDN",
       description: "Private HIDN moderation report console.",
       canonicalPath: "/admin/reports",
     },
@@ -3470,7 +3471,7 @@ function renderAdminDashboard(): RenderedProductRoute {
   return {
     metadata: {
       kind: "admin",
-      title: "HIDN — Admin Control",
+      title: "Admin control · HIDN",
       description: "Private HIDN administrator control surface.",
       canonicalPath: "/admin",
     },
@@ -3506,7 +3507,7 @@ function renderAdminModerators(): RenderedProductRoute {
   return {
     metadata: {
       kind: "admin",
-      title: "HIDN — Admin Roles",
+      title: "Admin roles · HIDN",
       description: "Private HIDN administrator role control.",
       canonicalPath: "/admin/moderators",
     },
@@ -3553,7 +3554,7 @@ function renderAdminAudit(): RenderedProductRoute {
   return {
     metadata: {
       kind: "admin",
-      title: "HIDN — Admin Audit",
+      title: "Admin audit · HIDN",
       description: "Private HIDN administrator audit log.",
       canonicalPath: "/admin/audit",
     },
@@ -3585,7 +3586,7 @@ function renderModerationGate(path: string): RenderedProductRoute {
   const metadata: HidnMetadata = normalizedPath.startsWith("/c/")
     ? {
         kind: "anonymous-confession",
-        title: "HIDN — Anonymous confession",
+        title: "An anonymous post · HIDN",
         description: "Checking HIDN moderation state before opening this transmission.",
         canonicalPath: path,
       }
@@ -4594,7 +4595,7 @@ function renderDetail(id: string): RenderedProductRoute {
   const detailRoomName = detailRoom ? roomDisplayName(detailRoom.label) : "";
   const metadata: HidnMetadata = {
     kind: "anonymous-confession",
-    title: "HIDN — Anonymous confession",
+    title: "An anonymous post · HIDN",
     description: isLivePost
       ? "An anonymous HIDN room thread. No public identity is attached to the conversation."
       : "An anonymous HIDN confession. No public identity or confession history is attached.",
@@ -5462,7 +5463,7 @@ function renderRoomProfile(): RenderedProductRoute {
   return {
     metadata: {
       ...ROOM_METADATA,
-      title: "HIDN — Private profile",
+      title: "Private profile · HIDN",
       description: "A private HIDN profile for recovery access and personal room history.",
       canonicalPath: "/room/profile",
     },
@@ -5483,7 +5484,7 @@ function renderRoomLinkInbox(): RenderedProductRoute {
   return {
     metadata: {
       ...ROOM_METADATA,
-      title: "HIDN — Your link",
+      title: "Your link · HIDN",
       description: "Your anonymous HIDN link and the messages left through it.",
       canonicalPath: "/room/inbox",
     },
@@ -5502,7 +5503,7 @@ function renderLinkSendRoute(path: string, slug: string): RenderedProductRoute {
   return {
     metadata: {
       ...HOME_METADATA,
-      title: "HIDN — Say it. No names.",
+      title: "Say it. No names. · HIDN",
       description: "Someone opened a room for you. Leave them a message without a name.",
       canonicalPath: path,
     },
@@ -5521,10 +5522,10 @@ function renderMaskRoute(): RenderedProductRoute {
   return {
     metadata: {
       ...HOME_METADATA,
-      title: "HIDN — Go anon",
+      title: "Go anonymous · HIDN",
       description,
       canonicalPath: MASK_PATH,
-      structuredData: webPageStructuredData("HIDN — Go anon", description, MASK_PATH),
+      structuredData: webPageStructuredData("Go anonymous · HIDN", description, MASK_PATH),
     },
     html: publicFrame(
       MASK_PATH,
@@ -5557,7 +5558,7 @@ function renderRoomAccess(): RenderedProductRoute {
         <header class="hidn-auth__top">
           <a class="hidn-auth__back" href="/" aria-label="Back to the homepage">←</a>
           <a class="hidn-home__logo" href="/" aria-label="HIDN home">&gt;hidn</a>
-          <span aria-hidden="true"></span>
+          <span class="hidn-auth__sound">${renderAmbientAudioToggle()}</span>
         </header>
         ${content}
       </main>`,
@@ -5613,10 +5614,10 @@ function renderHowItWorks(): RenderedProductRoute {
   return {
     metadata: {
       kind: "public-page",
-      title: "HIDN — How it works",
+      title: "How it works · HIDN",
       description,
       canonicalPath: "/how-it-works",
-      structuredData: webPageStructuredData("HIDN — How it works", description, "/how-it-works"),
+      structuredData: webPageStructuredData("How it works · HIDN", description, "/how-it-works"),
     },
     html: publicFrame(
       "/how-it-works",
@@ -5698,7 +5699,7 @@ function renderPlaceholder(path: string): RenderedProductRoute {
   return {
     metadata: {
       kind: "public-page",
-      title: `HIDN — ${title}`,
+      title: `${title} · HIDN`,
       description: page.copy,
       canonicalPath: path,
       structuredData: webPageStructuredData(`HIDN — ${title}`, page.copy, path),
@@ -5736,7 +5737,7 @@ function renderNotFound(): RenderedProductRoute {
   return {
     metadata: {
       kind: "not-found",
-      title: "HIDN — 404",
+      title: "Not found · HIDN",
       description: "The requested HIDN surface is not available.",
       canonicalPath: "/",
     },
@@ -5797,6 +5798,7 @@ function renderTerminalHomePage(): RenderedProductRoute {
         <header class="hidn-home__nav">
           <a class="hidn-home__logo" href="/" aria-label="HIDN home">&gt;hidn</a>
           <nav class="hidn-home__links" aria-label="Main">
+            ${renderAmbientAudioToggle()}
             <a class="hidn-home__link hidn-home__link--wide" href="/how-it-works">How it works</a>
             <a class="hidn-home__link hidn-home__link--wide" href="/read">Read first</a>
             <a class="hidn-home__link hidn-home__link--wide" href="${mask.href}">Mask your pfp</a>
@@ -5832,7 +5834,7 @@ function renderHome(privateFoyer = false): RenderedProductRoute {
   const entryLabel = privateFoyer ? "OPEN HALLWAY" : "ENTER ROOM";
   return {
     metadata: privateFoyer
-      ? { ...HOME_METADATA, title: "HIDN — The Private Room", canonicalPath: foyerPath }
+      ? { ...HOME_METADATA, title: "The private room · HIDN", canonicalPath: foyerPath }
       : HOME_METADATA,
     html: publicFrame(foyerPath, `<main id="main-content" class="public-main home-main">
       <section class="room-museum museum-foyer" data-room-museum data-museum-foyer${privateFoyer ? " data-museum-private-foyer" : ""} ${privateFoyer ? "aria-label=\"Private room\"" : "aria-labelledby=\"home-room-title\""}>
@@ -5868,7 +5870,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (import.meta.env.DEV && normalizedPath === "/museum-preview") {
     return {
-      metadata: { ...EXPLORE_METADATA, title: "HIDN — Museum Preview", canonicalPath: "/museum-preview" },
+      metadata: { ...EXPLORE_METADATA, title: "Museum preview · HIDN", canonicalPath: "/museum-preview" },
       html: museumDesignPreviewHtml(),
     };
   }
@@ -5895,7 +5897,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return {
       metadata: {
         ...EXPLORE_METADATA,
-        title: "HIDN — The Room",
+        title: "The room · HIDN",
         canonicalPath: "/room",
       },
       html: renderRoomMuseum(),
@@ -5904,7 +5906,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
 
   if (normalizedPath === "/room/library") {
     return {
-      metadata: { ...EXPLORE_METADATA, title: "HIDN — The Library", canonicalPath: normalizedPath },
+      metadata: { ...EXPLORE_METADATA, title: "The library · HIDN", canonicalPath: normalizedPath },
       html: renderLibraryMuseum(),
     };
   }
@@ -5913,7 +5915,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return {
       metadata: {
         ...EXPLORE_METADATA,
-        title: "HIDN — The Room",
+        title: "The room · HIDN",
         canonicalPath: normalizedPath,
       },
       html: renderRoomMuseum(),
@@ -5927,7 +5929,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return {
       metadata: {
         ...EXPLORE_METADATA,
-        title: "HIDN — The Museum",
+        title: "The museum · HIDN",
         canonicalPath: "/room",
       },
       html: renderRoomMuseum(),
@@ -5940,7 +5942,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return {
       metadata: {
         ...EXPLORE_METADATA,
-        title: `HIDN — ${roomChannelOption(roomChannelFeed).label} Feed`,
+        title: `${roomDisplayName(roomChannelOption(roomChannelFeed).label)} · HIDN`,
         canonicalPath: normalizedPath,
       },
       html: renderExplore(normalizedPath),
@@ -5953,7 +5955,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return {
       metadata: {
         ...EXPLORE_METADATA,
-        title: `HIDN — ${roomChannelOption(roomChannel).label}`,
+        title: `${roomDisplayName(roomChannelOption(roomChannel).label)} · HIDN`,
         canonicalPath: normalizedPath,
       },
       html: renderRoomChannelMuseum(roomChannel),
@@ -5992,7 +5994,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     return {
       metadata: {
         ...HOME_METADATA,
-        title: "HIDN — Read first",
+        title: "Read first · HIDN",
         description: "Real anonymous posts from the room without names. Read before you join.",
         canonicalPath: normalizedPath,
       },
@@ -6047,7 +6049,7 @@ export function renderProductRoute(path: string): RenderedProductRoute {
     // The social rooms section: every room's feed, without the 3D museum.
     if (normalizedPath === "/explore") window.history.replaceState({}, "", "/room/rooms");
     return {
-      metadata: { ...EXPLORE_METADATA, title: "HIDN — Rooms", canonicalPath: "/room/rooms" },
+      metadata: { ...EXPLORE_METADATA, title: "Rooms · HIDN", canonicalPath: "/room/rooms" },
       html: renderMobileRoomIndex(),
     };
   }
