@@ -284,7 +284,7 @@ function renderControls(): string {
     rows.push(`<div class="mask__ctl mask__ctl--size"><p>${escapeHtml(spec.sizeLabel)} <small>covers the face too</small></p><div class="mask__size"><button type="button" data-mask-size-step="-0.08" aria-label="Smaller">−</button><input type="range" min="0.3" max="1.7" step="0.01" value="${state.place.size}" data-mask-range="size" aria-label="${escapeHtml(spec.sizeLabel)}" /><button type="button" data-mask-size-step="0.08" aria-label="Bigger">+</button></div></div>`);
   }
   if (spec.spacing) {
-    rows.push(`<label class="mask__ctl"><p>EYE SPACING</p><input type="range" min="0.6" max="1.5" step="0.01" value="${state.place.spread}" data-mask-range="spread" /></label>`);
+    rows.push(`<div class="mask__ctl"><p>EYE SPACING</p><div class="mask__size"><button type="button" data-mask-size-step="-0.1" data-mask-step-key="spread" aria-label="Eyes closer">−</button><input type="range" min="0.4" max="2.6" step="0.01" value="${state.place.spread}" data-mask-range="spread" aria-label="Eye spacing" /><button type="button" data-mask-size-step="0.1" data-mask-step-key="spread" aria-label="Eyes wider apart">+</button></div></div>`);
   }
   if (spec.positioned) {
     rows.push(`<label class="mask__ctl"><p>TILT <button type="button" class="mask__reset" data-mask-straighten>STRAIGHTEN</button></p><input type="range" min="-0.6" max="0.6" step="0.005" value="${state.place.tilt}" data-mask-range="tilt" /></label>`);
@@ -350,9 +350,11 @@ export function bindMaskPage(root: ParentNode): void {
     const step = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-mask-size-step]");
     if (step) {
       event.preventDefault();
-      state.place.size = Math.min(1.7, Math.max(0.3, state.place.size + Number(step.dataset.maskSizeStep)));
-      const range = controls.querySelector<HTMLInputElement>('[data-mask-range="size"]');
-      if (range) range.value = String(state.place.size);
+      const key = step.dataset.maskStepKey === "spread" ? "spread" : "size";
+      const [lo, hi] = key === "spread" ? [0.4, 2.6] : [0.3, 1.7];
+      state.place[key] = Math.min(hi, Math.max(lo, state.place[key] + Number(step.dataset.maskSizeStep)));
+      const range = controls.querySelector<HTMLInputElement>(`[data-mask-range="${key}"]`);
+      if (range) range.value = String(state.place[key]);
       state.saved = false;
       drawHero(page);
       scheduleThumbs(page);
