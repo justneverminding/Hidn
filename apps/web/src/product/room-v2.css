@@ -1152,3 +1152,215 @@ html[data-perf="lite"] .public-page--theme-signal.room-v2::after { background: r
   .public-page.room-v2.room-v2.room-v2 .public-page__window-bar .room-notifications__panel { position: fixed; right: 40px; top: 60px; }
 }
 .public-page.room-v2.room-v2.room-v2:has(.room-notifications--open) .public-page__window-chrome { z-index: 400 !important; }
+
+/* ======================= Homepage (/) ======================= */
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .public-page__window-chrome { display: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__nav {
+  align-items: center; display: flex; height: 76px; justify-content: space-between; left: 0; padding: 0 clamp(20px, 4vw, 56px);
+  position: absolute; right: 0; top: 0; z-index: 6;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__logo,
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__top .hidn-home__logo { color: var(--v2-green); font: 600 22px var(--v2-mono); letter-spacing: 0; text-decoration: none; text-shadow: none; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__links { align-items: center; display: flex; gap: 28px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__link { color: #c3d3c5; font: 400 15px var(--v2-read); text-decoration: none; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__link:is(:hover, :focus-visible) { color: var(--v2-ink); }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__key {
+  align-items: center; background: rgba(1, 4, 3, 0.55); border: 1px solid var(--v2-edge); border-radius: 8px; color: var(--v2-green); display: inline-flex;
+  font: 500 15px var(--v2-read); min-height: 40px; padding: 0 16px; text-decoration: none;
+}
+/* The museum stays dark around the words; the right side is left for looking. */
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-welcome {
+  align-content: initial; background: linear-gradient(90deg, rgba(1, 4, 3, 0.9) 0%, rgba(1, 4, 3, 0.7) 34%, rgba(1, 4, 3, 0) 62%); display: block;
+  font-family: var(--v2-read); text-shadow: none;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hero {
+  -webkit-backdrop-filter: none; animation: none !important; backdrop-filter: none; background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important;
+  display: flex; flex-direction: column; gap: 22px; left: clamp(24px, 7vw, 96px); margin: 0; max-width: 620px; overflow: visible; padding: 0;
+  pointer-events: auto; position: absolute; top: 50%; transform: translateY(-55%); width: calc(100% - 48px);
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hero::before,
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hero::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hero > * { animation: hidn-welcome-in .7s ease both; margin: 0; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__eyebrow { align-items: center; color: var(--v2-muted); display: flex; font: 400 13px var(--v2-mono); gap: 10px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__eyebrow span { background: var(--v2-green); border-radius: 50%; box-shadow: 0 0 10px rgba(93, 255, 143, 0.7); height: 7px; width: 7px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__title {
+  color: var(--v2-green); font: 600 clamp(34px, 4.2vw, 58px)/1.08 var(--v2-mono); letter-spacing: -0.02em; text-transform: none;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__title::before,
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__title::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__lead { color: #b4c6b7; font: 400 clamp(17px, 1.4vw, 19px)/1.55 var(--v2-read); max-width: 520px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__actions { align-items: center; display: flex; gap: 12px; margin-top: 6px !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn {
+  align-items: center; border-radius: 10px; display: inline-flex; font: 500 17px var(--v2-read); justify-content: center; letter-spacing: 0; min-height: 54px; padding: 0 26px; text-decoration: none;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--primary { background: var(--v2-green); box-shadow: 0 0 30px rgba(93, 255, 143, 0.25); color: #021006; font-weight: 600; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--primary:is(:hover, :focus-visible) { background: #8affb1; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--ghost { border: 1px solid var(--v2-edge); color: var(--v2-green); }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--ghost:is(:hover, :focus-visible) { background: rgba(93, 255, 143, 0.08); }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__trust { color: var(--v2-dim); font: 400 13px var(--v2-mono); }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask {
+  align-items: center; background: rgba(4, 11, 7, 0.78); border: 1px solid var(--v2-edge); border-radius: 26px; bottom: 96px; color: var(--v2-ink); display: inline-flex;
+  font: 400 15px var(--v2-read); gap: 10px; left: clamp(24px, 7vw, 96px); min-height: 46px; padding: 0 16px 0 8px; position: absolute; text-decoration: none; z-index: 5;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask b { background: var(--v2-amber); border-radius: 4px; color: #1a1200; font: 600 11px var(--v2-mono); padding: 2px 6px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask i { color: var(--v2-green); font-style: normal; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask:is(:hover, :focus-visible) { border-color: var(--v2-green); }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said {
+  background: rgba(4, 11, 7, 0.84); border: 1px solid var(--v2-line-soft); border-radius: 14px; bottom: 96px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 10px; left: auto; margin: 0; max-width: none; padding: 20px 22px; pointer-events: auto; position: absolute; right: clamp(24px, 5vw, 72px);
+  text-align: left; top: auto; transform: none; width: 400px;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said[hidden] { display: none; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said figcaption { color: var(--v2-dim); display: flex; font: 400 12px var(--v2-mono); justify-content: space-between; letter-spacing: 0; text-transform: none; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said figcaption span { align-items: center; display: inline-flex; gap: 8px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said figcaption i { background: #ff5f5f; border-radius: 50%; height: 6px; width: 6px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said blockquote { color: var(--v2-ink); font: 500 18px/1.5 var(--v2-read); letter-spacing: 0; margin: 0; text-shadow: none; text-transform: none; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said blockquote::before,
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said blockquote::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__signed { align-items: center; color: var(--v2-dim); display: flex; font: 400 11px var(--v2-mono); gap: 8px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__signed i { background: repeating-linear-gradient(135deg, #0b1f14 0 4px, #2c6a46 4px 5.5px); border: 1px solid #2c6a46; height: 11px; width: 64px; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hint { color: var(--v2-dim) !important; font: 400 12px var(--v2-mono) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+/* The idle watcher, as a quiet card. */
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-watcher { background: #071009 !important; border: 1px solid var(--v2-edge) !important; border-radius: 14px !important; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7) !important; font-family: var(--v2-read) !important; padding: 18px !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-watcher__close { background: transparent; border: 0; color: var(--v2-muted); font-size: 22px; height: 40px; position: absolute; right: 6px; top: 6px; width: 40px; cursor: pointer; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-watcher__line { color: var(--v2-ink) !important; font: 600 17px var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-watcher__enter { align-items: center; background: var(--v2-green) !important; border: 0 !important; border-radius: 10px !important; color: #021006 !important; display: flex; font: 600 15px var(--v2-read) !important; justify-content: center; letter-spacing: 0 !important; min-height: 46px; text-decoration: none; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-watcher__enter::before,
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-watcher__enter::after { content: none !important; }
+
+@media (max-width: 900px) {
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__said { display: none !important; }
+}
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__link--wide { display: none; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__nav { height: 64px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__logo { font-size: 20px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__key { background: transparent; border: 0; color: #c3d3c5; padding: 0; min-height: 44px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask { bottom: auto; font-size: 14px; left: 20px; min-height: 40px; top: 72px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask span::after { content: ""; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-welcome { background: linear-gradient(180deg, rgba(1, 4, 3, 0) 40%, rgba(1, 4, 3, 0.9) 60%, #010403 72%); }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hero { bottom: calc(28px + env(safe-area-inset-bottom)); gap: 16px; left: 24px; right: 24px; top: auto; transform: none; width: auto; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__eyebrow,
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__lead span,
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__trust,
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hint { display: none !important; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__title { font-size: 34px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__lead { color: #9fb3a3; font-size: 17px; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__actions { flex-direction: column; gap: 4px; margin-top: 10px !important; width: 100%; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--primary { min-height: 56px; width: 100%; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--ghost { border: 0; font-size: 15px; min-height: 44px; }
+}
+
+/* ======================= Sign in (/room/access) ======================= */
+.public-page.room-v2.room-v2.room-v2.public-page--room:has(.hidn-auth-main) .public-page__window-chrome { display: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth-main {
+  background-image: radial-gradient(ellipse 70% 35% at 50% 0%, rgba(93, 255, 143, 0.07), transparent 70%); box-sizing: border-box; display: flex; flex-direction: column;
+  margin: 0 auto !important; max-width: 480px; min-height: 100dvh; padding: 0 24px calc(28px + env(safe-area-inset-bottom)) !important; width: 100%;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__top { align-items: center; display: grid; grid-template-columns: 44px 1fr 44px; height: 64px; justify-items: center; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__back { align-items: center; color: var(--v2-muted); display: inline-flex; font-size: 22px; height: 44px; justify-content: center; justify-self: start; margin-left: -12px; text-decoration: none; width: 44px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__top .hidn-home__logo { font-size: 18px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth { display: flex; flex: 1; flex-direction: column; gap: 14px; padding-top: 28px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth > * { margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__eyes { display: inline-flex; gap: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__eyes i { align-items: center; background: #e8f2e9; border-radius: 50%; display: inline-flex; height: 26px; justify-content: center; width: 26px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__eyes i::after { background: var(--v2-bg, #010403); border-radius: 50%; content: ""; height: 11px; width: 11px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__step { color: var(--v2-dim); font: 400 12px var(--v2-mono); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__title { color: var(--v2-green); font: 600 30px/1.15 var(--v2-mono); letter-spacing: -0.01em; text-shadow: none; text-transform: none; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__title::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__title::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__lead { color: var(--v2-muted); font: 400 16px/1.55 var(--v2-read); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__alias { color: var(--v2-ink); font: 600 15px var(--v2-mono); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__error { background: rgba(255, 95, 95, 0.08); border: 1px solid rgba(255, 141, 141, 0.35); border-radius: 10px; color: #ff9d9d; font: 500 14px/1.5 var(--v2-read); padding: 10px 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choices { display: flex; flex-direction: column; gap: 12px; margin-top: 16px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice {
+  background: transparent; border: 1px solid var(--v2-line-soft); border-radius: 14px; color: inherit; cursor: pointer; display: flex; flex-direction: column; font-family: var(--v2-read);
+  gap: 6px; padding: 18px; text-align: left; width: 100%;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice--new { background: rgba(93, 255, 143, 0.06); border-color: #2c6a46; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice:is(:hover, :focus-visible) { border-color: var(--v2-green); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice:disabled { cursor: wait; opacity: 0.7; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice-head { align-items: center; display: flex; justify-content: space-between; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice-head b { color: var(--v2-ink); font-size: 18px; font-weight: 600; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice-head i { color: var(--v2-green); font-size: 20px; font-style: normal; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice-copy { color: var(--v2-muted); font-size: 14.5px; line-height: 1.5; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__choice-cta { align-items: center; align-self: flex-start; background: var(--v2-green); border-radius: 8px; color: #021006; display: inline-flex; font-size: 15px; font-weight: 600; margin-top: 8px; min-height: 44px; padding: 0 20px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__note { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: flex; flex-direction: column; gap: 6px; margin-top: auto !important; padding: 14px 16px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__note p { color: var(--v2-muted); font: 400 13.5px/1.5 var(--v2-read); margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__note .hidn-auth__note-label { color: var(--v2-green); font: 400 12px var(--v2-mono); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__note .hidn-auth__note-title { color: var(--v2-ink); font-weight: 600; font-size: 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__note a,
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__link { align-self: flex-start; background: transparent; border: 0; color: var(--v2-green); cursor: pointer; font: 500 14px var(--v2-read); min-height: 36px; padding: 0; text-decoration: none; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__form { background: transparent !important; border: 0 !important; box-shadow: none !important; display: flex; flex-direction: column; gap: 8px; margin-top: 12px !important; padding: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-auth__btn, .hidn-auth__submit, .hidn-key__btn) {
+  align-items: center; background-image: none !important; border-radius: 10px !important; box-shadow: none !important; cursor: pointer; display: flex !important; font: 600 16px var(--v2-read) !important;
+  justify-content: center; letter-spacing: 0 !important; min-height: 52px !important; text-shadow: none !important; text-transform: none !important; width: 100%;
+}
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-auth__btn, .hidn-auth__submit, .hidn-key__btn)::before,
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-auth__btn, .hidn-auth__submit, .hidn-key__btn)::after { content: none !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-auth__btn--primary, .hidn-auth__submit, .hidn-key__btn--primary) { background: var(--v2-green) !important; border: 1px solid var(--v2-green) !important; color: #021006 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__submit:disabled { background: #0b1710 !important; border-color: var(--v2-line-soft) !important; color: #4f6b57 !important; cursor: not-allowed; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__hint { color: var(--v2-dim); font: 400 13px/1.5 var(--v2-read); margin: 0; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__divider { align-items: center; color: #4f6b57; display: flex; font: 400 12px var(--v2-mono); gap: 12px; margin: 14px 0 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__divider::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__divider::after { background: var(--v2-line-soft); content: ""; flex: 1; height: 1px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__label { color: var(--v2-muted); font: 500 14px var(--v2-read); margin-top: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__field { align-items: center; background: #040b07; border: 1px solid var(--v2-edge); border-radius: 10px; display: flex; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__field:focus-within { border-color: var(--v2-green); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__field input { background: transparent !important; border: 0 !important; box-shadow: none !important; color: var(--v2-ink) !important; flex: 1; font: 400 15px var(--v2-mono) !important; letter-spacing: 0 !important; min-height: 52px; min-width: 0; outline: none; padding: 0 14px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__show { background: transparent; border: 0; color: var(--v2-green); cursor: pointer; font: 500 14px var(--v2-read); min-height: 52px; padding: 0 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__row { display: grid; gap: 10px; grid-template-columns: 1fr 2fr; margin-top: 16px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__row .ui-button { background-image: none !important; border-radius: 10px !important; font: 600 15px var(--v2-read) !important; letter-spacing: 0 !important; min-height: 50px; text-transform: none !important; }
+/* Save your key */
+.public-page.room-v2.room-v2.room-v2 .hidn-auth .hidn-key { background: transparent !important; border: 0 !important; box-shadow: none !important; display: flex; flex-direction: column; gap: 8px; margin-top: 8px !important; padding: 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__form { display: flex; flex-direction: column; gap: 8px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__box { background: #040b07; border: 1px solid var(--v2-edge); border-radius: 12px; display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__label { color: var(--v2-muted) !important; display: flex; font: 400 13px var(--v2-read) !important; justify-content: space-between; letter-spacing: 0 !important; margin: 0; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__label span { color: var(--v2-amber); font: 400 11px var(--v2-mono); }
+.public-page.room-v2.room-v2.room-v2 .hidn-key--saved .hidn-key__label span { color: var(--v2-green); }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__code { background: transparent !important; border: 0 !important; color: var(--v2-ink) !important; font: 400 13.5px/1.6 var(--v2-mono) !important; letter-spacing: 0 !important; padding: 0 !important; text-shadow: none !important; word-break: break-all; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__actions { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__btn:not(.hidn-key__btn--primary) { background: transparent !important; border: 1px solid var(--v2-edge) !important; color: var(--v2-green) !important; font-weight: 500 !important; min-height: 46px !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-key__tip, .hidn-key__feedback) { color: var(--v2-dim) !important; font: 400 13px/1.5 var(--v2-read) !important; letter-spacing: 0 !important; margin: 2px 0 0; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key__feedback { color: var(--v2-green) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__enter { display: flex; flex-direction: column; gap: 12px; margin-top: auto !important; padding-top: 20px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__ack { align-items: center; border: 1px solid var(--v2-line-soft); border-radius: 10px; cursor: pointer; display: flex; gap: 12px; min-height: 48px; padding: 0 14px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__ack:has(input:checked) { border-color: #2c6a46; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__ack input { accent-color: var(--v2-green); height: 20px; margin: 0; width: 20px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__ack span { color: #e8f2e9; font: 400 15px var(--v2-read); }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__skip { align-self: center; background: transparent; border: 0; color: #c9a54a; cursor: pointer; font: 400 14px var(--v2-read); min-height: 40px; }
+/* A returning member's key panel on the you're-in screen */
+.public-page.room-v2.room-v2.room-v2 .hidn-auth .room-recovery-panel { background: transparent !important; border: 1px solid var(--v2-line-soft) !important; border-radius: 12px !important; box-shadow: none !important; padding: 14px 16px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth .room-recovery-panel :is(span, p) { font-family: var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__hero :is(a, button, .hidn-home__actions) { pointer-events: auto !important; visibility: visible !important; opacity: 1 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder {
+  align-items: center; background: rgba(244, 183, 40, 0.07) !important; border: 1px solid rgba(244, 183, 40, 0.35) !important; border-radius: 10px !important; display: flex; gap: 10px;
+  padding: 6px 6px 6px 14px !important; width: auto !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder > span { color: #f4cf72 !important; flex: 1; font: 500 14px/1.4 var(--v2-read) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder a { align-items: center; background: var(--v2-amber); border-radius: 8px; color: #1a1200 !important; display: inline-flex; font: 600 14px var(--v2-read) !important; letter-spacing: 0 !important; min-height: 36px; padding: 0 12px; text-decoration: none; }
+.public-page.room-v2.room-v2.room-v2 .hidn-key-reminder button { background: transparent; border: 0; color: #c9a54a; cursor: pointer; font-size: 18px; height: 36px; width: 36px; }
+/* Old theme rules set mono and wide tracking on every link and paragraph here; the homepage reads in Plex Sans. */
+.public-page.room-v2.room-v2.room-v2.public-page--welcome :is(.hidn-home__link, .hidn-home__key, .hidn-home__lead, .hidn-home__btn, .hidn-home__mask, .hidn-home__mask span, .hidn-home__said blockquote) {
+  font-family: var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2.public-page--welcome :is(.hidn-home__eyebrow, .hidn-home__trust, .hidn-home__said figcaption, .hidn-home__signed, .hidn-home__mask b) { letter-spacing: 0 !important; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__actions { align-self: flex-start; justify-content: flex-start !important; justify-self: start !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn { justify-self: auto !important; margin: 0 !important; }
+.public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask-short { display: none; }
+@media (max-width: 760px) {
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__actions { align-self: stretch; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__btn--ghost { align-self: center; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask-long { display: none; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask-short { display: inline; }
+  .public-page.room-v2.room-v2.room-v2.public-page--welcome .hidn-home__mask { max-width: calc(100% - 40px); right: auto; }
+}
+/* The old room layout dims the whole main area; sign-in should be fully lit. */
+.public-page.room-v2.room-v2.room-v2 .hidn-auth-main::before,
+.public-page.room-v2.room-v2.room-v2 .hidn-auth-main::after { content: none !important; display: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth :is(p, span, b, label, button, a, input):not(.hidn-auth__step):not(.hidn-auth__note-label):not(.hidn-auth__divider):not(.hidn-key__code):not(.hidn-key__label span):not(.hidn-auth__alias):not(#room-login-recovery-code) {
+  font-family: var(--v2-read) !important; letter-spacing: 0 !important; text-shadow: none !important; text-transform: none !important;
+}
+.public-page.room-v2.room-v2.room-v2 .hidn-auth :is(.hidn-auth__step, .hidn-auth__note-label, .hidn-auth__divider, .hidn-key__label span) { letter-spacing: 0 !important; text-shadow: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__top .hidn-auth__back { font-family: var(--v2-read) !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-auth__top { width: 100%; box-sizing: border-box; }

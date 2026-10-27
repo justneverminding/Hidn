@@ -2325,7 +2325,7 @@ function publicFrame(path: string, main: string, pageClass = ""): string {
     : [{ label: "HOW IT WORKS", href: "/how-it-works" }];
 
   // room-v2: the 2026-10 redesign (room-v2.css). Remove to restore the old look.
-  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" || normalizedPath.startsWith("/to/") ? " room-v2" : "";
+  const redesignClass = isRoomSurface || isPublicReadPage(normalizedPath) || normalizedPath === "/how-it-works" || normalizedPath.startsWith("/to/") || normalizedPath === "/" || normalizedPath === "/room/access" ? " room-v2" : "";
   return `<div class="public-page${isRoomCreation ? " public-page--room-access" : ""}${themeClass}${redesignClass} ${pageClass} fx-grain fx-vignette${isPointerSurface ? " hidn-pointer-surface" : ""}"${isPointerSurface ? " data-pointer-surface" : ""}>
     <a class="skip-link" href="#main-content">Skip to content</a>
     ${isPointerSurface ? renderPointerSpotlight() : ""}
@@ -5111,54 +5111,71 @@ function navigateIntoRoom(path = ROOM_HOME_PATH, options: { portal?: boolean } =
   navigateProductRoute(path);
 }
 
+function renderRoomAccessError(): string {
+  return roomLoginError ? `<p class="hidn-auth__error" role="alert">${escapeHtml(roomLoginError)}</p>` : "";
+}
+
 function renderRoomAccessChooser(): string {
-  return `<div class="hidn-access" data-hidn-type-panel>
-    <p class="hidn-access__code">/// ACCESS</p>
-    <h1 data-text="CROSS THE THRESHOLD.">CROSS THE THRESHOLD.</h1>
-    <p class="hidn-access__line">&gt; No email. No username. One tap and you get a private key.</p>
-    <p class="hidn-access__line">&gt; That key is your account. Save it and you can always come back.</p>
-    ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
-    <div class="hidn-access__actions" data-hidn-type-reveal>
-      ${SecondaryButton({ label: roomAnonymousSubmitting ? "[ MAKING YOUR KEY... ]" : "[ GET MY KEY ]", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
-      ${SecondaryButton({ label: "[ I HAVE A KEY ]", dataAction: "room-login" })}
+  return `<div class="hidn-auth" data-hidn-type-panel>
+    <span class="hidn-auth__eyes" aria-hidden="true"><i></i><i></i></span>
+    <h1 class="hidn-auth__title">Get in without a name.</h1>
+    <p class="hidn-auth__lead">No email, no phone number, no username. A private key is your way in.</p>
+    ${renderRoomAccessError()}
+    <div class="hidn-auth__choices" data-hidn-type-reveal>
+      <button class="hidn-auth__choice hidn-auth__choice--new" type="button" data-action="room-create-account"${roomAnonymousSubmitting ? " disabled" : ""}>
+        <span class="hidn-auth__choice-head"><b>I'm new here</b><i aria-hidden="true">→</i></span>
+        <span class="hidn-auth__choice-copy">Get a private key in one tap. It's made in this browser and stays with you.</span>
+        <span class="hidn-auth__choice-cta">${roomAnonymousSubmitting ? "Making your key…" : "Get my key"}</span>
+      </button>
+      <button class="hidn-auth__choice" type="button" data-action="room-login">
+        <span class="hidn-auth__choice-head"><b>I have a key</b><i aria-hidden="true">→</i></span>
+        <span class="hidn-auth__choice-copy">Paste it, or let your password manager fill it in.</span>
+      </button>
     </div>
+    <aside class="hidn-auth__note">
+      <p class="hidn-auth__note-label">zero knowledge</p>
+      <p>HIDN can check that you're a member. It can never tell which member you are.</p>
+      <a href="/how-it-works">How it works →</a>
+    </aside>
   </div>`;
 }
 
 function renderRoomCreate(): string {
-  return `<div class="hidn-access" data-hidn-type-panel>
-    <p class="hidn-access__code" data-hidn-type>/// ACCESS / NEW KEY</p>
-    <h1 data-hidn-type data-text="KEEP YOUR KEY.">KEEP YOUR KEY.</h1>
-    <p class="hidn-access__line" data-hidn-type>&gt; HIDN CREATES A PRIVATE RECOVERY KEY IN THIS BROWSER.</p>
-    <p class="hidn-access__line" data-hidn-type>&gt; NO USERNAME. NO HANDLE. NO PUBLIC IDENTITY.</p>
-    <p class="hidn-access__line hidn-access__line--warn" data-hidn-type>&gt; SAVE IT WHEN IT APPEARS. HIDN CANNOT RECOVER IT.</p>
-    ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
-    <div class="hidn-access__actions" data-hidn-type-reveal>
-      ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
-      ${SecondaryButton({ label: roomAnonymousSubmitting ? "[ CREATING KEY... ]" : "[ GENERATE RECOVERY KEY ]", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
+  return `<div class="hidn-auth" data-hidn-type-panel>
+    <h1 class="hidn-auth__title">Make your key.</h1>
+    <p class="hidn-auth__lead">HIDN makes a private key in this browser. No username, no handle, no public identity. Save it when it appears: nobody can recover it for you.</p>
+    ${renderRoomAccessError()}
+    <div class="hidn-auth__row" data-hidn-type-reveal>
+      ${GhostButton({ label: "Back", dataAction: "room-back" })}
+      ${SecondaryButton({ label: roomAnonymousSubmitting ? "Making your key…" : "Make my key", disabled: roomAnonymousSubmitting, dataAction: "room-create-account" })}
     </div>
   </div>`;
 }
 
 function renderRoomLogin(): string {
-  return `<div class="hidn-access" data-hidn-type-panel>
-    <p class="hidn-access__code">/// ACCESS / RECOVER</p>
-    <h1 data-text="RETURN TO THE ROOM.">RETURN TO THE ROOM.</h1>
-    <p class="hidn-access__line">&gt; Tap the box: if you saved your key to passwords, it fills itself in. Or paste it.</p>
-    ${roomLoginError ? `<p class="hidn-access__error" role="alert">!! ${escapeHtml(roomLoginError)}</p>` : ""}
-    <form class="room-login-card hidn-access__form" data-room-login-form action="/room/access" method="post" autocomplete="on" novalidate>
+  const busy = roomLoginSubmitting || roomAnonymousSubmitting;
+  return `<div class="hidn-auth" data-hidn-type-panel>
+    <h1 class="hidn-auth__title">Welcome back.</h1>
+    <p class="hidn-auth__lead">Your key opens the room. Nothing else about you is asked.</p>
+    ${renderRoomAccessError()}
+    <form class="room-login-card hidn-auth__form" data-room-login-form action="/room/access" method="post" autocomplete="on" novalidate>
       <input class="hidn-key__sr" type="text" name="username" autocomplete="username" value="${KEY_CREDENTIAL_NAME}" readonly tabindex="-1" aria-hidden="true" />
-      <label class="hidn-access__prompt" for="room-login-recovery-code">
-        <span aria-hidden="true">hidn@room:~$</span>
-        <span class="hidn-term__sr">Your HIDN key</span>
-        <input id="room-login-recovery-code" name="password" type="password" placeholder="HIDN-ANON-XXXX-..." autocomplete="current-password" spellcheck="false" autocapitalize="characters" />
-      </label>
-      ${canReadSavedKey() ? `<button class="hidn-key__btn" type="button" data-action="room-login-saved">[ USE MY SAVED KEY ]</button>` : ""}
-      <div class="hidn-access__actions" data-hidn-type-reveal>
-        ${GhostButton({ label: "[ ← BACK ]", dataAction: "room-back" })}
-        ${SecondaryButton({ label: roomLoginSubmitting || roomAnonymousSubmitting ? "[ VERIFYING KEY... ]" : "[ ENTER WITH KEY ]", disabled: roomLoginSubmitting || roomAnonymousSubmitting, dataAction: "room-submit-login" })}
+      ${canReadSavedKey() ? `<button class="hidn-auth__btn hidn-auth__btn--primary" type="button" data-action="room-login-saved">Use my saved key</button>
+      <p class="hidn-auth__hint">Your phone or browser fills it in if you saved it to passwords.</p>
+      <p class="hidn-auth__divider"><span>or paste it</span></p>` : ""}
+      <label class="hidn-auth__label" for="room-login-recovery-code">Your key</label>
+      <div class="hidn-auth__field">
+        <input id="room-login-recovery-code" name="password" type="password" placeholder="HIDN-ANON-…" autocomplete="current-password" spellcheck="false" autocapitalize="characters" />
+        <button type="button" class="hidn-auth__show" data-key-show aria-pressed="false">Show</button>
       </div>
+      <p class="hidn-auth__hint">Tap the box: if you saved your key to passwords, it can fill itself in.</p>
+      ${SecondaryButton({ label: busy ? "Checking your key…" : "Enter the room", disabled: busy, dataAction: "room-submit-login", className: "hidn-auth__submit" })}
     </form>
+    <aside class="hidn-auth__note">
+      <p class="hidn-auth__note-title">Lost your key?</p>
+      <p>It can't be recovered. That's what keeps you anonymous. You can start again with a new key.</p>
+      <button type="button" class="hidn-auth__link" data-action="room-create-account">Get a new key →</button>
+    </aside>
   </div>`;
 }
 
@@ -5216,29 +5233,29 @@ function renderRoomRecoveryPanel(): string {
 
 function renderRoomReady(): string {
   const isNewAccount = roomAccountWasCreated;
-  const signalMode = activeHidnTheme() === "signal";
-  const titleText = isNewAccount ? "SAVE YOUR KEY." : "THE ROOM IS OPEN.";
-  const titlePrefix = isNewAccount ? "SAVE YOUR" : "THE ROOM IS";
-  const titleSignal = isNewAccount ? "KEY." : "OPEN.";
-  const accountCopy = isNewAccount
-    ? "You're in. One last thing before you enter: save your key."
-    : "You're signed in. Head into the room to read, post and reply.";
   const keySaved = isKeySaved(roomAccountRecoveryCode);
+  if (!isNewAccount) {
+    return `<div class="hidn-auth">
+      <span class="hidn-auth__eyes" aria-hidden="true"><i></i><i></i></span>
+      <h1 class="hidn-auth__title">You're in.</h1>
+      <p class="hidn-auth__lead">${roomAnonymousIdentity?.alias ? `Today you're <b class="hidn-auth__alias">${escapeHtml(roomAnonymousIdentity.alias)}</b>. The name changes every visit.` : "Head into the room to read, post and reply."}</p>
+      ${roomAnonymousIdentity ? renderRoomRecoveryPanel() : ""}
+      ${SecondaryButton({ label: "Go to the room", className: "room-ready-enter hidn-auth__submit", dataAction: "room-enter" })}
+    </div>`;
+  }
 
-  return `<div class="room-access-page room-access-page--ready">
-    <header class="room-access-header room-access-header--compact">
-      ${signalMode ? TerminalLabel("HIDN / YOUR KEY") : ""}
-      <h1 class="type-display-lg room-access-header__title" aria-label="${escapeHtml(titleText)}">
-        ${escapeHtml(titlePrefix)}<br />
-        <em>${escapeHtml(titleSignal)}</em>
-      </h1>
-      <p class="room-access-header__copy">${escapeHtml(accountCopy)}</p>
-    </header>
-    ${roomAnonymousIdentity && isNewAccount && roomAccountRecoveryCode ? renderKeySaveCard(roomAccountRecoveryCode, { heading: "THIS KEY IS YOUR WAY BACK IN." }) : roomAnonymousIdentity ? renderRoomRecoveryPanel() : ""}
-    <div class="room-access-actions">
-      ${isNewAccount && !keySaved
-        ? GhostButton({ label: "[ ENTER WITHOUT SAVING ]", className: "room-ready-enter", dataAction: "room-enter" })
-        : SecondaryButton({ label: isNewAccount ? "ENTER THE ROOM →" : "GO BACK TO ROOM →", className: "room-ready-enter", dataAction: "room-enter" })}
+  return `<div class="hidn-auth">
+    <p class="hidn-auth__step">step 2 of 2</p>
+    <h1 class="hidn-auth__title">This is your key.</h1>
+    <p class="hidn-auth__lead">It's your only way back in. There's no email and no reset, so if you lose it, nobody can recover it. Not even us.</p>
+    ${roomAnonymousIdentity && roomAccountRecoveryCode ? renderKeySaveCard(roomAccountRecoveryCode) : ""}
+    <div class="hidn-auth__enter">
+      <label class="hidn-auth__ack">
+        <input type="checkbox" data-key-ack${keySaved ? " checked" : ""} />
+        <span>I've saved my key somewhere safe</span>
+      </label>
+      ${SecondaryButton({ label: "Enter the room", className: "room-ready-enter hidn-auth__submit", dataAction: "room-enter", disabled: !keySaved })}
+      ${keySaved ? "" : `<button type="button" class="hidn-auth__skip" data-action="room-enter">Skip for now. I understand I could lose access.</button>`}
     </div>
   </div>`;
 }
@@ -5519,6 +5536,10 @@ function renderMaskRoute(): RenderedProductRoute {
 
 function renderRoomAccess(): RenderedProductRoute {
   restoreRoomAccountState();
+  // "I have a key" on the homepage lands straight on the log-in screen.
+  if (roomAccessMode === "choose" && window.location.hash === "#login") {
+    roomAccessMode = "login";
+  }
   const content =
     roomAccessMode === "create"
       ? renderRoomCreate()
@@ -5532,8 +5553,13 @@ function renderRoomAccess(): RenderedProductRoute {
     metadata: ROOM_METADATA,
     html: publicFrame(
       "/room/access",
-      `<main id="main-content" class="public-main room-main room-access-main hidn-term-main">
-        ${terminalWindow(`hidn@room: ~/access${roomAccessMode === "create" ? "/new-key" : roomAccessMode === "login" ? "/recover" : roomAccessMode === "ready" ? "/open" : ""}`, content, "hidn-term--access")}
+      `<main id="main-content" class="public-main room-main room-access-main hidn-auth-main">
+        <header class="hidn-auth__top">
+          <a class="hidn-auth__back" href="/" aria-label="Back to the homepage">←</a>
+          <a class="hidn-home__logo" href="/" aria-label="HIDN home">&gt;hidn</a>
+          <span aria-hidden="true"></span>
+        </header>
+        ${content}
       </main>`,
       "public-page--room",
     ),
@@ -5757,32 +5783,43 @@ function homeMuseumPosts(privateFoyer = false): MuseumPost[] {
 function renderTerminalHomePage(): RenderedProductRoute {
   const signedIn = hasRoomSession();
   const enterPath = signedIn ? ROOM_HOME_PATH : "/room/access";
+  const mask = maskEntry();
   return {
     metadata: HOME_METADATA,
     html: publicFrame("/", `<main id="main-content" class="public-main home-main">
       <section class="room-museum museum-foyer museum-foyer--preface" data-room-museum data-museum-foyer aria-labelledby="hidn-welcome-title">
-        <div class="room-museum__stage" data-museum-stage><p class="room-museum__loading" data-museum-loading role="status" hidden>OPENING THE GALLERY…</p></div>
+        <div class="room-museum__stage" data-museum-stage><p class="room-museum__loading" data-museum-loading role="status" hidden>Opening the gallery…</p></div>
         <aside class="room-museum__reader" data-museum-reader hidden role="dialog" aria-labelledby="foyer-reader-title">
-          <div class="room-museum__reader-top"><span id="foyer-reader-title" data-museum-post-category>SAMPLE THOUGHT</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
+          <div class="room-museum__reader-top"><span id="foyer-reader-title" data-museum-post-category>Sample thought</span><button type="button" data-museum-reader-close aria-label="Close thought">×</button></div>
           <blockquote data-museum-post-text></blockquote>
-          <footer><span>PUBLIC FOYER</span><a href="${enterPath}">ENTER ROOM →</a></footer>
+          <footer><span>Public foyer</span><a href="${enterPath}">Enter the room →</a></footer>
         </aside>
-        <div class="hidn-welcome"><div class="hidn-welcome__panel">
-          <h1 id="hidn-welcome-title" data-text="WELCOME TO HIDN" data-hidn-type>WELCOME TO HIDN</h1>
-          <p class="hidn-welcome__sub" data-hidn-type>SAY THE THING YOU CAN'T SAY OUT LOUD.</p>
-          <p class="hidn-welcome__question" data-hidn-type>NOBODY WILL EVER KNOW IT WAS YOU.</p>
-          <div class="hidn-welcome__actions" data-hidn-type-reveal>
-            <a class="hidn-welcome__enter hidn-welcome__enter--ready" href="${enterPath}">[ ${signedIn ? "RETURN TO ROOM" : "ENTER ROOM"} ]</a>
-            <a class="hidn-welcome__enter hidn-welcome__enter--ready hidn-welcome__enter--ghost" href="/read">[ READ FIRST ]</a>
+        <header class="hidn-home__nav">
+          <a class="hidn-home__logo" href="/" aria-label="HIDN home">&gt;hidn</a>
+          <nav class="hidn-home__links" aria-label="Main">
+            <a class="hidn-home__link hidn-home__link--wide" href="/how-it-works">How it works</a>
+            <a class="hidn-home__link hidn-home__link--wide" href="/read">Read first</a>
+            <a class="hidn-home__link hidn-home__link--wide" href="${mask.href}">Mask your pfp</a>
+            ${signedIn ? "" : `<a class="hidn-home__key" href="/room/access#login">I have a key</a>`}
+          </nav>
+        </header>
+        <a class="hidn-home__mask" href="${mask.href}"><b>New</b><span class="hidn-home__mask-long">Make your profile picture anonymous</span><span class="hidn-home__mask-short">Mask your pfp</span><i aria-hidden="true">→</i></a>
+        <div class="hidn-welcome hidn-home"><div class="hidn-welcome__panel hidn-home__hero">
+          <p class="hidn-home__eyebrow"><span aria-hidden="true"></span>hidn://private_room · built on Zcash</p>
+          <h1 id="hidn-welcome-title" class="hidn-home__title">Say what you can't say out loud.</h1>
+          <p class="hidn-home__lead">A private room with no names.<span> Your browser proves you belong, without ever saying who you are.</span></p>
+          <div class="hidn-welcome__actions hidn-home__actions" data-hidn-type-reveal>
+            <a class="hidn-home__btn hidn-home__btn--primary" href="${enterPath}">${signedIn ? "Back to the room" : "Enter the room"}</a>
+            <a class="hidn-home__btn hidn-home__btn--ghost" href="/read">Read first</a>
           </div>
-          <p class="hidn-welcome__free">PRIVATE · NO NAME · NO USERNAME</p>
-          <a class="hidn-welcome__mask" href="${maskEntry().href}">&gt; new: ${maskEntry().label} →</a>
+          <p class="hidn-home__trust">no email · no username · zero knowledge</p>
         </div>
-        <figure class="hidn-welcome__ticker" data-home-ticker hidden aria-live="off">
+        <figure class="hidn-welcome__ticker hidn-home__said" data-home-ticker hidden aria-live="off">
+          <figcaption><span><i aria-hidden="true"></i>said in the room</span><span data-home-ticker-meta></span></figcaption>
           <blockquote data-home-ticker-text></blockquote>
-          <figcaption data-home-ticker-meta></figcaption>
+          <span class="hidn-home__signed">signed <i aria-hidden="true"></i> name withheld</span>
         </figure></div>
-        <p class="hidn-welcome__hint" data-museum-status>DRAG TO LOOK AROUND</p>
+        <p class="hidn-welcome__hint hidn-home__hint" data-museum-status>drag to look around the museum</p>
         ${renderWelcomeWatcher(enterPath)}
       </section>
     </main>`, "public-page--home public-page--home-museum public-page--welcome"),
@@ -7450,6 +7487,21 @@ export function bindProductRoute(root: ParentNode = document): void {
   }
   bindKeySaveCard(root, roomAccountRecoveryCode);
   bindKeyReminder(root);
+  // Save-your-key: ticking "I've saved my key" unlocks Enter the room.
+  root.querySelector<HTMLInputElement>("[data-key-ack]")?.addEventListener("change", (event) => {
+    const enter = root.querySelector<HTMLButtonElement>(".hidn-auth__enter .room-ready-enter");
+    if (enter) enter.disabled = !(event.target as HTMLInputElement).checked;
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-key-show]").forEach((toggle) => {
+    toggle.addEventListener("click", () => {
+      const input = toggle.parentElement?.querySelector<HTMLInputElement>("input");
+      if (!input) return;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      toggle.textContent = show ? "Hide" : "Show";
+      toggle.setAttribute("aria-pressed", String(show));
+    });
+  });
   root.querySelectorAll<HTMLButtonElement>("[data-mixed-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       activeMixedTab = (button.dataset.mixedTab as MixedFeedTab) ?? "mixed";

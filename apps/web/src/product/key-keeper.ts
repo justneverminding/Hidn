@@ -45,24 +45,23 @@ function rerender(): void {
 }
 
 /** The save step: shows the key and three ways to keep it. */
-export function renderKeySaveCard(recoveryCode: string, options: { heading?: string } = {}): string {
+export function renderKeySaveCard(recoveryCode: string): string {
   const saved = isKeySaved(recoveryCode);
-  return `<section class="hidn-key${saved ? " hidn-key--saved" : ""}" aria-labelledby="hidn-key-title">
-    <p class="hidn-key__label">&gt; ${saved ? "KEY SAVED ON THIS DEVICE" : "YOUR KEY / NOT SAVED YET"}</p>
-    <h2 id="hidn-key-title" class="hidn-key__title">${escapeHtml(options.heading ?? "SAVE YOUR KEY.")}</h2>
-    <p class="hidn-key__why">This key <b>is</b> your account. There's no email and no password reset, so if you lose it, nobody (not even us) can get you back in, and your posts and inbox are gone.</p>
+  return `<section class="hidn-key${saved ? " hidn-key--saved" : ""}" aria-label="Your key">
     <form class="hidn-key__form" data-key-save-form action="/room/access" method="post" autocomplete="on">
       <input class="hidn-key__sr" type="text" name="username" autocomplete="username" value="${KEY_CREDENTIAL_NAME}" readonly tabindex="-1" aria-hidden="true" />
       <input class="hidn-key__sr" type="password" name="password" autocomplete="new-password" value="${escapeHtml(recoveryCode)}" readonly tabindex="-1" aria-hidden="true" />
-      <code class="hidn-key__code" data-key-code>${escapeHtml(recoveryCode)}</code>
+      <div class="hidn-key__box">
+        <p class="hidn-key__label">Your key <span>${saved ? "saved" : "not saved yet"}</span></p>
+        <code class="hidn-key__code" data-key-code>${escapeHtml(recoveryCode)}</code>
+      </div>
+      <button class="hidn-key__btn hidn-key__btn--primary" type="submit">Save to my passwords</button>
       <div class="hidn-key__actions">
-        <button class="hidn-key__btn hidn-key__btn--primary" type="submit">[ SAVE TO PASSWORDS ]</button>
-        <button class="hidn-key__btn" type="button" data-key-download>[ DOWNLOAD ]</button>
-        <button class="hidn-key__btn" type="button" data-key-copy>[ COPY ]</button>
+        <button class="hidn-key__btn" type="button" data-key-download>Download</button>
+        <button class="hidn-key__btn" type="button" data-key-copy>Copy</button>
       </div>
     </form>
-    ${feedback ? `<p class="hidn-key__feedback" role="status">&gt; ${escapeHtml(feedback)}</p>` : ""}
-    <p class="hidn-key__tip">Tip: saving to passwords is easiest. Next time, your phone or browser fills the key in for you.</p>
+    ${feedback ? `<p class="hidn-key__feedback" role="status">${escapeHtml(feedback)}</p>` : `<p class="hidn-key__tip">Saving to passwords is easiest: next time your phone or browser fills it in for you.</p>`}
   </section>`;
 }
 
@@ -93,14 +92,14 @@ export function bindKeySaveCard(root: ParentNode, recoveryCode: string): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-    saved(recoveryCode, "DOWNLOADED AS hidn-key.txt. KEEP THAT FILE SOMEWHERE SAFE.");
+    saved(recoveryCode, "Downloaded as hidn-key.txt. Keep that file somewhere safe.");
   });
   root.querySelector<HTMLButtonElement>("[data-key-copy]")?.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(recoveryCode);
-      saved(recoveryCode, "COPIED. PASTE IT INTO YOUR NOTES OR PASSWORD APP NOW.");
+      saved(recoveryCode, "Copied. Paste it into your notes or password app now.");
     } catch {
-      feedback = "COPY FAILED. PRESS AND HOLD THE KEY TO SELECT IT.";
+      feedback = "Couldn't copy. Press and hold the key to select it.";
       rerender();
     }
   });
@@ -119,13 +118,13 @@ async function saveToPasswords(recoveryCode: string): Promise<void> {
   if (PasswordCredentialCtor && navigator.credentials?.store) {
     try {
       await navigator.credentials.store(new PasswordCredentialCtor({ id: KEY_CREDENTIAL_NAME, password: recoveryCode, name: KEY_CREDENTIAL_NAME }));
-      saved(recoveryCode, "SAVED TO YOUR PASSWORDS. YOUR BROWSER WILL FILL IT IN NEXT TIME.");
+      saved(recoveryCode, "Saved to your passwords. Your browser will fill it in next time.");
       return;
     } catch {
       // Fall through to the generic message.
     }
   }
-  saved(recoveryCode, "IF YOUR BROWSER ASKED TO SAVE IT, YOU'RE SET. IF NOT, USE DOWNLOAD OR COPY TOO.");
+  saved(recoveryCode, "If your browser asked to save it, you're set. If not, use Download or Copy too.");
 }
 
 /** Asks the password manager for a saved key (Chrome, Edge, Android). */
@@ -150,8 +149,8 @@ export function canReadSavedKey(): boolean {
 export function renderKeyReminder(recoveryCode: string): string {
   if (!recoveryCode || reminderDismissed || isKeySaved(recoveryCode)) return "";
   return `<div class="hidn-key-reminder" role="status">
-    <span>⚠ YOUR KEY ISN'T SAVED<span class="hidn-key-reminder__long">. LOSE IT AND YOU LOSE YOUR ACCOUNT.</span></span>
-    <a href="/room/profile#key">[ SAVE IT ]</a>
+    <span>Your key isn't saved<span class="hidn-key-reminder__long">. Lose it and you lose your account.</span></span>
+    <a href="/room/profile#key">Save it</a>
     <button type="button" data-key-reminder-close aria-label="Hide until next visit">×</button>
   </div>`;
 }

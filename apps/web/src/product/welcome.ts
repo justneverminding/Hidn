@@ -6,16 +6,14 @@ const IDLE_MS = 20_000;
 
 export function renderWelcomeWatcher(enterPath: string): string {
   return `<aside class="hidn-watcher" data-hidn-watcher hidden aria-live="polite" aria-labelledby="hidn-watcher-question">
-    <div class="hidn-watcher__bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">hidn@room: ~/watcher</span>
-      <button type="button" class="hidn-watcher__close" data-hidn-watcher-close aria-label="Close">×</button>
-    </div>
+    <button type="button" class="hidn-watcher__close" data-hidn-watcher-close aria-label="Close">×</button>
     <div class="hidn-watcher__body">
       <div class="hidn-watcher__eyes" aria-hidden="true">
         <span class="hidn-watcher__eye"><i data-hidn-pupil></i></span>
         <span class="hidn-watcher__eye"><i data-hidn-pupil></i></span>
       </div>
-      <p class="hidn-watcher__line" id="hidn-watcher-question" data-hidn-watcher-text data-text="&gt;&gt; WHAT ARE YOU WAITING FOR?">&gt;&gt; WHAT ARE YOU WAITING FOR?</p>
-      <a class="hidn-watcher__enter" href="${enterPath}" data-hidn-watcher-enter>[ ENTER THE ROOM ]</a>
+      <p class="hidn-watcher__line" id="hidn-watcher-question" data-hidn-watcher-text>What are you waiting for?</p>
+      <a class="hidn-watcher__enter" href="${enterPath}" data-hidn-watcher-enter>Enter the room</a>
     </div>
   </aside>`;
 }

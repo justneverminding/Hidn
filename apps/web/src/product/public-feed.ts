@@ -179,7 +179,7 @@ export function mountHomeTicker(root: ParentNode): () => void {
     let index = 0;
     const put = (post: RoomPost): void => {
       quote.textContent = `“${post.text.replace(/\s+/g, " ").trim()}”`;
-      meta.textContent = `— anonymous · ${timeAgo(post.time)}`;
+      meta.textContent = timeAgo(post.time);
     };
     const next = (): void => {
       if (stopped) return;
