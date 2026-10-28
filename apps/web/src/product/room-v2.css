@@ -516,6 +516,10 @@
   min-height: 40px;
   text-transform: none !important;
 }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-link__btn, .hidn-link__seg) { touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform .08s ease, background-color .15s ease; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-link__btn, .hidn-link__seg):active:not(:disabled) { transform: scale(0.96); }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__inbox-head [data-link-action="refresh"] { min-width: 132px; justify-content: center; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__inbox-head [data-link-action="refresh"]:disabled { cursor: progress; opacity: .7; }
 .public-page.room-v2.room-v2.room-v2 .hidn-link__btn--primary { background: var(--v2-green) !important; border-color: var(--v2-green) !important; color: #021006 !important; font-weight: 600 !important; }
 .public-page.room-v2.room-v2.room-v2 :is(.hidn-link__btn--plain, .hidn-link__seg)::before,
 .public-page.room-v2.room-v2.room-v2 :is(.hidn-link__btn--plain, .hidn-link__seg)::after { content: none !important; }

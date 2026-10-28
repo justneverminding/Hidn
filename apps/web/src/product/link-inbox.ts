@@ -1,6 +1,7 @@
 import { escapeHtml } from "@hidn/ui";
 import * as QRCode from "qrcode";
 import { renderShareCard } from "./share-card";
+import { openShareSheet } from "./share-sheet";
 import { createLinkKeyMaterial, openLinkMessage, openLinkPrivateKey, sealLinkMessage } from "./link-e2e";
 import { containsLink, LINK_BLOCKED_ERROR } from "./link-rules";
 import {
@@ -425,6 +426,14 @@ async function loadInbox(context: LinkOwnerContext): Promise<void> {
   rerender();
 }
 
+/** The refresh button says what it's doing, then what it found. */
+function refreshLabel(): string {
+  if (inbox.busy === "refresh" || inbox.status === "loading") return "Refreshing…";
+  if (inbox.feedback === "refreshed:0") return "Up to date ✓";
+  if (inbox.feedback.startsWith("refreshed:")) return `${inbox.feedback.slice(10)} new ✓`;
+  return "Refresh";
+}
+
 function renderLinkCard(link: LinkInbox): string {
   const url = linkUrl(link.slug);
   const open = link.status === "open";
@@ -500,7 +509,7 @@ function renderMessages(data: LinkInboxResponse): string {
   return `<section class="hidn-link__inbox">
     <header class="hidn-link__inbox-head">
       <p class="hidn-link__label">${data.messages.length} ${data.messages.length === 1 ? "message" : "messages"}</p>
-      ${ownerButton(inbox.status === "loading" ? "Reading…" : "Refresh", "refresh")}
+      ${ownerButton(refreshLabel(), "refresh", { disabled: inbox.busy === "refresh" })}
     </header>
     ${items || `<p class="hidn-link__empty">&gt; nothing yet. share your link and wait in the dark.<span class="hidn-link__caret">▌</span></p>
       <div class="hidn-link__actions">${ownerButton("Get my link", "view-link", { primary: true })}</div>`}
@@ -524,7 +533,7 @@ export function renderLinkInboxBody(): string {
 
   const data = inbox.data!;
   const error = inbox.error ? `<p class="hidn-link__error" role="alert">&gt; ${escapeHtml(inbox.error)}</p>` : "";
-  const status = inbox.feedback && inbox.feedback !== "copied" ? `<p class="hidn-link__ok" role="status">${escapeHtml(inbox.feedback)}</p>` : "";
+  const status = inbox.feedback && inbox.feedback !== "copied" && !inbox.feedback.startsWith("refreshed:") ? `<p class="hidn-link__ok" role="status">${escapeHtml(inbox.feedback)}</p>` : "";
   if (!data.link) {
     return `<div class="hidn-link">${head}
       <section class="hidn-link__card">
@@ -589,7 +598,23 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
   const link = inbox.data?.link;
 
   if (action === "refresh") {
+    const before = new Set(inbox.data?.messages.map((message) => message.id) ?? []);
+    inbox.busy = "refresh";
+    inbox.feedback = "";
+    rerender();
     await loadInbox(context);
+    inbox.busy = "";
+    if (inbox.status === "ready") {
+      const added = inbox.data?.messages.filter((message) => !before.has(message.id)).length ?? 0;
+      inbox.feedback = `refreshed:${added}`;
+      window.setTimeout(() => {
+        if (inbox.feedback.startsWith("refreshed:")) {
+          inbox.feedback = "";
+          rerender();
+        }
+      }, 2200);
+    }
+    rerender();
     return;
   }
   if (action === "view-messages" || action === "view-link") {
@@ -600,7 +625,7 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
     return;
   }
   if ((action === "share-message" || action === "save-message") && messageId) {
-    await shareMessageImage(messageId, action === "share-message" ? "share" : "save");
+    shareMessageImage(messageId, action === "share-message" ? "share" : "save");
     return;
   }
   if (action === "copy-link" && link) {
@@ -680,52 +705,55 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
 
 /** The message as the room's share card: the words only, no name and no
  * link, so sharing it never points back to the owner or the sender. */
-async function shareMessageImage(messageId: string, mode: "share" | "save"): Promise<void> {
+/** Share or save a message as an image: pick Post, Story or Wide in the share sheet first. */
+function shareMessageImage(messageId: string, mode: "share" | "save"): void {
   const message = inbox.data?.messages.find((candidate) => candidate.id === messageId);
   if (!message) return;
   const setStatus = (text: string): void => {
     if (text) inbox.shareStatus.set(messageId, text); else inbox.shareStatus.delete(messageId);
     rerender();
   };
-  setStatus("RENDERING IMAGE...");
-  try {
-    const blob = await renderShareCard({
+  const filename = `hidn-message-${message.id.replace(/^MSG-/, "").slice(0, 8).toLowerCase()}`;
+  openShareSheet({
+    mode,
+    replies: [],
+    preselect: [],
+    render: (size) => renderShareCard({
       text: message.text,
       replies: [],
       room: "My inbox",
       reference: message.id,
       mark: "// sent to me",
       theme: "signal",
-    });
-    const filename = `hidn-message-${message.id.replace(/^MSG-/, "").slice(0, 8).toLowerCase()}.png`;
-    const file = new File([blob], filename, { type: "image/png" });
-    if (mode === "share" && typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: "HIDN", text: "said to me with no name. hidn." });
-        setStatus("");
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          setStatus("");
+      size,
+    }),
+    confirm: async (blob, size, action) => {
+      const file = new File([blob], `${filename}${size === "post" ? "" : `-${size}`}.png`, { type: "image/png" });
+      if (action === "share" && typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: "HIDN", text: "said to me with no name. hidn." });
+          setStatus("SHARED");
           return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            setStatus("");
+            return;
+          }
         }
       }
-    }
-    // Saving, or sharing where the browser cannot share files: download it.
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-    setStatus(mode === "save" ? "IMAGE SAVED" : "IMAGE SAVED. POST IT FROM YOUR PHOTOS.");
-  } catch {
-    setStatus("THE IMAGE COULD NOT BE MADE. TRY AGAIN.");
-  }
+      // Saving, or sharing where the browser cannot share files: download it.
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setStatus(action === "save" ? "IMAGE SAVED" : "IMAGE SAVED. POST IT FROM YOUR PHOTOS.");
+    },
+  });
 }
-
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
