@@ -2491,14 +2491,22 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
 
   const db = env.ROOM_DB!;
   const requestedDays = Number(new URL(request.url).searchParams.get("days") ?? "30");
-  const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
-  const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+  const days = [1, 7, 30, 90].includes(requestedDays) ? requestedDays : 30;
+  // "1" is the last 24 hours, counted hour by hour; the rest go day by day.
+  const hourly = days === 1;
+  const bucketLength = hourly ? 13 : 10;
+  const bucketMs = hourly ? 3_600_000 : 86_400_000;
+  const buckets = hourly ? 24 : days;
+  const sinceAt = hourly
+    ? `${new Date(Date.now() - 23 * 3_600_000).toISOString().slice(0, 13)}:00:00.000Z`
+    : `${new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const since = sinceAt.slice(0, 10);
   const one = async (sql: string, ...binds: unknown[]): Promise<number> =>
     Number((await db.prepare(sql).bind(...binds).first<{ n: number }>())?.n ?? 0);
   const daily = async (table: string): Promise<Record<string, number>> => {
     const rows = await db.prepare(
-      `SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS n FROM ${table} WHERE substr(created_at, 1, 10) >= ? GROUP BY day`,
-    ).bind(since).all<{ day: string; n: number }>();
+      `SELECT substr(created_at, 1, ${bucketLength}) AS day, COUNT(*) AS n FROM ${table} WHERE created_at >= ? GROUP BY day`,
+    ).bind(sinceAt).all<{ day: string; n: number }>();
     return Object.fromEntries(rows.results.map((row) => [row.day, Number(row.n)]));
   };
 
@@ -2515,14 +2523,14 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
     one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NOT NULL"),
   ]);
   const [postsReplied, linksWithMessages, recentPosts] = await Promise.all([
-    one(`SELECT COUNT(*) AS n FROM hidn_threads t WHERE t.hidden_at IS NULL AND substr(t.created_at, 1, 10) >= ?
-         AND EXISTS (SELECT 1 FROM hidn_replies r WHERE r.thread_id = t.thread_id)`, since),
+    one(`SELECT COUNT(*) AS n FROM hidn_threads t WHERE t.hidden_at IS NULL AND t.created_at >= ?
+         AND EXISTS (SELECT 1 FROM hidn_replies r WHERE r.thread_id = t.thread_id)`, sinceAt),
     one("SELECT COUNT(DISTINCT link_id) AS n FROM hidn_link_messages"),
-    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NULL AND substr(created_at, 1, 10) >= ?", since),
+    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NULL AND created_at >= ?", sinceAt),
   ]);
-  const previousSince = new Date(Date.parse(`${since}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+  const previousSinceAt = new Date(Date.parse(sinceAt) - buckets * bucketMs).toISOString();
   const between = (table: string, extra = "") => one(
-    `SELECT COUNT(*) AS n FROM ${table} WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) < ?${extra}`, previousSince, since,
+    `SELECT COUNT(*) AS n FROM ${table} WHERE created_at >= ? AND created_at < ?${extra}`, previousSinceAt, sinceAt,
   );
   const [prevMembers, prevPosts, prevReplies, prevLikes, prevMessages, membersBefore] = await Promise.all([
     between("hidn_anonymous_members"),
@@ -2530,12 +2538,12 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
     between("hidn_replies"),
     between("hidn_reactions"),
     between("hidn_link_messages"),
-    one("SELECT COUNT(*) AS n FROM hidn_anonymous_members WHERE substr(created_at, 1, 10) < ?", since),
+    one("SELECT COUNT(*) AS n FROM hidn_anonymous_members WHERE created_at < ?", sinceAt),
   ]);
   const roomRows = await db.prepare(
-    `SELECT channel, COUNT(*) AS total, SUM(CASE WHEN substr(created_at, 1, 10) >= ? THEN 1 ELSE 0 END) AS recent
+    `SELECT channel, COUNT(*) AS total, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS recent
      FROM hidn_threads WHERE hidden_at IS NULL GROUP BY channel ORDER BY total DESC`,
-  ).bind(since).all<{ channel: string; total: number; recent: number }>();
+  ).bind(sinceAt).all<{ channel: string; total: number; recent: number }>();
   const [memberDays, postDays, replyDays, likeDays, messageDays] = await Promise.all([
     daily("hidn_anonymous_members"),
     daily("hidn_threads"),
@@ -2543,8 +2551,8 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
     daily("hidn_reactions"),
     daily("hidn_link_messages"),
   ]);
-  const series = Array.from({ length: days }, (_, index) => {
-    const day = new Date(Date.parse(`${since}T00:00:00Z`) + index * 86_400_000).toISOString().slice(0, 10);
+  const series = Array.from({ length: buckets }, (_, index) => {
+    const day = new Date(Date.parse(sinceAt) + index * bucketMs).toISOString().slice(0, bucketLength);
     return {
       day,
       members: memberDays[day] ?? 0,
@@ -2556,14 +2564,16 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
   });
 
   // Traffic, from the daily page-view tally (empty until counting has run).
+  // Views are only kept per day, so the 24-hour view shows today's (UTC) tally.
+  const trafficSince = hourly ? new Date().toISOString().slice(0, 10) : since;
   let traffic: { pages: Array<{ page: string; views: number }>; sources: Array<{ source: string; views: number }>; countries: Array<{ country: string; views: number }>; daily: Record<string, number>; total: number; home: number; access: number } | null = null;
   try {
     const sum = (column: string) => db.prepare(
       `SELECT ${column} AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY ${column} ORDER BY n DESC LIMIT 12`,
-    ).bind(since).all<{ key: string; n: number }>();
+    ).bind(trafficSince).all<{ key: string; n: number }>();
     const [pages, sources, countries, dailyRows] = await Promise.all([
       sum("page"), sum("source"), sum("country"),
-      db.prepare("SELECT day AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY day").bind(since).all<{ key: string; n: number }>(),
+      db.prepare("SELECT day AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY day").bind(trafficSince).all<{ key: string; n: number }>(),
     ]);
     const pageViews = pages.results.map((row) => ({ page: row.key, views: Number(row.n) }));
     traffic = {

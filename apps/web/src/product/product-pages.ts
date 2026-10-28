@@ -3627,28 +3627,35 @@ function metricsChart(label: string, unit: string, days: string[], values: numbe
     : values.map((v, i) => `<rect x="${(i * step).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bar.toFixed(1)}" height="${(height - 6 - y(v)).toFixed(1)}" rx="1.5"/>`).join("");
   const gridlines = [0.5, 1].map((f) => `<line x1="0" x2="${width}" y1="${y(max * f).toFixed(1)}" y2="${y(max * f).toFixed(1)}"/>`).join("");
   const avg = values.length ? total / values.length : 0;
+  const hourly = (days[0] ?? "").length === 13;
   return `<figure class="hidn-chart" data-metrics-chart data-days='${escapeHtml(JSON.stringify(days))}' data-values='${escapeHtml(JSON.stringify(values))}' data-unit="${escapeHtml(unit)}">
-    <figcaption><span>${escapeHtml(label)}</span><b>${(kind === "line" ? values[values.length - 1] ?? 0 : total).toLocaleString()}</b>${note ? `<em>${note}</em>` : ""}<small>${kind === "line" ? `${(values[0] ?? 0).toLocaleString()} at the start · ` : `${avg.toFixed(avg < 10 ? 1 : 0)} a day on average · `}${total || kind === "line" ? `peak ${max.toLocaleString()}` : "none yet"}</small></figcaption>
+    <figcaption><span>${escapeHtml(label)}</span><b>${(kind === "line" ? values[values.length - 1] ?? 0 : total).toLocaleString()}</b>${note ? `<em>${note}</em>` : ""}<small>${kind === "line" ? `${(values[0] ?? 0).toLocaleString()} at the start · ` : `${avg.toFixed(avg < 10 ? 1 : 0)} ${hourly ? "an hour" : "a day"} on average · `}${total || kind === "line" ? `peak ${max.toLocaleString()}` : "none yet"}</small></figcaption>
     <div class="hidn-chart__plot">
-      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} per day">${gridlines}${shapes}<line class="hidn-chart__cursor" x1="0" x2="0" y1="0" y2="${height}" hidden/></svg>
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} per ${hourly ? "hour" : "day"}">${gridlines}${shapes}<line class="hidn-chart__cursor" x1="0" x2="0" y1="0" y2="${height}" hidden/></svg>
       <span class="hidn-chart__max" aria-hidden="true">${max.toLocaleString()}</span>
       <div class="hidn-chart__tip" hidden></div>
     </div>
-    <div class="hidn-chart__axis"><span>${escapeHtml(formatMetricsDay(days[0] ?? ""))}</span><span>${escapeHtml(formatMetricsDay(days[Math.floor(days.length / 2)] ?? ""))}</span><span>Today</span></div>
+    <div class="hidn-chart__axis"><span>${escapeHtml(formatMetricsDay(days[0] ?? ""))}</span><span>${escapeHtml(formatMetricsDay(days[Math.floor(days.length / 2)] ?? ""))}</span><span>${hourly ? "Now" : "Today"}</span></div>
   </figure>`;
 }
 
 function formatMetricsDay(day: string): string {
   if (!day) return "";
+  if (day.length === 13) return new Date(`${day}:00:00Z`).toLocaleTimeString(undefined, { hour: "numeric" });
   return new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/** "24 hours" for the hourly view, otherwise "30 days". */
+function metricsPeriod(days: number): string {
+  return days === 1 ? "24 hours" : `${days} days`;
 }
 
 /** "▲ 24% vs the previous 30 days", or nothing when there's nothing to compare. */
 function metricsChange(now: number, before: number, days: number): string {
   if (!before && !now) return "";
-  if (!before) return `<span class="hidn-delta is-up">new vs the previous ${days} days</span>`;
+  if (!before) return `<span class="hidn-delta is-up">new vs the previous ${metricsPeriod(days)}</span>`;
   const change = Math.round(((now - before) / before) * 100);
-  return `<span class="hidn-delta ${change >= 0 ? "is-up" : "is-down"}">${change >= 0 ? "▲" : "▼"} ${Math.abs(change)}% vs the previous ${days} days</span>`;
+  return `<span class="hidn-delta ${change >= 0 ? "is-up" : "is-down"}">${change >= 0 ? "▲" : "▼"} ${Math.abs(change)}% vs the previous ${metricsPeriod(days)}</span>`;
 }
 
 function renderMetricsTraffic(m: AdminMetrics): string {
@@ -3665,23 +3672,23 @@ function renderMetricsTraffic(m: AdminMetrics): string {
   const days = m.series.map((day) => day.day);
   const step = (label: string, value: number, of?: number) => `<li><b>${value.toLocaleString()}</b><span>${escapeHtml(label)}</span>${of && value <= of ? `<small>${Math.round((value / of) * 100)}% of the step before</small>` : `<small>&nbsp;</small>`}</li>`;
   return `<section class="hidn-admin-panel" aria-labelledby="hidn-metrics-traffic">
-    <h2 id="hidn-metrics-traffic">Traffic <small>${t.total.toLocaleString()} page views</small></h2>
+    <h2 id="hidn-metrics-traffic">Traffic <small>${t.total.toLocaleString()} page views${m.days === 1 ? " today (UTC)" : ""}</small></h2>
     <ol class="hidn-metrics-funnel" aria-label="From visit to post">
       ${step("homepage visits", t.home)}${step("opened sign in", t.access, t.home)}${step("keys created", m.recentMembers, t.access)}${step("confessions posted", m.recentPosts)}
     </ol>
-    ${metricsChart("Page views", "page views", days, days.map((day) => t.daily[day] ?? 0))}
+    ${m.days === 1 ? "" : metricsChart("Page views", "page views", days, days.map((day) => t.daily[day] ?? 0))}
     <div class="hidn-metrics-cols">
       <div><h3>Pages</h3>${list(t.pages.map((row) => ({ label: pageName(row.page), views: row.views })))}</div>
       <div><h3>Where visitors come from</h3>${list(t.sources.map((row) => ({ label: row.source === "direct" ? "Direct or typed in" : row.source, views: row.views })))}</div>
       <div><h3>Countries</h3>${list(t.countries.map((row) => ({ label: row.country === "??" ? "Unknown" : row.country, views: row.views })))}</div>
     </div>
-    <p class="hidn-admin-note">Page views from real browsers only (bots and link previews aren't counted), kept as daily totals by page, source and country. No IPs, cookies or IDs, and private link and post addresses are never recorded.</p>
+    <p class="hidn-admin-note">Page views from real browsers only (bots and link previews aren't counted), kept as daily totals by page, source and country${m.days === 1 ? " (so the 24-hour view shows today since midnight UTC)" : ""}. No IPs, cookies or IDs, and private link and post addresses are never recorded.</p>
   </section>`;
 }
 
 function renderAdminMetrics(): RenderedProductRoute {
   const m = adminMetrics;
-  const range = [7, 30, 90].map((days) => `<button type="button" class="hidn-range__btn${adminMetricsDays === days ? " is-on" : ""}" data-metrics-days="${days}" aria-pressed="${adminMetricsDays === days}">${days} days</button>`).join("");
+  const range = [1, 7, 30, 90].map((days) => `<button type="button" class="hidn-range__btn${adminMetricsDays === days ? " is-on" : ""}" data-metrics-days="${days}" aria-pressed="${adminMetricsDays === days}">${metricsPeriod(days)}</button>`).join("");
   let body = `<p class="hidn-admin-empty">${adminReportError ? "" : "Loading metrics…"}</p>`;
   if (m) {
     const days = m.series.map((day) => day.day);
@@ -3690,7 +3697,7 @@ function renderAdminMetrics(): RenderedProductRoute {
     let running = m.membersBefore;
     const cumulative = m.series.map((day) => (running += day.members));
     const pct = (value: number) => `${Math.round(value * 100)}%`;
-    const kpi = (label: string, total: number, inRange: number, before: number) => `<div class="hidn-kpi"><span>${escapeHtml(label)}</span><b>${total.toLocaleString()}</b><small>${inRange.toLocaleString()} in the last ${m.days} days</small>${metricsChange(inRange, before, m.days)}</div>`;
+    const kpi = (label: string, total: number, inRange: number, before: number) => `<div class="hidn-kpi"><span>${escapeHtml(label)}</span><b>${total.toLocaleString()}</b><small>${inRange.toLocaleString()} in the last ${metricsPeriod(m.days)}</small>${metricsChange(inRange, before, m.days)}</div>`;
     body = `<section class="hidn-kpis" aria-label="Totals">
         ${kpi("Keys created", m.totals.members, recent.members, m.previous.members)}
         ${kpi("Confessions", m.totals.posts, recent.posts, m.previous.posts)}
@@ -3699,13 +3706,13 @@ function renderAdminMetrics(): RenderedProductRoute {
         ${kpi("Link messages", m.totals.linkMessages, recent.messages, m.previous.messages)}
       </section>
       <section class="hidn-kpis hidn-kpis--small" aria-label="Rates">
-        <div class="hidn-kpi"><span>Confessions that got a reply</span><b>${pct(m.rates.repliedShare)}</b><small>last ${m.days} days</small></div>
-        <div class="hidn-kpi"><span>Replies per confession</span><b>${recent.posts ? (recent.replies / recent.posts).toFixed(1) : "0"}</b><small>last ${m.days} days</small></div>
+        <div class="hidn-kpi"><span>Confessions that got a reply</span><b>${pct(m.rates.repliedShare)}</b><small>last ${metricsPeriod(m.days)}</small></div>
+        <div class="hidn-kpi"><span>Replies per confession</span><b>${recent.posts ? (recent.replies / recent.posts).toFixed(1) : "0"}</b><small>last ${metricsPeriod(m.days)}</small></div>
         <div class="hidn-kpi"><span>Private links</span><b>${m.totals.links.toLocaleString()}</b><small>${pct(m.rates.linksWithMessagesShare)} have received a message</small></div>
         <div class="hidn-kpi"><span>Tips switched on</span><b>${m.totals.tipPosts.toLocaleString()}</b><small>posts · ${m.totals.tipMessages.toLocaleString()} tipped link messages</small></div>
         <div class="hidn-kpi"><span>Reports</span><b>${m.totals.reports.toLocaleString()}</b><small>${m.totals.hiddenPosts.toLocaleString()} posts hidden</small></div>
       </section>
-      <section class="hidn-charts" aria-label="Daily activity">
+      <section class="hidn-charts" aria-label="${m.days === 1 ? "Hourly" : "Daily"} activity">
         ${metricsChart("Members over time", "members in total", days, cumulative, "line")}
         ${metricsChart("New keys", "new keys", days, m.series.map((d) => d.members))}
         ${metricsChart("Confessions", "confessions", days, m.series.map((d) => d.posts))}
@@ -3716,7 +3723,7 @@ function renderAdminMetrics(): RenderedProductRoute {
       ${renderMetricsTraffic(m)}
       <section class="hidn-admin-panel" aria-labelledby="hidn-metrics-rooms">
         <h2 id="hidn-metrics-rooms">Confessions by room</h2>
-        <table class="hidn-admin-table"><thead><tr><th scope="col">Room</th><th scope="col">Last ${m.days} days</th><th scope="col">Share</th><th scope="col">All time</th></tr></thead>
+        <table class="hidn-admin-table"><thead><tr><th scope="col">Room</th><th scope="col">Last ${metricsPeriod(m.days)}</th><th scope="col">Share</th><th scope="col">All time</th></tr></thead>
         <tbody>${m.rooms.map((row) => `<tr><td>${escapeHtml(roomDisplayName(roomChannelOptions.find((option) => option.key === row.room)?.label ?? row.room))}</td><td>${row.recent.toLocaleString()}</td><td>${recent.posts ? Math.round((row.recent / recent.posts) * 100) : 0}%</td><td>${row.total.toLocaleString()}</td></tr>`).join("")}</tbody></table>
       </section>
       <p class="hidn-admin-note">Counts only. Posts are zero-knowledge, so HIDN can't tell members apart: there's no per-person activity, daily-active-user count or retention to show. Updated ${escapeHtml(new Date(m.generatedAt).toLocaleString())}.</p>`;
@@ -3726,7 +3733,7 @@ function renderAdminMetrics(): RenderedProductRoute {
     html: publicFrame("/admin/metrics", renderAdminShell("metrics", {
       path: "hidn://admin/metrics",
       title: "Metrics",
-      intro: `How HIDN is being used, as totals. Hover or tap any day on a chart to see its number. <span class="hidn-range" role="group" aria-label="Period">${range}</span>`,
+      intro: `How HIDN is being used, as totals. Hover or tap any day (or hour) on a chart to see its number. <span class="hidn-range" role="group" aria-label="Period">${range}</span>`,
     }, body), "public-page--admin"),
   };
 }
@@ -6656,7 +6663,9 @@ function bindMetricsCharts(root: ParentNode): void {
       const rect = plot.getBoundingClientRect();
       const ratio = Math.min(0.9999, Math.max(0, (clientX - rect.left) / rect.width));
       const index = Math.floor(ratio * days.length);
-      const date = new Date(`${days[index]}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+      const date = days[index].length === 13
+        ? new Date(`${days[index]}:00:00Z`).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
+        : new Date(`${days[index]}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
       tip.innerHTML = `<b>${values[index].toLocaleString()}</b> ${unit}<br><small>${date}</small>`;
       tip.hidden = false;
       const x = ((index + 0.5) / days.length) * 600;
