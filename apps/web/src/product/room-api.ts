@@ -511,11 +511,17 @@ export interface LinkInbox {
   tipAddress: string | null;
   status: "open" | "closed";
   createdAt?: string;
+  /** The link's encryption public key; senders seal messages to it. */
+  e2ePublicKey?: string | null;
+  /** The owner's private key, wrapped so only their browser can open it. */
+  e2eWrappedKey?: string | null;
 }
 
 export interface LinkMessage {
   id: string;
   text: string;
+  /** True when `text` is sealed and must be opened in the owner's browser. */
+  encrypted?: boolean;
   tipCode: string | null;
   createdAt: string;
   readAt: string | null;
@@ -557,7 +563,7 @@ export function createMyLinkInbox(inboxKey: string, input: { proof: AnonymousPro
 
 export function updateMyLinkInbox(
   inboxKey: string,
-  input: { prompt?: string; tipAddress?: string; status?: "open" | "closed"; rotate?: boolean },
+  input: { prompt?: string; tipAddress?: string; status?: "open" | "closed"; rotate?: boolean; e2ePublicKey?: string; e2eWrappedKey?: string },
 ): Promise<{ link: LinkInbox }> {
   return linkRequest<{ link: LinkInbox }>("/api/links/mine", { method: "PATCH", body: JSON.stringify(input) }, inboxKey);
 }
@@ -574,7 +580,7 @@ export function fetchPublicLink(slug: string): Promise<{ link: LinkInbox }> {
   return linkRequest<{ link: LinkInbox }>(`/api/links/${encodeURIComponent(slug)}`);
 }
 
-export function sendLinkMessage(slug: string, input: { content: string; tipCode?: string }): Promise<{ status: "sent"; createdAt: string }> {
+export function sendLinkMessage(slug: string, input: { content?: string; sealed?: string; tipCode?: string }): Promise<{ status: "sent"; createdAt: string }> {
   return linkRequest<{ status: "sent"; createdAt: string }>(`/api/links/${encodeURIComponent(slug)}/messages`, {
     method: "POST",
     body: JSON.stringify(input),

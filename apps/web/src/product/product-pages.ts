@@ -7764,6 +7764,7 @@ export function bindProductRoute(root: ParentNode = document): void {
     bindLinkInbox(root, {
       inboxKey: () => deriveLinkInboxKey(identity.secret),
       prove: (content) => createAnonymousRoomProof("link", "room", "INBOX", content),
+      secret: () => identity.secret,
     });
   }
   bindRoomMuseumInteractions(root);

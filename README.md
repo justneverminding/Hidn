@@ -51,9 +51,10 @@ words.
   share link, so you can post a room to X or WhatsApp instead of the whole app.
 - **Read the feed.** Every room mixed together, or one room at a time,
   ordered by latest, random or most felt.
-- **Get anonymous messages.** Create one private link and share it anywhere.
-  Anyone can write to you through it, with no account. You read them in your
-  inbox. Up to 120 messages a day per link.
+- **Get anonymous messages, end-to-end encrypted.** Create one private link and
+  share it anywhere. Anyone can write to you through it, with no account. Each
+  message is encrypted in the sender's browser and only your device can read
+  it, not even HIDN. Up to 120 messages a day per link.
 - **Tip in shielded ZEC.** Turn on tips for a post or your private link and
   readers can pay you from their own Zcash wallet, straight to yours. HIDN never
   holds the money or a spending key.
@@ -109,6 +110,13 @@ In short: **HIDN can check that you're a member, but never which member.**
    browser. The `ANON-…` name you see is cosmetic and changes every visit.
 7. **Private links stay unlinked.** Your inbox opens with a key derived from
    your secret; the server keeps only its hash, not which member owns the link.
+8. **Link messages are end-to-end encrypted.** Each link has its own key pair.
+   Senders seal every message to the link's public key with a fresh one-time
+   key (ECDH P-256, HKDF-SHA-256, AES-256-GCM), padded to a fixed size so its
+   length gives nothing away. The private half is stored only after being
+   wrapped with a key derived from your secret, so any device with your HIDN
+   key can open your inbox and the server never can. It all runs on the
+   browser's built-in WebCrypto, with no extra library.
 
 ### Where to look in the code
 
@@ -119,6 +127,7 @@ In short: **HIDN can check that you're a member, but never which member.**
 | Browser prover (in a Web Worker) | [`prover.ts`](packages/anonymous-zk/src/prover.ts), [`anonymous-proof-worker.ts`](apps/web/src/anonymous-proof-worker.ts) |
 | Verifier | [`verifier.ts`](packages/anonymous-zk/src/verifier.ts) |
 | Server checks, replay protection, rate limits, link blocking | [`apps/web/src/worker.ts`](apps/web/src/worker.ts) |
+| End-to-end encrypted link messages | [`apps/web/src/product/link-e2e.ts`](apps/web/src/product/link-e2e.ts) |
 | Public proving files | [`public/anonymous-zk/v2/`](public/anonymous-zk/v2/) |
 
 ### Going further with Tor
@@ -134,7 +143,7 @@ WebAssembly that HIDN uses to make proofs in your browser).
 | Now | Next |
 | --- | --- |
 | Membership proofs use a public Powers of Tau setup plus one HIDN contribution ([details](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md)). | **PLONK**, which needs no HIDN-run ceremony, then **Halo 2**, Zcash's own proof system, which needs no trusted setup at all. |
-| Private-link messages and notifications are stored by the server. | **End-to-end encryption**, so only the recipient can read link messages. |
+| Private-link messages are **end-to-end encrypted**: only the recipient can read them. | Encrypting notifications the same way. |
 | Tor Browser hides your network address. | A built-in relay option for people who don't use Tor. |
 
 The words you post are, by design, visible to readers. What stays hidden is

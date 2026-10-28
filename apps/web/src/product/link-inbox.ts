@@ -1,6 +1,8 @@
 import { escapeHtml } from "@hidn/ui";
 import * as QRCode from "qrcode";
 import { renderShareCard } from "./share-card";
+import { createLinkKeyMaterial, openLinkMessage, openLinkPrivateKey, sealLinkMessage } from "./link-e2e";
+import { containsLink, LINK_BLOCKED_ERROR } from "./link-rules";
 import {
   createMyLinkInbox,
   deleteMyLinkMessage,
@@ -17,7 +19,9 @@ import {
 // Personal confession links: a member shares /to/<slug>, anyone holding it
 // leaves an anonymous message, and it lands in the member's inbox. The inbox
 // is opened by a key derived from the recovery secret; the server keeps only
-// its hash and nothing at all about senders.
+// its hash and nothing at all about senders. Messages are end-to-end
+// encrypted (link-e2e.ts): the sender's browser seals them to the link's
+// public key and only the owner's browser can open them.
 
 const LINK_MESSAGE_MAX_LENGTH = 500;
 const LINK_PROMPT_MAX_LENGTH = 120;
@@ -203,6 +207,7 @@ export function renderLinkSendBody(slug: string): string {
       <li>No account, email or phone number.</li>
       <li>Your name is never attached.</li>
       <li>They only see the words.</li>
+      ${link.e2ePublicKey ? `<li>Encrypted on your device. Only they can read it, not even HIDN.</li>` : ""}
     </ul>
   </form>`;
 }
@@ -245,12 +250,25 @@ async function submitLinkMessage(state: SendState): Promise<void> {
     rerender();
     return;
   }
+  if (content.length > LINK_MESSAGE_MAX_LENGTH) {
+    state.error = `Messages must be ${LINK_MESSAGE_MAX_LENGTH} characters or fewer.`;
+    rerender();
+    return;
+  }
+  // The server can't read sealed messages, so the no-links rule runs here.
+  if (containsLink(content)) {
+    state.error = LINK_BLOCKED_ERROR;
+    rerender();
+    return;
+  }
   const tipCode = state.attachZec && state.link?.tipAddress ? createTipCode() : "";
   state.sending = true;
   state.error = "";
   rerender();
   try {
-    await sendLinkMessage(state.slug, { content, ...(tipCode ? { tipCode } : {}) });
+    const publicKey = state.link?.e2ePublicKey;
+    const message = publicKey ? { sealed: await sealLinkMessage(publicKey, content) } : { content };
+    await sendLinkMessage(state.slug, { ...message, ...(tipCode ? { tipCode } : {}) });
     state.sent = { tipCode };
     state.draft = "";
   } catch (error) {
@@ -268,6 +286,43 @@ export interface LinkOwnerContext {
   inboxKey(): Promise<string>;
   /** A membership proof bound to `content`, for opening the link. */
   prove(content: string): Promise<{ scope: string; proof: AnonymousProofEnvelope }>;
+  /** The recovery secret, used only in this browser to wrap and unwrap the link's message key. */
+  secret(): string;
+}
+
+/** The link's private message key, opened on this device for this visit only. */
+let openedKey: { publicKey: string; key: CryptoKey } | null = null;
+/** Messages that couldn't be decrypted on this device, by id. */
+const unreadable = new Set<string>();
+
+/** Gives the link its encryption key the first time, then decrypts sealed messages in place. */
+async function decryptInbox(data: LinkInboxResponse, context: LinkOwnerContext, inboxKey: string): Promise<LinkInboxResponse> {
+  if (!data.link) return data;
+  let link = data.link;
+  if (!link.e2ePublicKey || !link.e2eWrappedKey) {
+    const material = await createLinkKeyMaterial(context.secret());
+    try {
+      link = (await updateMyLinkInbox(inboxKey, { e2ePublicKey: material.publicKey, e2eWrappedKey: material.wrappedKey })).link;
+    } catch {
+      // Another device may have just set it; read it back.
+      link = (await fetchMyLinkInbox(inboxKey)).link ?? link;
+    }
+  }
+  if (!link.e2ePublicKey || !link.e2eWrappedKey) return { ...data, link };
+  if (!openedKey || openedKey.publicKey !== link.e2ePublicKey) {
+    openedKey = { publicKey: link.e2ePublicKey, key: await openLinkPrivateKey(context.secret(), { publicKey: link.e2ePublicKey, wrappedKey: link.e2eWrappedKey }) };
+  }
+  const key = openedKey.key;
+  const messages = await Promise.all(data.messages.map(async (message) => {
+    if (!message.encrypted) return message;
+    try {
+      return { ...message, text: await openLinkMessage(key, link.e2ePublicKey!, message.text) };
+    } catch {
+      unreadable.add(message.id);
+      return { ...message, text: "" };
+    }
+  }));
+  return { ...data, link, messages };
 }
 
 interface InboxState {
@@ -312,6 +367,8 @@ export function resetLinkInbox(): void {
   inbox.busy = "";
   inbox.error = "";
   inbox.feedback = "";
+  openedKey = null;
+  unreadable.clear();
 }
 
 // The unread count for the bottom bar, checked at most once a minute.
@@ -350,7 +407,7 @@ async function loadInbox(context: LinkOwnerContext): Promise<void> {
   inbox.error = "";
   try {
     const key = await context.inboxKey();
-    const data = await fetchMyLinkInbox(key);
+    const data = await decryptInbox(await fetchMyLinkInbox(key), context, key);
     applyInbox(data);
     inbox.status = "ready";
     // Opening the inbox reads everything in it.
@@ -427,7 +484,10 @@ function renderMessages(data: LinkInboxResponse): string {
     const status = inbox.shareStatus.get(message.id) ?? "";
     return `<article class="hidn-link__msg${isNew ? " hidn-link__msg--new" : ""}">
       <header><span>${isNew ? "● new" : "anonymous"}</span><time>${escapeHtml(formatWhen(message.createdAt))}</time></header>
-      <p>${escapeHtml(message.text)}</p>
+      ${unreadable.has(message.id)
+        ? `<p class="hidn-link__note">This message couldn't be decrypted on this device.</p>`
+        : `<p>${escapeHtml(message.text)}</p>`}
+      ${message.encrypted ? "" : `<p class="hidn-link__plain-note">Sent before messages were end-to-end encrypted.</p>`}
       ${message.tipCode ? `<p class="hidn-link__tipcode">ZEC tip · code ${escapeHtml(message.tipCode)} · check your wallet memos</p>` : ""}
       <div class="hidn-link__msg-bar" role="group" aria-label="Message actions">
         <button class="hidn-link__seg" type="button" data-link-action="share-message" data-message-id="${escapeHtml(message.id)}"><span aria-hidden="true">↗</span> Share</button>
@@ -450,7 +510,8 @@ function renderMessages(data: LinkInboxResponse): string {
 export function renderLinkInboxBody(): string {
   const head = `<p class="hidn-link__code-line">hidn://inbox</p>
     <h1 class="hidn-link__title" data-text="What they can't say to your face.">What they can't say to your face.</h1>
-    <p class="hidn-link__line">Share your link anywhere. Anyone can leave you a message without a name. You read them here.</p>`;
+    <p class="hidn-link__line">Share your link anywhere. Anyone can leave you a message without a name. You read them here.</p>
+    <p class="hidn-link__e2e"><span aria-hidden="true">e2e</span> End-to-end encrypted. Only you can read these messages, not even HIDN.</p>`;
   if (inbox.status === "idle" || (inbox.status === "loading" && !inbox.data)) {
     return `<div class="hidn-link">${head}<p class="hidn-link__log">&gt; opening inbox...<span class="hidn-link__caret">▌</span></p></div>`;
   }
@@ -484,6 +545,7 @@ export function renderLinkInboxBody(): string {
     `<button class="hidn-link__tab${inbox.view === view ? " hidn-link__tab--active" : ""}" type="button" role="tab" aria-selected="${inbox.view === view}" data-link-action="view-${view === "messages" ? "messages" : "link"}">${label}</button>`;
   return `<div class="hidn-link">
     <p class="hidn-link__code-line">hidn://inbox</p>
+    ${data.link.e2ePublicKey ? `<p class="hidn-link__e2e"><span aria-hidden="true">e2e</span> End-to-end encrypted. Only you can read these messages, not even HIDN.</p>` : ""}
     <div class="hidn-link__tabs" role="tablist" aria-label="Inbox">
       ${tab("messages", `Messages${unread ? ` <b>${unread} new</b>` : count ? ` (${count})` : ""}`)}
       ${tab("link", "My link")}
@@ -580,9 +642,10 @@ async function runInboxAction(action: string, messageId = ""): Promise<void> {
       const keyHash = await sha256Hex(key);
       const { scope, proof } = await context.prove(keyHash);
       const { link: created } = await createMyLinkInbox(key, { proof, scope });
-      inbox.data = { link: created, messages: inbox.data?.messages ?? [], unreadCount: 0 };
-      inbox.promptDraft = created.prompt;
-      inbox.tipDraft = created.tipAddress ?? "";
+      // A new link gets its encryption key straight away, before anyone can write to it.
+      inbox.data = await decryptInbox({ link: created, messages: inbox.data?.messages ?? [], unreadCount: 0 }, context, key);
+      inbox.promptDraft = inbox.data.link?.prompt ?? created.prompt;
+      inbox.tipDraft = inbox.data.link?.tipAddress ?? created.tipAddress ?? "";
       inbox.feedback = "Link created. Copy it and share it anywhere.";
       inbox.view = "link";
     } else if (action === "save" || action === "close" || action === "reopen" || action === "rotate") {

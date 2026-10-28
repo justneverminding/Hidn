@@ -1916,3 +1916,9 @@ html:has(.hidn-report-sheet), body:has(.hidn-report-sheet) { overflow: hidden !i
   .public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reasons { display: grid !important; gap: 6px 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .public-page.room-v2.room-v2.room-v2 .hidn-report-sheet__reasons legend { grid-column: 1 / -1; }
 }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__e2e { align-items: center; color: var(--v2-green) !important; display: flex; font: 500 13.5px var(--v2-read) !important; gap: 8px; letter-spacing: 0 !important; margin: 0; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__plain-note { color: var(--v2-dim) !important; font: 400 12px var(--v2-read) !important; letter-spacing: 0 !important; margin: 0; text-transform: none !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__msg > p.hidn-link__plain-note { color: var(--v2-dim) !important; font: 400 12.5px/1.4 var(--v2-read) !important; margin: 2px 0 0 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__e2e span { border: 1px solid var(--v2-edge); border-radius: 4px; color: var(--v2-green); font: 600 11px var(--v2-mono); padding: 1px 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__e2e { font-size: 13px !important; margin: 4px 0 2px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__e2e span { flex: none; white-space: nowrap; }

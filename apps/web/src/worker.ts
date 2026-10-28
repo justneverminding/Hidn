@@ -10,6 +10,7 @@ import {
 } from "@hidn/anonymous-zk";
 import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
 import { roomClosedReason, roomLinkByKey, roomLinkBySlug } from "./product/room-links";
+import { containsLink, LINK_BLOCKED_ERROR } from "./product/link-rules";
 import anonymousVerifierWasm from "../../../packages/anonymous-zk/wasm/bn128.wasm";
 
 // Keep the edge verifier bundle fresh when its shared anonymous-zk runtime changes.
@@ -552,19 +553,7 @@ function isValidMainnetTipAddress(address: string): boolean {
 
 /** HIDN carries words, not links: no web addresses in posts, replies or
  * link messages, which keeps out shilling, phishing and spam. */
-const LINK_PATTERN = new RegExp(
-  [
-    String.raw`(?:https?|hxxps?):\/\/\S+`,
-    String.raw`\bwww\.\S+`,
-    String.raw`\bt\.me\/\S+`,
-    String.raw`\b[a-z0-9][a-z0-9-]{0,62}\.(?:com|net|org|io|xyz|app|co|me|ly|gg|link|finance|exchange|dev|ai|info|biz|tv|to|sh|so|fi|money|eth|crypto|site|online|store|shop|live|club|top|vip|pro|bio|page|art|nft|dao|cc|us|uk|ng|in|ru|cn|de)\b`,
-  ].join("|"),
-  "i",
-);
-const LINK_BLOCKED_ERROR = "Links aren't allowed on HIDN. Say it in words.";
-function containsLink(text: string): boolean {
-  return LINK_PATTERN.test(text);
-}
+
 
 function isRoomChannel(value: string): value is RoomChannel {
   return ROOM_CHANNELS.includes(value as RoomChannel);
@@ -2901,11 +2890,14 @@ interface LinkInboxRow {
   tip_address: string | null;
   status: "open" | "closed";
   created_at: string;
+  e2e_public_key?: string | null;
+  e2e_wrapped_key?: string | null;
 }
 
 interface LinkMessageRow {
   message_id: string;
   content: string;
+  encrypted?: number;
   tip_code: string | null;
   created_at: string;
   read_at: string | null;
@@ -2928,8 +2920,15 @@ function serializeLinkInbox(row: LinkInboxRow): Record<string, unknown> {
     tipAddress: row.tip_address,
     status: row.status,
     createdAt: row.created_at,
+    e2ePublicKey: row.e2e_public_key ?? null,
+    e2eWrappedKey: row.e2e_wrapped_key ?? null,
   };
 }
+
+/** A sealed message: "e2e1:" then base64url (65-byte key, 12-byte IV, padded ciphertext). */
+const LINK_SEALED_PATTERN = /^e2e1:[A-Za-z0-9_-]{2000,2400}$/;
+const LINK_PUBLIC_KEY_PATTERN = /^[A-Za-z0-9_-]{86,88}$/;
+const LINK_WRAPPED_KEY_PATTERN = /^[A-Za-z0-9_-]{100,600}$/;
 
 /** The owner proves ownership with the inbox key; only its hash is stored. */
 async function linkOwnerKeyHash(request: Request): Promise<string | null> {
@@ -2939,7 +2938,7 @@ async function linkOwnerKeyHash(request: Request): Promise<string | null> {
 
 async function linkInboxForOwner(env: HidnWorkerEnv, ownerKeyHash: string): Promise<LinkInboxRow | null> {
   return env.ROOM_DB!.prepare(
-    `SELECT link_id, slug, prompt, tip_address, status, created_at
+    `SELECT link_id, slug, prompt, tip_address, status, created_at, e2e_public_key, e2e_wrapped_key
      FROM hidn_link_inboxes
      WHERE owner_key_hash = ?
      LIMIT 1`,
@@ -2960,7 +2959,7 @@ async function getMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<Res
 
   const [messages, unread] = await Promise.all([
     env.ROOM_DB!.prepare(
-      `SELECT message_id, content, tip_code, created_at, read_at
+      `SELECT message_id, content, encrypted, tip_code, created_at, read_at
        FROM hidn_link_messages
        WHERE link_id = ?
        ORDER BY created_at DESC
@@ -2980,6 +2979,7 @@ async function getMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<Res
     messages: messages.results.map((message) => ({
       id: message.message_id,
       text: message.content,
+      encrypted: Boolean(message.encrypted),
       tipCode: message.tip_code,
       createdAt: message.created_at,
       readAt: message.read_at,
@@ -3077,6 +3077,20 @@ async function updateMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<
   if (body.status === "open" || body.status === "closed") {
     next.status = body.status;
   }
+  // The link's encryption key is set once. Replacing it would let whoever
+  // holds the inbox key read new messages with a key the owner doesn't have.
+  if (typeof body.e2ePublicKey === "string" || typeof body.e2eWrappedKey === "string") {
+    if (link.e2e_public_key) {
+      return jsonResponse({ error: "This link already has its encryption key." }, 409);
+    }
+    const publicKey = String(body.e2ePublicKey ?? "");
+    const wrappedKey = String(body.e2eWrappedKey ?? "");
+    if (!LINK_PUBLIC_KEY_PATTERN.test(publicKey) || !LINK_WRAPPED_KEY_PATTERN.test(wrappedKey)) {
+      return jsonResponse({ error: "That encryption key is not valid." }, 400);
+    }
+    next.e2e_public_key = publicKey;
+    next.e2e_wrapped_key = wrappedKey;
+  }
   // A new address retires the old one at once: anyone holding it gets nothing.
   if (body.rotate === true) {
     next.slug = createLinkSlug();
@@ -3085,10 +3099,10 @@ async function updateMyLinkInbox(request: Request, env: HidnWorkerEnv): Promise<
   try {
     await env.ROOM_DB!.prepare(
       `UPDATE hidn_link_inboxes
-       SET slug = ?, prompt = ?, tip_address = ?, status = ?, updated_at = ?
+       SET slug = ?, prompt = ?, tip_address = ?, status = ?, e2e_public_key = ?, e2e_wrapped_key = ?, updated_at = ?
        WHERE link_id = ?`,
     )
-      .bind(next.slug, next.prompt, next.tip_address, next.status, new Date().toISOString(), link.link_id)
+      .bind(next.slug, next.prompt, next.tip_address, next.status, next.e2e_public_key ?? null, next.e2e_wrapped_key ?? null, new Date().toISOString(), link.link_id)
       .run();
   } catch {
     return jsonResponse({ error: "The link could not be updated. Try again." }, 409);
@@ -3124,7 +3138,7 @@ async function deleteMyLinkMessage(messageId: string, request: Request, env: Hid
 
 async function linkInboxBySlug(env: HidnWorkerEnv, slug: string): Promise<LinkInboxRow | null> {
   return env.ROOM_DB!.prepare(
-    `SELECT link_id, slug, prompt, tip_address, status, created_at
+    `SELECT link_id, slug, prompt, tip_address, status, created_at, e2e_public_key, e2e_wrapped_key
      FROM hidn_link_inboxes
      WHERE slug = ?
      LIMIT 1`,
@@ -3139,7 +3153,7 @@ async function getPublicLink(slug: string, env: HidnWorkerEnv): Promise<Response
     return jsonResponse({ error: "This link does not exist or was replaced." }, 404);
   }
   return jsonResponse({
-    link: { slug: link.slug, prompt: link.prompt, tipAddress: link.tip_address, status: link.status },
+    link: { slug: link.slug, prompt: link.prompt, tipAddress: link.tip_address, status: link.status, e2ePublicKey: link.e2e_public_key ?? null },
   }, 200, "no-store");
 }
 
@@ -3153,15 +3167,23 @@ async function sendLinkMessage(slug: string, request: Request, env: HidnWorkerEn
 
   const body = await requestBody(request);
   const content = typeof body.content === "string" ? body.content.trim() : "";
+  const sealed = typeof body.sealed === "string" ? body.sealed.trim() : "";
   const tipCode = typeof body.tipCode === "string" ? body.tipCode.trim().toUpperCase() : "";
-  if (!content) {
-    return jsonResponse({ error: "Write something before sending." }, 400);
-  }
-  if (content.length > LINK_MESSAGE_MAX_LENGTH) {
-    return jsonResponse({ error: `Messages must be ${LINK_MESSAGE_MAX_LENGTH} characters or fewer.` }, 400);
-  }
-  if (containsLink(content)) {
-    return jsonResponse({ error: LINK_BLOCKED_ERROR, code: "LINKS_NOT_ALLOWED" }, 400);
+  if (sealed) {
+    // End-to-end encrypted: the server can't read it, only check its shape.
+    if (!LINK_SEALED_PATTERN.test(sealed)) {
+      return jsonResponse({ error: "That encrypted message is not valid." }, 400);
+    }
+  } else {
+    if (!content) {
+      return jsonResponse({ error: "Write something before sending." }, 400);
+    }
+    if (content.length > LINK_MESSAGE_MAX_LENGTH) {
+      return jsonResponse({ error: `Messages must be ${LINK_MESSAGE_MAX_LENGTH} characters or fewer.` }, 400);
+    }
+    if (containsLink(content)) {
+      return jsonResponse({ error: LINK_BLOCKED_ERROR, code: "LINKS_NOT_ALLOWED" }, 400);
+    }
   }
   if (tipCode && !/^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(tipCode)) {
     return jsonResponse({ error: "That tip code is not valid." }, 400);
@@ -3177,6 +3199,14 @@ async function sendLinkMessage(slug: string, request: Request, env: HidnWorkerEn
   if (tipCode && !link.tip_address) {
     return jsonResponse({ error: "This link does not take ZEC tips." }, 400);
   }
+  // A link with an encryption key only takes sealed messages, so nothing
+  // readable reaches the server for it.
+  if (link.e2e_public_key && !sealed) {
+    return jsonResponse({ error: "Refresh the page to send this message encrypted.", code: "ENCRYPTION_REQUIRED" }, 400);
+  }
+  if (sealed && !link.e2e_public_key) {
+    return jsonResponse({ error: "This link isn't set up for encrypted messages yet." }, 400);
+  }
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const recent = await env.ROOM_DB!.prepare(
@@ -3188,17 +3218,18 @@ async function sendLinkMessage(slug: string, request: Request, env: HidnWorkerEn
     return jsonResponse({ error: "This inbox has taken all it can for today. Try again tomorrow." }, 429);
   }
 
-  const abuseResponse = await assessAnonymousAbuse(request, env, content);
+  // Sealed messages are unique bytes every time, so only the burst checks apply to them.
+  const abuseResponse = await assessAnonymousAbuse(request, env, sealed || content);
   if (abuseResponse) {
     return abuseResponse;
   }
 
   const createdAt = new Date().toISOString();
   await env.ROOM_DB!.prepare(
-    `INSERT INTO hidn_link_messages (message_id, link_id, content, tip_code, created_at, read_at)
-     VALUES (?, ?, ?, ?, ?, NULL)`,
+    `INSERT INTO hidn_link_messages (message_id, link_id, content, encrypted, tip_code, created_at, read_at)
+     VALUES (?, ?, ?, ?, ?, ?, NULL)`,
   )
-    .bind(`MSG-${createRandomHex(12).toUpperCase()}`, link.link_id, content, tipCode || null, createdAt)
+    .bind(`MSG-${createRandomHex(12).toUpperCase()}`, link.link_id, sealed || content, sealed ? 1 : 0, tipCode || null, createdAt)
     .run();
   // Keep each inbox bounded; the oldest messages fall away first.
   await env.ROOM_DB!.prepare(
