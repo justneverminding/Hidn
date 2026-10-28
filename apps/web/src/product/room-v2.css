@@ -1949,3 +1949,11 @@ html:has(.hidn-report-sheet), body:has(.hidn-report-sheet) { overflow: hidden !i
   /* The header bar floats over the page here, so leave its height plus a gap. */
   .public-page.room-v2.room-v2.room-v2 main.hidn-term-main.hidn-term-main--inbox { padding-top: 84px !important; }
 }
+
+/* The top bar clips what overflows it. The menu lifts that clip while open;
+   the bell's panel needs the same, or iOS Safari clips it away entirely
+   (Chrome lets the fixed panel escape, Safari doesn't). */
+.public-page .public-page__window-chrome:has(.room-notifications--open),
+.public-page.public-page--theme-signal .public-page__window-chrome:has(.room-notifications--open) { overflow: visible !important; }
+.public-page.public-page--theme-signal .public-page__window-chrome:has(.room-notifications--open)::before,
+.public-page.public-page--theme-signal .public-page__window-chrome:has(.room-notifications--open)::after { display: none; }
