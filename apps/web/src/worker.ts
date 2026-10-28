@@ -3526,6 +3526,21 @@ const worker = {
   async fetch(request: Request, env: HidnWorkerEnv, ctx?: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url);
 
+    // Never serve the site over plain http. 308 keeps the method and body, so
+    // a form or API call made over http is repeated over https, not dropped.
+    // Cloudflare's CF-Visitor header carries the scheme the visitor used; the
+    // local dev server leaves it out, so local testing stays on plain http.
+    if (
+      url.protocol === "http:"
+      && (url.hostname === "hidnroom.com" || url.hostname === "www.hidnroom.com")
+      && /"scheme"\s*:\s*"http"/.test(request.headers.get("CF-Visitor") ?? "")
+    ) {
+      return new Response(null, {
+        status: 308,
+        headers: { Location: `${CANONICAL_ORIGIN}${url.pathname}${url.search}`, "Cache-Control": "no-store" },
+      });
+    }
+
     // hidnroom.com is the address. Page visits to www or the old workers.dev
     // address move there for good, path and all, so shared links keep
     // working. API calls are served where they land, so a page someone

@@ -1935,5 +1935,17 @@ html:has(.hidn-report-sheet), body:has(.hidn-report-sheet) { overflow: hidden !i
 .public-page.room-v2.room-v2.room-v2 .hidn-link__plain-note { color: var(--v2-dim) !important; font: 400 12px var(--v2-read) !important; letter-spacing: 0 !important; margin: 0; text-transform: none !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-link__msg > p.hidn-link__plain-note { color: var(--v2-dim) !important; font: 400 12.5px/1.4 var(--v2-read) !important; margin: 2px 0 0 !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-link__e2e span { border: 1px solid var(--v2-edge); border-radius: 4px; color: var(--v2-green); font: 600 11px var(--v2-mono); padding: 1px 6px; }
-.public-page.room-v2.room-v2.room-v2 .hidn-link__e2e { font-size: 13px !important; margin: 4px 0 2px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-link__e2e { font-size: 13px !important; line-height: 1.45 !important; margin: 14px 0 6px !important; }
 .public-page.room-v2.room-v2.room-v2 .hidn-link__e2e span { flex: none; white-space: nowrap; }
+
+/* Choose a room: the refresh sits at the end of the zec price line. */
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__status { display: flex !important; }
+.public-page.room-v2.room-v2.room-v2 .room-mobile-index__status .room-refresh-button { flex: none; margin-left: auto; }
+
+/* Inbox: start at the top instead of floating mid-screen, so the e2e line
+   keeps clear space under the header bar. */
+.public-page.room-v2.room-v2.room-v2 main.hidn-term-main.hidn-term-main--inbox { justify-content: flex-start !important; }
+@media (max-width: 760px) {
+  /* The header bar floats over the page here, so leave its height plus a gap. */
+  .public-page.room-v2.room-v2.room-v2 main.hidn-term-main.hidn-term-main--inbox { padding-top: 84px !important; }
+}

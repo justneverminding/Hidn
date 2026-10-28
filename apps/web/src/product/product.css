@@ -19324,3 +19324,13 @@ html[data-perf="lite"] .hidn-verification-notice--term .hidn-verification-notice
 .mask__size { align-items: center; display: grid; gap: 10px; grid-template-columns: 40px minmax(0, 1fr) 40px; }
 .mask__size button { background: transparent; border: 1px solid #2a2a30; border-radius: 6px; color: #4dff6e; cursor: pointer; font: 600 20px/1 var(--hidn-font-mono); height: 40px; width: 40px; }
 .mask__size button:is(:hover, :focus-visible) { border-color: #4dff6e; }
+
+/* On touchscreens a tap counts as a hover first, and iOS Safari can swallow
+   the tap when that hover starts an animation. So the glitch-on-hover effect
+   only runs with a mouse; on phones the first tap always acts. */
+@media (hover: none) {
+  .public-page.public-page--explore :is(.room-refresh-button, .room-notifications__toggle, .room-directory__create .ui-button, .room-mobile-index__header .ui-button):hover,
+  .hidn-term--access .ui-button:hover,
+  .room-tip-dialog--term .room-tip-dialog__actions .ui-button:hover { animation: none !important; }
+  .room-notifications__toggle, .room-notifications__link, .room-menu__toggle { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+}

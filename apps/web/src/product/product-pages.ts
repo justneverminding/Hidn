@@ -280,6 +280,8 @@ let adminAuditEvents: AdminAuditEvent[] | undefined;
 let adminAuditLoaded = false;
 let adminMetrics: AdminMetrics | undefined;
 let adminMetricsLoaded = false;
+/** Removes the bell panel's close-on-outside listeners, while it is open. */
+let roomNotificationsDismiss: (() => void) | undefined;
 let adminMetricsQuery: AdminMetricsQuery = { range: "30d" };
 let adminMetricsCustomOpen = false;
 let adminReportsAutoLoaded = false;
@@ -4431,7 +4433,7 @@ function renderRoomPostChannelPicker(): string {
   </fieldset>`;
 }
 
-function renderMobilePostSurface(): string {
+function renderMobilePostSurface(options: { refresh?: boolean } = {}): string {
   const activeChannel = roomChannelOption(activeRoomChannel);
   const content = roomPostComposerOpen && hasRoomSession()
     ? `<form class="room-post-composer room-mobile-index__composer" data-room-post-composer novalidate>
@@ -4447,7 +4449,7 @@ function renderMobilePostSurface(): string {
           ${SecondaryButton({ label: roomPostSubmitting ? "Proving and sending…" : "Transmit", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
         </div>
       </form>`
-    : `<div class="room-mobile-index__create-actions">${renderSayItButton()}${renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
+    : `<div class="room-mobile-index__create-actions">${renderSayItButton()}${options.refresh === false ? "" : renderRoomRefreshControl()}${renderRoomShareControl()}</div>`;
 
   return `<div class="room-mobile-index__create">
     ${content}
@@ -4669,12 +4671,11 @@ function renderMobileRoomIndex(): string {
     `<main id="main-content" class="public-main room-mobile-index-main">
       <div class="hidn-container--reading explore-page room-mobile-index">
         <header class="room-mobile-index__header">
-          <p class="room-v2-path">hidn://rooms</p>
           <h1 class="hidn-glitch-title" data-text="Choose a r&nbsp;&nbsp;m">Choose a r<span class="room-directory-title__double-o">oo${renderRoomEyeWatcher("room-directory-title__watcher")}</span>m</h1>
           <p>Read quietly, or leave a thought without a name.</p>
           <p class="hidn-feed-log" aria-hidden="true">&gt; ls /rooms · ${visibleRoomChannelOptions().length} open · listening<span class="hidn-feed-log__caret">▌</span></p>
-          <div class="room-mobile-index__status">${renderRoomZcashStatus()}</div>
-          ${renderMobilePostSurface()}
+          <div class="room-mobile-index__status">${renderRoomZcashStatus()}${renderRoomRefreshControl()}</div>
+          ${renderMobilePostSurface({ refresh: false })}
         </header>
         ${isRoomDesktopViewport() ? "" : renderRoomStandings()}
         <section class="room-mobile-index__list" aria-label="Private rooms">
@@ -5737,7 +5738,7 @@ function renderRoomLinkInbox(): RenderedProductRoute {
     },
     html: publicFrame(
       "/room/inbox",
-      `<main id="main-content" class="public-main room-main hidn-term-main">
+      `<main id="main-content" class="public-main room-main hidn-term-main hidn-term-main--inbox">
         ${terminalWindow("hidn@room: ~/inbox", renderLinkInboxBody(), "hidn-term--access hidn-term--link")}
       </main>`,
       "public-page--room public-page--room-profile",
@@ -7416,20 +7417,27 @@ function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
     }
     case "room-notifications-toggle":
       roomNotificationsOpen = !roomNotificationsOpen;
+      roomNotificationsDismiss?.();
       if (roomNotificationsOpen) {
         // Tapping anywhere else, or pressing Escape, closes the panel.
+        const stop = () => {
+          document.removeEventListener("pointerdown", closeOnOutside, true);
+          document.removeEventListener("keydown", closeOnEscape, true);
+          if (roomNotificationsDismiss === stop) roomNotificationsDismiss = undefined;
+        };
         const closeOnOutside = (event: Event) => {
           const target = event.target as Element | null;
           if (target?.closest(".room-notifications")) return;
-          document.removeEventListener("pointerdown", closeOnOutside, true);
-          document.removeEventListener("keydown", closeOnEscape, true);
+          stop();
           if (roomNotificationsOpen) { roomNotificationsOpen = false; rerenderProductRoute(); }
         };
         const closeOnEscape = (event: KeyboardEvent) => {
           if (event.key !== "Escape") return;
           closeOnOutside(new Event("pointerdown"));
         };
+        roomNotificationsDismiss = stop;
         window.setTimeout(() => {
+          if (roomNotificationsDismiss !== stop) return;
           document.addEventListener("pointerdown", closeOnOutside, true);
           document.addEventListener("keydown", closeOnEscape, true);
         }, 0);
