@@ -282,6 +282,8 @@ let adminMetrics: AdminMetrics | undefined;
 let adminMetricsLoaded = false;
 /** Removes the bell panel's close-on-outside listeners, while it is open. */
 let roomNotificationsDismiss: (() => void) | undefined;
+/** When a touch last toggled the bell, so the click that may follow is skipped. */
+let roomNotificationsTouchAt = 0;
 let adminMetricsQuery: AdminMetricsQuery = { range: "30d" };
 let adminMetricsCustomOpen = false;
 let adminReportsAutoLoaded = false;
@@ -8091,7 +8093,21 @@ export function bindProductRoute(root: ParentNode = document): void {
   }
 
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => handleRoomAction(root, button));
+    button.addEventListener("click", () => {
+      // A touch already handled this tap on pointerup (see below).
+      if (button.dataset.action === "room-notifications-toggle" && Date.now() - roomNotificationsTouchAt < 700) return;
+      handleRoomAction(root, button);
+    });
+  });
+  // iOS Safari doesn't always turn a tap on the bell into a click, so on a
+  // touchscreen the bell answers as the finger lifts, and the click that may
+  // follow is ignored above.
+  root.querySelectorAll<HTMLButtonElement>('[data-action="room-notifications-toggle"]').forEach((button) => {
+    button.addEventListener("pointerup", (event) => {
+      if (event.pointerType === "mouse" || !button.isConnected) return;
+      roomNotificationsTouchAt = Date.now();
+      handleRoomAction(root, button);
+    });
   });
 
   root.querySelectorAll<HTMLButtonElement>("[data-feed-tab]").forEach((button) => {
