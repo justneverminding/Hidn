@@ -197,6 +197,7 @@ interface RoomPostRow {
   channel: RoomChannel;
   created_at: string;
   tip_address?: string | null;
+  mood?: string | null;
   reactions?: number;
   reply_count?: number;
   liked_by_current_user?: number;
@@ -885,6 +886,13 @@ async function listLiveActivity(request: Request, env: HidnWorkerEnv): Promise<R
   );
 }
 
+/** How a post's card looks. Visual only: it carries nothing about the author. */
+const POST_MOODS = ["plain", "haunted", "cctv", "classified", "note"] as const;
+type PostMood = (typeof POST_MOODS)[number];
+function isPostMood(value: unknown): value is PostMood {
+  return typeof value === "string" && (POST_MOODS as readonly string[]).includes(value);
+}
+
 function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
   const tipAddress = typeof row.tip_address === "string" ? normalizeMainnetTipAddress(row.tip_address) : "";
   return {
@@ -898,6 +906,7 @@ function serializeRoomPost(row: RoomPostRow): Record<string, unknown> {
     replies: Number(row.reply_count ?? 0),
     liked: row.liked_by_current_user === 1,
     ...(tipAddress && isValidMainnetTipAddress(tipAddress) ? { tipAddress } : {}),
+    ...(isPostMood(row.mood) && row.mood !== "plain" ? { mood: row.mood } : {}),
   };
 }
 
@@ -1301,6 +1310,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   const channel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "general";
   const category = typeof body.category === "string" ? body.category.trim().toUpperCase() : "IDENTITY";
   const tipAddress = normalizeMainnetTipAddress(typeof body.tipAddress === "string" ? body.tipAddress : "");
+  const mood = typeof body.mood === "string" ? body.mood.trim().toLowerCase() : "plain";
   // Each post carries its own one-off notification key; no member alias is
   // stored, so the server cannot group a member's posts together.
   const notificationCapability = anonymousCapabilityFromBody(body);
@@ -1326,6 +1336,9 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
   }
   if (!ROOM_POST_CATEGORIES.has(category)) {
     return jsonResponse({ error: "Choose a valid post category." }, 400);
+  }
+  if (!isPostMood(mood)) {
+    return jsonResponse({ error: "Choose a valid mood for the post." }, 400);
   }
   if (tipAddress && !isValidMainnetTipAddress(tipAddress)) {
     return jsonResponse(
@@ -1359,6 +1372,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
     channel,
     created_at: new Date().toISOString(),
     tip_address: tipAddress || null,
+    mood: mood === "plain" ? null : mood,
   };
   const actionConflict = await reserveAnonymousAction(env, action, "post", "room", post.thread_id);
   if (actionConflict) {
@@ -1370,8 +1384,8 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
       (thread_id, room_id, content, category, moderation_state, created_at,
        updated_at, hidden_at, channel, author_user_id, anonymous_root,
        anonymous_nullifier, anonymous_binding, anonymous_alias,
-       anonymous_notification_capability_hash, tip_address)
-     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+       anonymous_notification_capability_hash, tip_address, mood)
+     VALUES (?, ?, ?, ?, 'visible', ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       post.thread_id,
@@ -1387,6 +1401,7 @@ async function createAnonymousPost(request: Request, env: HidnWorkerEnv): Promis
       null,
       await hashText(notificationCapability),
       post.tip_address,
+      post.mood ?? null,
     )
     .run();
 
@@ -1647,7 +1662,7 @@ async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise
   const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 100;
 
   const result = await env.ROOM_DB!.prepare(
-    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address, t.mood,
             COUNT(r.reaction_id) AS reactions,
             (SELECT COUNT(*)
              FROM hidn_replies reply_count
@@ -1659,7 +1674,7 @@ async function listAnonymousPosts(request: Request, env: HidnWorkerEnv): Promise
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
      WHERE t.room_id = ? AND t.channel = ? AND t.moderation_state = 'visible' AND t.created_at < ?
-     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address, t.mood
      ORDER BY t.created_at DESC
      LIMIT ${limit}`,
   )
@@ -1681,7 +1696,7 @@ async function listAnonymousThread(request: Request, env: HidnWorkerEnv): Promis
   }
 
   const post = await env.ROOM_DB!.prepare(
-    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address,
+    `SELECT t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address, t.mood,
             COUNT(r.reaction_id) AS reactions,
             (SELECT COUNT(*)
              FROM hidn_replies reply_count
@@ -1693,7 +1708,7 @@ async function listAnonymousThread(request: Request, env: HidnWorkerEnv): Promis
       AND r.target_id = t.thread_id
       AND r.reaction_type = 'like'
      WHERE t.thread_id = ? AND t.room_id = ? AND t.moderation_state = 'visible'
-     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address
+     GROUP BY t.thread_id, t.content, t.category, t.channel, t.created_at, t.tip_address, t.mood
      LIMIT 1`,
   )
     .bind(threadId, MAIN_ROOM_ID)

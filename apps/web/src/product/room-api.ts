@@ -16,7 +16,12 @@ export interface RoomPost {
   replies: number;
   liked?: boolean;
   tipAddress?: string | null;
+  /** How the card looks; missing means the default HIDN look. */
+  mood?: PostMood;
 }
+
+/** A post's look. Visual only: it says nothing about who wrote it. */
+export type PostMood = "plain" | "haunted" | "cctv" | "classified" | "note";
 
 export type ContentStatus = "visible" | "pending" | "hidden" | "rejected";
 
@@ -270,6 +275,7 @@ export function createAnonymousPost(input: {
   channel: string;
   category: string;
   tipAddress?: string;
+  mood?: PostMood;
 }): Promise<{ post: RoomPost; status: "created" }> {
   return anonymousRequest<{ post: RoomPost; status: "created" }>("/api/anonymous/posts", {
     ...input.proof,
@@ -279,6 +285,7 @@ export function createAnonymousPost(input: {
     channel: input.channel,
     category: input.category,
     tipAddress: input.tipAddress ?? "",
+    mood: input.mood ?? "plain",
   });
 }
 

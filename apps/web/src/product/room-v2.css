@@ -1961,3 +1961,67 @@ html:has(.hidn-report-sheet), body:has(.hidn-report-sheet) { overflow: hidden !i
 /* The old feed faded its outer 2% into the background; the text now sits at
    the edge, so that fade ate the first letter of every line. */
 .public-page.room-v2.room-v2.room-v2 .explore-feed { -webkit-mask-image: none !important; mask-image: none !important; }
+
+/* ======================= Post moods ======================= */
+/* A mood reskins one card. It is decoration only: nothing in it says who wrote the post. */
+.public-page.room-v2.room-v2.room-v2 .hidn-mood { border: 1px solid transparent !important; border-radius: 14px !important; margin: 12px 0 !important; overflow: hidden !important; padding: 16px 16px 10px !important; position: relative; }
+.public-page.room-v2.room-v2.room-v2 .detail-card.hidn-mood { padding: 18px 18px 16px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood > :not(.hidn-mood__web):not(.hidn-mood__corner):not(.hidn-mood__margin):not(.hidn-mood__tape) { position: relative; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood .transmission-row__meta { flex-wrap: nowrap !important; min-width: 0; }
+
+/* Haunted: terminal green, a sketched cobweb in the corner. */
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--haunted { background: radial-gradient(circle at 92% 0%, rgba(93, 255, 143, 0.11), transparent 55%), #020a05 !important; border-color: #1d4a2c !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--haunted .transmission-row__meta { padding-right: 56px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--haunted :is(.transmission-row__thought, .detail-card__thought) { padding-right: 30px; text-shadow: 0 0 14px rgba(93, 255, 143, 0.28); }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__web { height: 80px; pointer-events: none; position: absolute; right: 0; stroke: #6fd894; top: 0; width: 78px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__spider { fill: #8dffb0; stroke: #8dffb0; }
+
+/* CCTV: security-camera frame, scanlines, a red REC dot. */
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--cctv { background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 3px), #0c110e !important; border-color: #26302a !important; border-radius: 6px !important; padding: 18px 20px 10px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--cctv :is(.transmission-row__thought, .detail-card__thought) { color: #dfe7e1 !important; font-family: var(--v2-mono) !important; font-weight: 500 !important; font-size: 15.5px !important; line-height: 1.55 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--cctv .transmission-row__room { align-items: center; color: #c9d4cc !important; display: inline-flex; gap: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--cctv .transmission-row__room::before { background: #ff4d4d; border-radius: 50%; content: "" !important; flex: none; height: 7px; width: 7px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--cctv .room-message__action { color: #93a198 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__corner { border: 0 solid #c9d4cc; height: 13px; pointer-events: none; position: absolute; width: 13px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__corner--tl { border-left-width: 2px; border-top-width: 2px; left: 6px; top: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__corner--tr { border-right-width: 2px; border-top-width: 2px; right: 6px; top: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__corner--bl { border-bottom-width: 2px; border-left-width: 2px; bottom: 6px; left: 6px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__corner--br { border-bottom-width: 2px; border-right-width: 2px; bottom: 6px; right: 6px; }
+
+/* Classified: a pale case file, the stamp in its header, never over the words. */
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--classified { background: #e9e4d2 !important; border-color: #d6cfb6 !important; border-radius: 4px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__file { align-items: center; border-bottom: 1px dashed #b9b29a; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 10px; padding-bottom: 10px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__file span { color: #5a5647; font: 500 10.5px/1.45 var(--v2-mono); letter-spacing: 0.08em; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__file b { border: 2px solid #b3261e; border-radius: 3px; color: #b3261e; flex: none; font: 600 12px var(--v2-mono); letter-spacing: 0.14em; padding: 3px 8px; transform: rotate(-4deg); }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--classified :is(.transmission-row__thought, .detail-card__thought) { color: #1b1a16 !important; font-family: var(--v2-mono) !important; font-weight: 400 !important; font-size: 15.5px !important; line-height: 1.6 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--classified :is(.transmission-row__room, .transmission-row__meta time, .transmission-row__meta time::before, .hidn-detail__signed) { color: #5a5647 !important; }
+
+/* Note: a page from a notebook, with tape and handwriting. */
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--note { background: repeating-linear-gradient(180deg, transparent 0 29px, #c7d6ee 29px 30px), #f6f1e3 !important; border-color: #e2dac4 !important; border-radius: 3px !important; padding-left: 46px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__margin { background: #e58c8c; bottom: 0; left: 32px; pointer-events: none; position: absolute; top: 0; width: 1px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood__tape { background: rgba(250, 240, 190, 0.85); height: 18px; left: 50%; margin-left: -40px; pointer-events: none; position: absolute; top: -6px; transform: rotate(2deg); width: 80px; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--note :is(.transmission-row__thought, .detail-card__thought) { color: #1d2a4a !important; font-family: "Caveat", "Noteworthy", "Bradley Hand", "Segoe Print", "Marker Felt", cursive !important; font-weight: 600 !important; font-size: 22px !important; line-height: 30px !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--note :is(.transmission-row__room, .transmission-row__meta time, .transmission-row__meta time::before, .hidn-detail__signed) { color: #5a6585 !important; }
+
+/* Light moods need dark controls. */
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-mood--classified, .hidn-mood--note) .room-message__action { color: #3d3a30 !important; }
+.public-page.room-v2.room-v2.room-v2 .hidn-mood--note .room-message__action { color: #3e4868 !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-mood--classified, .hidn-mood--note) .room-message__action:is(:hover, :focus-visible) { background: rgba(0, 0, 0, 0.06) !important; color: #111 !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-mood--classified, .hidn-mood--note) .room-message__action[aria-pressed="true"] { color: #b3261e !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-mood--classified, .hidn-mood--note) .room-message__action--tip { color: #8a5300 !important; }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-mood--classified, .hidn-mood--note) .transmission-row__signed { filter: grayscale(1) brightness(0.35); }
+.public-page.room-v2.room-v2.room-v2 :is(.hidn-mood--classified, .hidn-mood--note) .thread-share-status { color: #5a5647; }
+
+/* The mood picker in the composer. */
+.public-page.room-v2.room-v2.room-v2 .room-post-mood { border: 0; display: flex; flex-direction: column; gap: 8px; margin: 4px 0 0; min-width: 0; padding: 0; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood legend { color: var(--v2-ink); display: flex; flex-wrap: wrap; gap: 4px 10px; font: 600 14px var(--v2-read); margin-bottom: 8px; padding: 0; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood legend span { color: var(--v2-dim); font: 400 12px var(--v2-mono); }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__options { display: flex; flex-wrap: wrap; gap: 8px; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option { align-items: center; background: transparent; border: 1px solid var(--v2-edge); border-radius: 999px; color: var(--v2-muted); cursor: pointer; display: inline-flex; font: 500 14px var(--v2-read); gap: 8px; min-height: 40px; padding: 0 14px; touch-action: manipulation; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option[aria-pressed="true"] { background: rgba(93, 255, 143, 0.12); border-color: var(--v2-green); color: var(--v2-ink); }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__swatch { border-radius: 4px; display: inline-block; flex: none; height: 14px; width: 14px; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option--plain .room-post-mood__swatch { background: #040a06; border: 1px solid #5dff8f; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option--haunted .room-post-mood__swatch { background: #020a05; border: 1px solid #6fd894; box-shadow: inset 4px -4px 0 -3px #6fd894; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option--cctv .room-post-mood__swatch { background: #0c110e; border: 1px solid #c9d4cc; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option--classified .room-post-mood__swatch { background: #e9e4d2; border: 1px solid #b3261e; }
+.public-page.room-v2.room-v2.room-v2 .room-post-mood__option--note .room-post-mood__swatch { background: #f6f1e3; border: 1px solid #7d93c4; }

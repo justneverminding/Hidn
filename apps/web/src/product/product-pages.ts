@@ -137,6 +137,7 @@ import {
   type ModerationTargetType,
   type RoomActivityEvent,
   type RoomComment,
+  type PostMood,
   type RoomPost,
   type ReportReason,
   type ReportStatus,
@@ -239,6 +240,8 @@ let roomChannelNotice = "";
 let roomPostComposerOpen = false;
 let roomPostText = "";
 let roomPostTipsEnabled = false;
+/** The look the next post goes out in; HIDN's own by default. */
+let roomPostMood: PostMood = "plain";
 let roomPostTipAddressDraft = "";
 let roomPostTipAddressEdited = false;
 let roomPostError = "";
@@ -319,6 +322,7 @@ interface TransmissionView {
   reactions?: number;
   replies?: number;
   tipAddress?: string | null;
+  mood?: PostMood;
 }
 
 interface SelectedTextItem {
@@ -732,6 +736,7 @@ function transmissionViewFromRoomPost(post: RoomPost): TransmissionView {
     reactions: post.reactions,
     replies: post.replies,
     tipAddress: post.tipAddress,
+    mood: post.mood,
   };
 }
 
@@ -1068,7 +1073,10 @@ function renderTransmissionRow(
   // Tapping the post itself opens it (replies and the full actions live there).
   const openAttribute = options.href && threadId ? ` data-open-href="${escapeHtml(options.href)}"` : "";
   const openClass = threadId && threadId === deskOpenThreadId ? " transmission-row--open" : "";
-  return `<article class="transmission-row${className}${openClass}"${openAttribute}>
+  const mood = transmission.mood && transmission.mood !== "plain" ? transmission.mood : undefined;
+  const moodClass = mood ? ` hidn-mood hidn-mood--${mood}` : "";
+  return `<article class="transmission-row${className}${openClass}${moodClass}"${openAttribute}>
+    ${mood ? renderMoodDecor(mood, threadId ?? "") : ""}
     <div class="transmission-row__meta">
       <span class="transmission-row__room"${options.roomLabel === roomChannelOption("haunted").label ? ` data-room="haunted"` : ""}>${options.roomLabel ? escapeHtml(roomDisplayName(options.roomLabel)) : "Anonymous"}</span>
       <time datetime="${escapeHtml(transmission.time)}">${escapeHtml(threadId ? timeAgo(transmission.time) || formatTransmissionTime(transmission.time) : formatTransmissionTime(transmission.time))}</time>
@@ -1080,6 +1088,28 @@ function renderTransmissionRow(
       ${action}
     </footer>
   </article>`;
+}
+
+// The haunted cobweb (a 92×94 box, its corner at the top right).
+const MOOD_WEB_PATH = "M88 2 L2 6 M88 2 L14 46 M88 2 L38 80 M88 2 L70 92 M66.5 3 Q72 7 69.5 13 Q75 16 75.5 21.5 Q81 21 83.5 24.5 M45 4 Q56 12 51 24 Q63 26 63 41 Q74 36 79 47 M23.5 5 Q40 16 32.5 35 Q51 39 50.5 60.5 Q68 52 74.5 69.5 M2 6 Q20 22 14 46 Q34 56 38 80";
+
+function moodFileNumber(id: string): string {
+  const code = id.replace(/^THR-/, "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().padEnd(6, "0");
+  return `FILE NO. ${code.slice(0, 4)}-${code.slice(4, 6)}`;
+}
+
+/** The decoration a mood adds to a card: all of it decorative, none of it data. */
+function renderMoodDecor(mood: PostMood, id: string): string {
+  if (mood === "haunted") {
+    return `<svg class="hidn-mood__web" aria-hidden="true" viewBox="0 0 92 94" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="${MOOD_WEB_PATH}" stroke-width="0.9" opacity="0.55"/><path d="${MOOD_WEB_PATH}" stroke-width="0.6" opacity="0.3" transform="translate(1.2 0.8) rotate(0.8 88 2)"/><path d="M58 30 L57 58" stroke-width="0.6" opacity="0.6"/><g class="hidn-mood__spider" stroke-width="0.9"><ellipse cx="57" cy="61.5" rx="2.4" ry="3"/><path d="M55 60 l-4 -3 M55 62 l-5 0 M55 63.5 l-4 3 M59 60 l4 -3 M59 62 l5 0 M59 63.5 l4 3"/></g></svg>`;
+  }
+  if (mood === "cctv") {
+    return `<span class="hidn-mood__corner hidn-mood__corner--tl" aria-hidden="true"></span><span class="hidn-mood__corner hidn-mood__corner--tr" aria-hidden="true"></span><span class="hidn-mood__corner hidn-mood__corner--bl" aria-hidden="true"></span><span class="hidn-mood__corner hidn-mood__corner--br" aria-hidden="true"></span>`;
+  }
+  if (mood === "classified") {
+    return `<div class="hidn-mood__file" aria-hidden="true"><span>${escapeHtml(moodFileNumber(id))}<br>EYES ONLY</span><b>CLASSIFIED</b></div>`;
+  }
+  return `<span class="hidn-mood__margin" aria-hidden="true"></span><span class="hidn-mood__tape" aria-hidden="true"></span>`;
 }
 
 function renderHomeTransmissionRows(): string {
@@ -1868,6 +1898,7 @@ async function createThreadImage(
     ? [focusReply.reply.text]
     : cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [];
   const channel = roomChannelOptions.find((room) => room.key === confession.channel);
+  const livePost = roomPosts.find((post) => post.id === confession.id) ?? mixedFeedPosts.find((post) => post.id === confession.id);
   return renderShareCard({
     text: confession.text,
     replies,
@@ -1876,6 +1907,8 @@ async function createThreadImage(
     mark: String(confession.reference || `// ${confession.id.replace(/^THR-/, "").slice(0, 8)}`).toUpperCase(),
     theme: activeHidnTheme() === "signal" ? "signal" : "quiet",
     size,
+    mood: livePost?.mood,
+    time: confession.time,
   });
 }
 
@@ -3238,6 +3271,7 @@ async function submitRoomPost(): Promise<void> {
       channel: activeRoomChannel,
       category: "IDENTITY",
       tipAddress: selectedTipAddress || undefined,
+      mood: roomPostMood,
     });
     rememberNotificationKey(notificationCapability);
     roomPendingPostIds.add(response.post.id);
@@ -3259,6 +3293,7 @@ async function submitRoomPost(): Promise<void> {
     roomPostTipsEnabled = false;
     roomPostTipAddressDraft = "";
     roomPostTipAddressEdited = false;
+    roomPostMood = "plain";
     roomChannelNotice = `${response.post.reference} POSTED / ANONYMOUS`;
   } catch (error) {
     roomPostError = error instanceof Error ? error.message : "The post could not be created.";
@@ -3342,6 +3377,24 @@ async function submitRoomReply(threadId: string, content: string): Promise<void>
 
 function renderRoomEyeWatcher(extraClass = ""): string {
   return `<span class="home-room-title__watcher${extraClass ? ` ${extraClass}` : ""}" aria-hidden="true"><span class="home-room-invite__glasses home-room-title__glasses"><span class="home-room-invite__lens"><span class="home-room-invite__eye"><span class="home-room-invite__pupil"></span></span></span><span class="home-room-invite__bridge"></span><span class="home-room-invite__lens"><span class="home-room-invite__eye home-room-invite__eye--right"><span class="home-room-invite__pupil"></span></span></span></span></span>`;
+}
+
+const POST_MOODS: Array<{ key: PostMood; label: string }> = [
+  { key: "plain", label: "HIDN" },
+  { key: "haunted", label: "Haunted" },
+  { key: "cctv", label: "CCTV" },
+  { key: "classified", label: "Classified" },
+  { key: "note", label: "Note" },
+];
+
+/** Mood picker: changes how the card looks, never who wrote it. */
+function renderRoomPostMoodPicker(): string {
+  return `<fieldset class="room-post-mood">
+    <legend>Mood <span>changes the look, not who you are</span></legend>
+    <div class="room-post-mood__options">
+      ${POST_MOODS.map(({ key, label }) => `<button class="room-post-mood__option room-post-mood__option--${key}" type="button" data-action="room-post-mood" data-mood="${key}" aria-pressed="${roomPostMood === key}"><span class="room-post-mood__swatch" aria-hidden="true"></span>${label}</button>`).join("")}
+    </div>
+  </fieldset>`;
 }
 
 function renderRoomPostTipControls(): string {
@@ -3436,7 +3489,8 @@ function renderRoomDirectory(options: { showFooter?: boolean } = {}): string {
                   <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Say the thing you can't say out loud.">${escapeHtml(roomPostText)}</textarea>
                 </label>
                 <p class="room-post-composer__note">${roomPostLimitCopy()} Your post is stored without a public name.</p>
-                ${renderRoomPostTipControls()}
+                ${renderRoomPostMoodPicker()}
+        ${renderRoomPostTipControls()}
                 <div class="room-post-composer__actions">
                   ${GhostButton({ label: "Cancel", dataAction: "room-post-cancel" })}
                   ${SecondaryButton({ label: roomPostSubmitting ? "Proving and sending…" : "Transmit", disabled: roomPostSubmitting, dataAction: "room-post-submit" })}
@@ -4445,6 +4499,7 @@ function renderMobilePostSurface(options: { refresh?: boolean } = {}): string {
         <textarea id="room-post-content" rows="5" maxlength="${roomPostCharacterLimit()}" placeholder="Say the thing you can't say out loud.">${escapeHtml(roomPostText)}</textarea>
       </label>
         <p class="room-post-composer__note">${roomPostLimitCopy()}</p>
+        ${renderRoomPostMoodPicker()}
         ${renderRoomPostTipControls()}
         <div class="room-post-composer__actions">
           ${GhostButton({ label: "Cancel", dataAction: "room-post-cancel" })}
@@ -4921,7 +4976,8 @@ function renderDetail(id: string): RenderedProductRoute {
             ${livePost ? `<a class="hidn-detail__back" href="/room/channel/${escapeHtml(livePost.channel)}/feed">← ${escapeHtml(roomDisplayName(roomChannelOption(livePost.channel as RoomChannel).label))}</a>` : ""}
             <h1 class="hidn-detail__context">An anonymous post${detailRoomName ? ` in <b>${escapeHtml(detailRoomName)}</b>` : ""} <span aria-hidden="true">·</span> <time datetime="${escapeHtml(confession.time)}">${escapeHtml(confession.relativeTime)}</time></h1>
           </header>
-          <article class="detail-card" aria-labelledby="detail-thought">
+          <article class="detail-card${livePost?.mood && livePost.mood !== "plain" ? ` hidn-mood hidn-mood--${livePost.mood}` : ""}" aria-labelledby="detail-thought">
+            ${livePost?.mood && livePost.mood !== "plain" ? renderMoodDecor(livePost.mood, livePost.id) : ""}
             <p class="hidn-detail__signed" aria-label="Signed: name withheld">signed <span class="hidn-detail__redact" aria-hidden="true"></span> name withheld</p>
             <p id="detail-thought" class="detail-card__thought" data-share-text data-share-id="${escapeHtml(confession.id)}" data-share-kind="thread" data-share-label="${escapeHtml(confession.reference)}" data-share-category="${escapeHtml(confession.category)}" data-share-time="${escapeHtml(confession.time)}">${escapeHtml(confession.text)}</p>
             <div class="detail-card__footer">
@@ -7604,8 +7660,18 @@ function handleRoomAction(root: ParentNode, button: HTMLButtonElement): void {
       void refreshRoomTipAddress();
       rerenderProductRoute();
       break;
+    case "room-post-mood": {
+      const picked = POST_MOODS.find((option) => option.key === button.dataset.mood);
+      if (!picked) break;
+      // Keep what's typed: the composer is redrawn with the new mood.
+      roomPostText = root.querySelector<HTMLTextAreaElement>("#room-post-content")?.value ?? roomPostText;
+      roomPostMood = picked.key;
+      rerenderProductRoute();
+      break;
+    }
     case "room-post-cancel":
       roomPostComposerOpen = false;
+      roomPostMood = "plain";
       roomPostText = "";
       roomPostTipsEnabled = false;
       roomPostTipAddressDraft = "";
