@@ -2490,23 +2490,71 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
   }
 
   const db = env.ROOM_DB!;
-  const requestedDays = Number(new URL(request.url).searchParams.get("days") ?? "30");
-  const days = [1, 7, 30, 90].includes(requestedDays) ? requestedDays : 30;
-  // "1" is the last 24 hours, counted hour by hour; the rest go day by day.
-  const hourly = days === 1;
-  const bucketLength = hourly ? 13 : 10;
-  const bucketMs = hourly ? 3_600_000 : 86_400_000;
-  const buckets = hourly ? 24 : days;
-  const sinceAt = hourly
-    ? `${new Date(Date.now() - 23 * 3_600_000).toISOString().slice(0, 13)}:00:00.000Z`
-    : `${new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10)}T00:00:00.000Z`;
-  const since = sinceAt.slice(0, 10);
   const one = async (sql: string, ...binds: unknown[]): Promise<number> =>
     Number((await db.prepare(sql).bind(...binds).first<{ n: number }>())?.n ?? 0);
-  const daily = async (table: string): Promise<Record<string, number>> => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const dayOf = (ms: number) => iso(ms).slice(0, 10);
+
+  // The period: a preset (?range=24h|7d|30d|90d|all) or a calendar range
+  // (?from=YYYY-MM-DD&to=YYYY-MM-DD, inclusive, UTC). A single day or the
+  // last 24 hours is counted hour by hour; anything longer, day by day.
+  const params = new URL(request.url).searchParams;
+  const HOUR = 3_600_000;
+  const DAY = 86_400_000;
+  const now = Date.now();
+  const todayStart = Date.parse(`${dayOf(now)}T00:00:00.000Z`);
+  const isDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  let key = params.get("range") ?? "30d";
+  let startMs: number;
+  let endMs: number;
+  let comparable = true;
+  if (isDay(from) && isDay(to)) {
+    let first = Date.parse(`${from}T00:00:00Z`);
+    let last = Date.parse(`${to}T00:00:00Z`);
+    if (first > last) [first, last] = [last, first];
+    last = Math.min(last, todayStart);
+    first = Math.max(Math.min(first, last), last - 365 * DAY);
+    key = "custom";
+    startMs = first;
+    endMs = last + DAY;
+  } else if (key === "all") {
+    const firstAt = (await db.prepare("SELECT MIN(created_at) AS first FROM hidn_anonymous_members").first<{ first: string | null }>())?.first;
+    startMs = Math.max(firstAt ? Date.parse(`${firstAt.slice(0, 10)}T00:00:00Z`) : todayStart, todayStart - 730 * DAY);
+    endMs = todayStart + DAY;
+    comparable = false;
+  } else if (key === "24h") {
+    const hourStart = Math.floor(now / HOUR) * HOUR;
+    startMs = hourStart - 23 * HOUR;
+    endMs = hourStart + HOUR;
+  } else {
+    const presetDays = ({ "7d": 7, "30d": 30, "90d": 90 } as Record<string, number>)[key] ?? 30;
+    key = `${presetDays}d`;
+    startMs = todayStart - (presetDays - 1) * DAY;
+    endMs = todayStart + DAY;
+  }
+  const hourly = endMs - startMs <= DAY;
+  const bucketMs = hourly ? HOUR : DAY;
+  const bucketLength = hourly ? 13 : 10;
+  const buckets = Math.round((endMs - startMs) / bucketMs);
+  const sinceAt = iso(startMs);
+  const untilAt = iso(endMs);
+  const previousSinceAt = iso(startMs - (endMs - startMs));
+  // For "all time", count everything so the totals match even before the chart starts.
+  const countFrom = key === "all" ? "" : sinceAt;
+
+  const visible = " AND hidden_at IS NULL";
+  const within = (table: string, extra = "") => one(
+    `SELECT COUNT(*) AS n FROM ${table} WHERE created_at >= ? AND created_at < ?${extra}`, countFrom, untilAt,
+  );
+  const before = (table: string, extra = "") => comparable
+    ? one(`SELECT COUNT(*) AS n FROM ${table} WHERE created_at >= ? AND created_at < ?${extra}`, previousSinceAt, sinceAt)
+    : Promise.resolve(0);
+  const daily = async (table: string, extra = ""): Promise<Record<string, number>> => {
     const rows = await db.prepare(
-      `SELECT substr(created_at, 1, ${bucketLength}) AS day, COUNT(*) AS n FROM ${table} WHERE created_at >= ? GROUP BY day`,
-    ).bind(sinceAt).all<{ day: string; n: number }>();
+      `SELECT substr(created_at, 1, ${bucketLength}) AS day, COUNT(*) AS n FROM ${table} WHERE created_at >= ? AND created_at < ?${extra} GROUP BY day`,
+    ).bind(sinceAt, untilAt).all<{ day: string; n: number }>();
     return Object.fromEntries(rows.results.map((row) => [row.day, Number(row.n)]));
   };
 
@@ -2522,37 +2570,40 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
     one("SELECT COUNT(*) AS n FROM hidn_reports"),
     one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NOT NULL"),
   ]);
-  const [postsReplied, linksWithMessages, recentPosts] = await Promise.all([
-    one(`SELECT COUNT(*) AS n FROM hidn_threads t WHERE t.hidden_at IS NULL AND t.created_at >= ?
-         AND EXISTS (SELECT 1 FROM hidn_replies r WHERE r.thread_id = t.thread_id)`, sinceAt),
+  const [inMembers, inPosts, inReplies, inLikes, inLinks, inMessages, inTipPosts, inReports, postsReplied, linksWithMessages] = await Promise.all([
+    within("hidn_anonymous_members"),
+    within("hidn_threads", visible),
+    within("hidn_replies", visible),
+    within("hidn_reactions"),
+    within("hidn_link_inboxes"),
+    within("hidn_link_messages"),
+    within("hidn_threads", " AND tip_address IS NOT NULL AND tip_address != ''"),
+    within("hidn_reports"),
+    one(`SELECT COUNT(*) AS n FROM hidn_threads t WHERE t.hidden_at IS NULL AND t.created_at >= ? AND t.created_at < ?
+         AND EXISTS (SELECT 1 FROM hidn_replies r WHERE r.thread_id = t.thread_id)`, countFrom, untilAt),
     one("SELECT COUNT(DISTINCT link_id) AS n FROM hidn_link_messages"),
-    one("SELECT COUNT(*) AS n FROM hidn_threads WHERE hidden_at IS NULL AND created_at >= ?", sinceAt),
   ]);
-  const previousSinceAt = new Date(Date.parse(sinceAt) - buckets * bucketMs).toISOString();
-  const between = (table: string, extra = "") => one(
-    `SELECT COUNT(*) AS n FROM ${table} WHERE created_at >= ? AND created_at < ?${extra}`, previousSinceAt, sinceAt,
-  );
   const [prevMembers, prevPosts, prevReplies, prevLikes, prevMessages, membersBefore] = await Promise.all([
-    between("hidn_anonymous_members"),
-    between("hidn_threads"),
-    between("hidn_replies"),
-    between("hidn_reactions"),
-    between("hidn_link_messages"),
+    before("hidn_anonymous_members"),
+    before("hidn_threads", visible),
+    before("hidn_replies", visible),
+    before("hidn_reactions"),
+    before("hidn_link_messages"),
     one("SELECT COUNT(*) AS n FROM hidn_anonymous_members WHERE created_at < ?", sinceAt),
   ]);
   const roomRows = await db.prepare(
-    `SELECT channel, COUNT(*) AS total, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS recent
+    `SELECT channel, COUNT(*) AS total, SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS recent
      FROM hidn_threads WHERE hidden_at IS NULL GROUP BY channel ORDER BY total DESC`,
-  ).bind(sinceAt).all<{ channel: string; total: number; recent: number }>();
+  ).bind(countFrom, untilAt).all<{ channel: string; total: number; recent: number }>();
   const [memberDays, postDays, replyDays, likeDays, messageDays] = await Promise.all([
     daily("hidn_anonymous_members"),
-    daily("hidn_threads"),
-    daily("hidn_replies"),
+    daily("hidn_threads", visible),
+    daily("hidn_replies", visible),
     daily("hidn_reactions"),
     daily("hidn_link_messages"),
   ]);
   const series = Array.from({ length: buckets }, (_, index) => {
-    const day = new Date(Date.parse(sinceAt) + index * bucketMs).toISOString().slice(0, bucketLength);
+    const day = iso(startMs + index * bucketMs).slice(0, bucketLength);
     return {
       day,
       members: memberDays[day] ?? 0,
@@ -2564,16 +2615,17 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
   });
 
   // Traffic, from the daily page-view tally (empty until counting has run).
-  // Views are only kept per day, so the 24-hour view shows today's (UTC) tally.
-  const trafficSince = hourly ? new Date().toISOString().slice(0, 10) : since;
+  // Views are only kept per day, so an hourly period shows its last day's tally.
+  const trafficFrom = hourly ? dayOf(endMs - 1) : dayOf(startMs);
+  const trafficTo = dayOf(endMs - 1);
   let traffic: { pages: Array<{ page: string; views: number }>; sources: Array<{ source: string; views: number }>; countries: Array<{ country: string; views: number }>; daily: Record<string, number>; total: number; home: number; access: number } | null = null;
   try {
     const sum = (column: string) => db.prepare(
-      `SELECT ${column} AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY ${column} ORDER BY n DESC LIMIT 12`,
-    ).bind(trafficSince).all<{ key: string; n: number }>();
+      `SELECT ${column} AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? AND day <= ? GROUP BY ${column} ORDER BY n DESC LIMIT 12`,
+    ).bind(trafficFrom, trafficTo).all<{ key: string; n: number }>();
     const [pages, sources, countries, dailyRows] = await Promise.all([
       sum("page"), sum("source"), sum("country"),
-      db.prepare("SELECT day AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? GROUP BY day").bind(trafficSince).all<{ key: string; n: number }>(),
+      db.prepare("SELECT day AS key, SUM(views) AS n FROM hidn_page_views WHERE day >= ? AND day <= ? GROUP BY day").bind(trafficFrom, trafficTo).all<{ key: string; n: number }>(),
     ]);
     const pageViews = pages.results.map((row) => ({ page: row.key, views: Number(row.n) }));
     traffic = {
@@ -2591,15 +2643,14 @@ async function getAdminMetrics(request: Request, env: HidnWorkerEnv): Promise<Re
 
   return jsonResponse({
     generatedAt: new Date().toISOString(),
-    days,
+    range: { key, from: dayOf(startMs), to: trafficTo, hourly, comparable, trafficDay: hourly ? trafficTo : null },
     traffic,
-    recentMembers: series.reduce((total, day) => total + day.members, 0),
-    previous: { members: prevMembers, posts: prevPosts, replies: prevReplies, likes: prevLikes, messages: prevMessages },
+    inRange: { members: inMembers, posts: inPosts, replies: inReplies, likes: inLikes, links: inLinks, messages: inMessages, tipPosts: inTipPosts, reports: inReports },
+    previous: comparable ? { members: prevMembers, posts: prevPosts, replies: prevReplies, likes: prevLikes, messages: prevMessages } : null,
     membersBefore,
-    recentPosts,
     totals: { members, posts, replies, likes, links, linkMessages, tipPosts, tipMessages, reports, hiddenPosts },
     rates: {
-      repliedShare: recentPosts ? postsReplied / recentPosts : 0,
+      repliedShare: inPosts ? postsReplied / inPosts : 0,
       linksWithMessagesShare: links ? linksWithMessages / links : 0,
     },
     rooms: roomRows.results.map((row) => ({ room: row.channel, total: Number(row.total), recent: Number(row.recent ?? 0) })),

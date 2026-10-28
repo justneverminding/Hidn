@@ -468,19 +468,23 @@ export function updateAdminModerator(
   });
 }
 
+export type AdminMetricsRangeKey = "24h" | "7d" | "30d" | "90d" | "all" | "custom";
+
 export interface AdminMetrics {
   generatedAt: string;
-  days: number;
+  /** The period counted: UTC days, inclusive. Hourly for 24 hours or a single day. */
+  range: { key: AdminMetricsRangeKey; from: string; to: string; hourly: boolean; comparable: boolean; trafficDay: string | null };
+  /** All-time totals. */
   totals: { members: number; posts: number; replies: number; likes: number; links: number; linkMessages: number; tipPosts: number; tipMessages: number; reports: number; hiddenPosts: number };
+  /** The same counts, inside the period. */
+  inRange: { members: number; posts: number; replies: number; likes: number; links: number; messages: number; tipPosts: number; reports: number };
   rates: { repliedShare: number; linksWithMessagesShare: number };
   rooms: Array<{ room: string; total: number; recent: number }>;
   series: Array<{ day: string; members: number; posts: number; replies: number; likes: number; messages: number }>;
-  recentMembers: number;
-  /** The same counts for the period just before this one. */
-  previous: { members: number; posts: number; replies: number; likes: number; messages: number };
+  /** The same counts for the period just before this one; null for all time. */
+  previous: { members: number; posts: number; replies: number; likes: number; messages: number } | null;
   /** Keys that existed before the period started, for the running total. */
   membersBefore: number;
-  recentPosts: number;
   /** Null until the page-view tally exists. */
   traffic: {
     pages: Array<{ page: string; views: number }>;
@@ -493,8 +497,14 @@ export interface AdminMetrics {
   } | null;
 }
 
-export function fetchAdminMetrics(token = "", days = 30): Promise<AdminMetrics> {
-  return adminRequest<AdminMetrics>(`/api/admin/metrics?days=${days}`, token);
+/** A preset period, or a calendar range of UTC days (YYYY-MM-DD, inclusive). */
+export type AdminMetricsQuery = { range: Exclude<AdminMetricsRangeKey, "custom"> } | { from: string; to: string };
+
+export function fetchAdminMetrics(token = "", query: AdminMetricsQuery = { range: "30d" }): Promise<AdminMetrics> {
+  const search = "range" in query
+    ? `range=${query.range}`
+    : `from=${encodeURIComponent(query.from)}&to=${encodeURIComponent(query.to)}`;
+  return adminRequest<AdminMetrics>(`/api/admin/metrics?${search}`, token);
 }
 
 export function fetchAdminAudit(token = "", limit = 100): Promise<{ events: AdminAuditEvent[] }> {

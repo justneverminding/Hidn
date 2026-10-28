@@ -1793,6 +1793,17 @@ html:has(.hidn-verify-sheet), body:has(.hidn-verify-sheet) { overflow: hidden !i
 .public-page.room-v2 .hidn-range { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--v2-line-soft); border-radius: 8px; }
 .public-page.room-v2 .hidn-range__btn { background: transparent; border: 0; border-radius: 6px; color: var(--v2-muted); cursor: pointer; font: 500 13px var(--v2-read); min-height: 30px; padding: 0 12px; }
 .public-page.room-v2 .hidn-range__btn.is-on { background: rgba(93, 255, 143, 0.12); color: var(--v2-green); }
+.public-page.room-v2 .hidn-range { flex-wrap: wrap; max-width: 100%; }
+.public-page.room-v2 .hidn-range-bar { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; }
+.public-page.room-v2 .hidn-range-custom { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 10px; }
+.public-page.room-v2 .hidn-range-custom[hidden] { display: none; }
+.public-page.room-v2 .hidn-range-custom label { display: flex; flex-direction: column; gap: 4px; }
+.public-page.room-v2 .hidn-range-custom label span { color: var(--v2-muted); font: 500 12px var(--v2-read); }
+.public-page.room-v2 .hidn-range-custom input { background: transparent; border: 1px solid var(--v2-line-soft); border-radius: 6px; color: var(--v2-ink); color-scheme: dark; font: 500 14px var(--v2-mono); min-height: 34px; padding: 0 10px; }
+.public-page.room-v2 .hidn-range-custom input:focus-visible { border-color: var(--v2-green); outline: none; }
+.public-page.room-v2 .hidn-range__apply { background: rgba(93, 255, 143, 0.12); border: 1px solid rgba(93, 255, 143, 0.35); border-radius: 6px; color: var(--v2-green); cursor: pointer; font: 600 13px var(--v2-read); min-height: 34px; padding: 0 16px; }
+.public-page.room-v2 .hidn-range-now { color: var(--v2-muted); font: 500 13px var(--v2-read); margin: 0; }
+.public-page.room-v2 .hidn-range-now b { color: var(--v2-ink); font-weight: 600; }
 .public-page.room-v2 .hidn-kpis { border: 1px solid var(--v2-line-soft); border-radius: 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); overflow: hidden; }
 .public-page.room-v2 .hidn-kpi { border-right: 1px solid var(--v2-line-soft); display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; }
 .public-page.room-v2 .hidn-kpi:last-child { border-right: 0; }
