@@ -72,8 +72,18 @@ export interface AnonymousProofEnvelope {
   publicSignals: string[];
 }
 
+/** A notification only the author's browser can open: details sealed to its key. */
+export interface SealedNotification {
+  id: string;
+  sealed: string;
+  /** Hash of the notification key it was sent to, so the browser picks the right private key. */
+  recipient: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
 export interface AnonymousNotificationsResponse {
-  notifications: AccountNotification[];
+  notifications: Array<AccountNotification | SealedNotification>;
   unreadCount: number;
 }
 
@@ -306,6 +316,11 @@ export function createAnonymousReaction(input: {
  * and replies; the server only matches them for this request. */
 export function fetchAnonymousNotifications(notificationCapabilities: string[]): Promise<AnonymousNotificationsResponse> {
   return anonymousGet<AnonymousNotificationsResponse>("/api/anonymous/notifications?limit=30", notificationCapabilities);
+}
+
+/** Registers public keys for this browser's notification keys, so new notifications arrive sealed. */
+export function registerNotificationKeys(keys: Array<{ capability: string; publicKey: string }>): Promise<{ status: "registered"; registered: number }> {
+  return anonymousRequest<{ status: "registered"; registered: number }>("/api/anonymous/notifications/keys", { keys });
 }
 
 export function markAnonymousNotificationsRead(

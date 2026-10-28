@@ -117,6 +117,12 @@ In short: **HIDN can check that you're a member, but never which member.**
    wrapped with a key derived from your secret, so any device with your HIDN
    key can open your inbox and the server never can. It all runs on the
    browser's built-in WebCrypto, with no extra library.
+9. **Notifications are end-to-end encrypted too.** Your browser makes a key
+   pair for each of your one-off notification keys and registers only the
+   public half. When someone likes or replies, the server seals what happened
+   and which post it was to that key, so its database holds a fixed-size
+   ciphertext, not who reacted to what. Only your browser can open the bell.
+   (The server still sees the event at the moment it seals it.)
 
 ### Where to look in the code
 
@@ -127,7 +133,7 @@ In short: **HIDN can check that you're a member, but never which member.**
 | Browser prover (in a Web Worker) | [`prover.ts`](packages/anonymous-zk/src/prover.ts), [`anonymous-proof-worker.ts`](apps/web/src/anonymous-proof-worker.ts) |
 | Verifier | [`verifier.ts`](packages/anonymous-zk/src/verifier.ts) |
 | Server checks, replay protection, rate limits, link blocking | [`apps/web/src/worker.ts`](apps/web/src/worker.ts) |
-| End-to-end encrypted link messages | [`apps/web/src/product/link-e2e.ts`](apps/web/src/product/link-e2e.ts) |
+| End-to-end encrypted link messages and notifications | [`apps/web/src/product/link-e2e.ts`](apps/web/src/product/link-e2e.ts) |
 | Public proving files | [`public/anonymous-zk/v2/`](public/anonymous-zk/v2/) |
 
 ### Going further with Tor
@@ -143,7 +149,7 @@ WebAssembly that HIDN uses to make proofs in your browser).
 | Now | Next |
 | --- | --- |
 | Membership proofs use a public Powers of Tau setup plus one HIDN contribution ([details](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md)). | **PLONK**, which needs no HIDN-run ceremony, then **Halo 2**, Zcash's own proof system, which needs no trusted setup at all. |
-| Private-link messages are **end-to-end encrypted**: only the recipient can read them. | Encrypting notifications the same way. |
+| Private-link messages and notifications are **end-to-end encrypted**: only the recipient can read them. | Sealing notifications in the sender's browser, so the server never sees the event even for the moment it's created. |
 | Tor Browser hides your network address. | A built-in relay option for people who don't use Tor. |
 
 The words you post are, by design, visible to readers. What stays hidden is

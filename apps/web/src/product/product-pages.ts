@@ -107,6 +107,8 @@ import {
   enrollAnonymousMember,
   fetchAnonymousStatus,
   fetchAnonymousNotifications,
+  registerNotificationKeys,
+  type AnonymousNotificationsResponse,
   fetchAnonymousPosts,
   fetchAnonymousThread,
   fetchAdminAudit,
@@ -139,6 +141,7 @@ import {
   type ReportStatus,
   type ReportTargetType,
 } from "./room-api";
+import { createSealKeyPair, importSealPrivateKey, NOTIFICATION_SEAL_INFO, openText } from "./link-e2e";
 
 export interface RenderedProductRoute {
   html: string;
@@ -574,6 +577,86 @@ function loadNotificationKeys(): string[] {
   } catch {
     return [];
   }
+}
+
+// Each notification key also has an encryption key pair. The server seals a
+// notification's details to the public half; the private half never leaves
+// this browser. Pairs are registered with the server once.
+const ROOM_NOTIFICATION_SEAL_STORAGE = "hidn:notify-seal";
+
+interface NotificationSealPair { publicKey: string; privateKey: string; registered?: boolean }
+
+function loadNotificationSealPairs(): Record<string, NotificationSealPair> {
+  try {
+    const stored = window.localStorage.getItem(`${ROOM_NOTIFICATION_SEAL_STORAGE}:${deviceSignalHistoryScope()}`);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+    return parsed && typeof parsed === "object" ? parsed as Record<string, NotificationSealPair> : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveNotificationSealPairs(pairs: Record<string, NotificationSealPair>): void {
+  try {
+    window.localStorage.setItem(`${ROOM_NOTIFICATION_SEAL_STORAGE}:${deviceSignalHistoryScope()}`, JSON.stringify(pairs));
+  } catch {
+    // Without storage, notifications for these keys simply stay unsealed.
+  }
+}
+
+/** Makes and registers key pairs for any notification keys that don't have one yet. */
+async function ensureNotificationSealPairs(keys: string[]): Promise<Record<string, NotificationSealPair>> {
+  const stored = loadNotificationSealPairs();
+  const pairs: Record<string, NotificationSealPair> = {};
+  for (const key of keys) {
+    pairs[key] = stored[key] ?? { ...(await createSealKeyPair()), registered: false };
+  }
+  const pending = keys.filter((key) => !pairs[key].registered);
+  if (pending.length) {
+    try {
+      await registerNotificationKeys(pending.map((key) => ({ capability: key, publicKey: pairs[key].publicKey })));
+      for (const key of pending) pairs[key].registered = true;
+    } catch {
+      // Try again on the next check; the notifications still load.
+    }
+  }
+  saveNotificationSealPairs(pairs);
+  return pairs;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Opens sealed notifications with this browser's private keys; unreadable ones are dropped. */
+async function openSealedNotifications(response: AnonymousNotificationsResponse, pairs: Record<string, NotificationSealPair>): Promise<AccountNotificationsResponse> {
+  const byHash = new Map<string, NotificationSealPair>();
+  for (const [key, pair] of Object.entries(pairs)) byHash.set(await sha256Hex(key), pair);
+  const notifications: AccountNotification[] = [];
+  for (const item of response.notifications) {
+    if (!("sealed" in item)) { notifications.push(item); continue; }
+    const pair = byHash.get(item.recipient);
+    if (!pair) continue;
+    try {
+      const details = JSON.parse(await openText(await importSealPrivateKey(pair.privateKey), pair.publicKey, item.sealed, NOTIFICATION_SEAL_INFO)) as {
+        type: AccountNotification["type"]; targetType: AccountNotification["targetType"]; targetId: string; threadId: string | null;
+      };
+      notifications.push({
+        id: item.id,
+        type: details.type,
+        actorAlias: "ANONYMOUS",
+        targetType: details.targetType,
+        targetId: details.targetId,
+        ...(details.threadId ? { threadId: details.threadId } : {}),
+        createdAt: item.createdAt,
+        readAt: item.readAt,
+      });
+    } catch {
+      // A notification this browser can't open is left out.
+    }
+  }
+  return { notifications, unreadCount: response.unreadCount };
 }
 
 function rememberNotificationKey(key: string): void {
@@ -3005,7 +3088,8 @@ async function refreshAccountNotifications(): Promise<void> {
   if (!notificationKeys.length) {
     return;
   }
-  roomNotificationsRequest = fetchAnonymousNotifications(notificationKeys)
+  roomNotificationsRequest = ensureNotificationSealPairs(notificationKeys)
+    .then(async (pairs) => openSealedNotifications(await fetchAnonymousNotifications(notificationKeys), pairs))
     .then((response) => {
       if (!hasRoomSession()) {
         return;

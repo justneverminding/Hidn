@@ -1,4 +1,4 @@
-// End-to-end encryption for private-link messages.
+// End-to-end encryption for private-link messages and notifications.
 //
 // Each link has an ECDH P-256 key pair. The public half is stored with the
 // link so senders can encrypt to it. The private half is stored too, but only
@@ -82,10 +82,10 @@ export async function openLinkPrivateKey(secret: string, material: LinkKeyMateri
   return subtle.importKey("pkcs8", pkcs8, CURVE, false, ["deriveBits"]);
 }
 
-function pad(text: string): Bytes {
+function pad(text: string, size = PADDED_SIZE): Bytes {
   const bytes = new TextEncoder().encode(text);
-  if (bytes.length > PADDED_SIZE - 2) throw new Error("That message is too long.");
-  const out = new Uint8Array(PADDED_SIZE);
+  if (bytes.length > size - 2) throw new Error("That message is too long.");
+  const out = new Uint8Array(size);
   out[0] = bytes.length >> 8;
   out[1] = bytes.length & 0xff;
   out.set(bytes, 2);
@@ -99,30 +99,57 @@ function unpad(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes.subarray(2, 2 + length));
 }
 
-/** Encrypts a message to a link's public key. Only that link's owner can read the result. */
-export async function sealLinkMessage(recipientPublicKey: string, text: string): Promise<string> {
+/** Seals text to a P-256 public key with a fresh one-time key. Only the private key's holder can open it. */
+export async function sealText(recipientPublicKey: string, text: string, info = SEAL_INFO, size = PADDED_SIZE): Promise<string> {
   const recipientRaw = fromBase64Url(recipientPublicKey);
   const recipient = await subtle.importKey("raw", recipientRaw, CURVE, false, []);
   const ephemeral = await subtle.generateKey(CURVE, true, ["deriveBits"]) as CryptoKeyPair;
   const ephemeralRaw = new Uint8Array(await subtle.exportKey("raw", ephemeral.publicKey));
   const shared = await subtle.deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256);
-  const key = await hkdfAesKey(shared, SEAL_INFO, concat(ephemeralRaw, recipientRaw), ["encrypt"]);
+  const key = await hkdfAesKey(shared, info, concat(ephemeralRaw, recipientRaw), ["encrypt"]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const sealed = new Uint8Array(await subtle.encrypt({ name: "AES-GCM", iv }, key, pad(text)));
+  const sealed = new Uint8Array(await subtle.encrypt({ name: "AES-GCM", iv }, key, pad(text, size)));
   return SEALED_PREFIX + toBase64Url(concat(ephemeralRaw, iv, sealed));
 }
 
-/** Decrypts a sealed message with the link's private key, on the owner's device. */
-export async function openLinkMessage(privateKey: CryptoKey, recipientPublicKey: string, sealedText: string): Promise<string> {
-  if (!sealedText.startsWith(SEALED_PREFIX)) throw new Error("This message isn't encrypted.");
+/** Opens text sealed by sealText, with the matching private key. */
+export async function openText(privateKey: CryptoKey, recipientPublicKey: string, sealedText: string, info = SEAL_INFO): Promise<string> {
+  if (!sealedText.startsWith(SEALED_PREFIX)) throw new Error("This isn't encrypted.");
   const packed = fromBase64Url(sealedText.slice(SEALED_PREFIX.length));
   const ephemeralRaw = packed.slice(0, 65);
   const iv = packed.slice(65, 77);
   const ephemeral = await subtle.importKey("raw", ephemeralRaw, CURVE, false, []);
   const shared = await subtle.deriveBits({ name: "ECDH", public: ephemeral }, privateKey, 256);
-  const key = await hkdfAesKey(shared, SEAL_INFO, concat(ephemeralRaw, fromBase64Url(recipientPublicKey)), ["decrypt"]);
+  const key = await hkdfAesKey(shared, info, concat(ephemeralRaw, fromBase64Url(recipientPublicKey)), ["decrypt"]);
   return unpad(new Uint8Array(await subtle.decrypt({ name: "AES-GCM", iv }, key, packed.slice(77))));
 }
+
+/** Encrypts a message to a link's public key. Only that link's owner can read the result. */
+export function sealLinkMessage(recipientPublicKey: string, text: string): Promise<string> {
+  return sealText(recipientPublicKey, text);
+}
+
+/** Decrypts a sealed message with the link's private key, on the owner's device. */
+export function openLinkMessage(privateKey: CryptoKey, recipientPublicKey: string, sealedText: string): Promise<string> {
+  return openText(privateKey, recipientPublicKey, sealedText);
+}
+
+/** A key pair kept whole in this browser (base64url raw public key and PKCS#8 private key). */
+export async function createSealKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
+  const pair = await subtle.generateKey(CURVE, true, ["deriveBits"]) as CryptoKeyPair;
+  return {
+    publicKey: toBase64Url(new Uint8Array(await subtle.exportKey("raw", pair.publicKey))),
+    privateKey: toBase64Url(new Uint8Array(await subtle.exportKey("pkcs8", pair.privateKey))),
+  };
+}
+
+export function importSealPrivateKey(privateKey: string): Promise<CryptoKey> {
+  return subtle.importKey("pkcs8", fromBase64Url(privateKey), CURVE, false, ["deriveBits"]);
+}
+
+/** Notifications use their own label and a smaller fixed size. */
+export const NOTIFICATION_SEAL_INFO = "hidn-notification-e2e-v1";
+export const NOTIFICATION_SEAL_SIZE = 256;
 
 export function isSealedLinkMessage(text: string): boolean {
   return text.startsWith(SEALED_PREFIX);

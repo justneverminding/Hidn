@@ -11,6 +11,7 @@ import {
 import { verifyAnonymousGroth16Proof } from "@hidn/anonymous-zk/verifier";
 import { roomClosedReason, roomLinkByKey, roomLinkBySlug } from "./product/room-links";
 import { containsLink, LINK_BLOCKED_ERROR } from "./product/link-rules";
+import { NOTIFICATION_SEAL_INFO, NOTIFICATION_SEAL_SIZE, sealText } from "./product/link-e2e";
 import anonymousVerifierWasm from "../../../packages/anonymous-zk/wasm/bn128.wasm";
 
 // Keep the edge verifier bundle fresh when its shared anonymous-zk runtime changes.
@@ -237,6 +238,8 @@ interface AnonymousNotificationRow {
   thread_id: string | null;
   created_at: string;
   read_at: string | null;
+  sealed?: string | null;
+  recipient_capability_hash?: string;
 }
 
 interface ActivityEventRow {
@@ -923,21 +926,32 @@ async function createAnonymousNotification(
   }
 
   try {
+    // When the author's browser registered a key for this post, the details
+    // are sealed to it and the plain columns keep only fixed placeholders.
+    const registered = await env.ROOM_DB.prepare(
+      `SELECT public_key FROM hidn_notification_keys WHERE recipient_capability_hash = ?`,
+    )
+      .bind(recipientCapabilityHash)
+      .first<{ public_key: string }>();
+    const sealed = registered
+      ? await sealText(registered.public_key, JSON.stringify({ type: eventType, targetType, targetId, threadId }), NOTIFICATION_SEAL_INFO, NOTIFICATION_SEAL_SIZE)
+      : null;
     await env.ROOM_DB.prepare(
       `INSERT INTO hidn_anonymous_notifications
         (notification_id, recipient_capability_hash, event_type, actor_alias,
-         target_type, target_id, thread_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_type, target_id, thread_id, created_at, sealed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         createAnonymousNotificationId(),
         recipientCapabilityHash,
-        eventType,
+        sealed ? "reaction" : eventType,
         actorAlias,
-        targetType,
-        targetId,
-        threadId,
+        sealed ? "thread" : targetType,
+        sealed ? "sealed" : targetId,
+        sealed ? null : threadId,
         new Date().toISOString(),
+        sealed,
       )
       .run();
   } catch {
@@ -1740,7 +1754,7 @@ async function listAnonymousNotifications(request: Request, env: HidnWorkerEnv):
   const [notifications, unread] = await Promise.all([
     env.ROOM_DB!.prepare(
       `SELECT notification_id, event_type, actor_alias, target_type, target_id,
-              thread_id, created_at, read_at
+              thread_id, created_at, read_at, sealed, recipient_capability_hash
        FROM hidn_anonymous_notifications
        WHERE recipient_capability_hash IN (${recipients}) AND created_at >= ?
        ORDER BY created_at DESC
@@ -1758,7 +1772,14 @@ async function listAnonymousNotifications(request: Request, env: HidnWorkerEnv):
   ]);
 
   return jsonResponse({
-    notifications: notifications.results.map((notification) => ({
+    notifications: notifications.results.map((notification) => (notification.sealed ? {
+      id: notification.notification_id,
+      // Only the author's browser can open this; it matches the key by this hash.
+      sealed: notification.sealed,
+      recipient: notification.recipient_capability_hash,
+      createdAt: notification.created_at,
+      readAt: notification.read_at,
+    } : {
       id: notification.notification_id,
       type: notification.event_type,
       actorAlias: ANONYMOUS_ACTOR,
@@ -1770,6 +1791,36 @@ async function listAnonymousNotifications(request: Request, env: HidnWorkerEnv):
     })),
     unreadCount: Number(unread?.count ?? 0),
   }, 200, "no-store");
+}
+
+/** A browser registers public keys for its own notification keys. Holding the
+ * notification key is the proof of ownership; a registered key never changes. */
+async function registerNotificationKeys(request: Request, env: HidnWorkerEnv): Promise<Response> {
+  const unavailable = databaseUnavailable(env) ?? anonymousZkUnavailable(env);
+  if (unavailable) {
+    return unavailable;
+  }
+  const rateLimit = await enforceEdgeRateLimit(request, env, { action: "notification-keys", limit: 30, windowMs: 10 * 60 * 1000 });
+  if (rateLimit) {
+    return rateLimit;
+  }
+  const body = await requestBody(request);
+  const entries = Array.isArray(body.keys) ? body.keys.slice(0, 80) : [];
+  const now = new Date().toISOString();
+  let registered = 0;
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const capability = String((entry as Record<string, unknown>).capability ?? "").trim().toLowerCase();
+    const publicKey = String((entry as Record<string, unknown>).publicKey ?? "").trim();
+    if (!isValidAnonymousCapability(capability) || !/^[A-Za-z0-9_-]{86,88}$/.test(publicKey)) continue;
+    const result = await env.ROOM_DB!.prepare(
+      `INSERT OR IGNORE INTO hidn_notification_keys (recipient_capability_hash, public_key, created_at) VALUES (?, ?, ?)`,
+    )
+      .bind(await hashText(capability), publicKey, now)
+      .run();
+    registered += Number((result as { meta?: { changes?: number } }).meta?.changes ?? 0);
+  }
+  return jsonResponse({ status: "registered", registered }, 200, "no-store");
 }
 
 async function markAnonymousNotificationsRead(request: Request, env: HidnWorkerEnv): Promise<Response> {
@@ -3505,6 +3556,18 @@ const worker = {
         return await listAnonymousNotifications(request, env);
       } catch {
         return jsonResponse({ error: "Anonymous notifications could not be loaded." }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/anonymous/notifications/keys") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
+      }
+
+      try {
+        return await registerNotificationKeys(request, env);
+      } catch {
+        return jsonResponse({ error: "Notification keys could not be saved." }, 500);
       }
     }
 
