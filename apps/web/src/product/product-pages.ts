@@ -6380,21 +6380,13 @@ function bindTransmissionRowOpen(root: ParentNode): void {
     row.addEventListener("click", (event) => {
       const target = event.target as HTMLElement | null;
       const href = row.dataset.openHref;
-      const onDesk = Boolean(row.closest(".hidn-desk"));
-      // On the desktop room the reply link opens the side panel too.
-      const replyLink = target?.closest<HTMLAnchorElement>('a[href^="/c/"]');
-      if (onDesk && replyLink && href) {
-        event.preventDefault();
-        openDeskThread(decodeURIComponent(href.slice("/c/".length)));
-        return;
-      }
       // Buttons and links in the row keep their own job; a text selection
-      // (for quoting) is not a tap.
+      // (for quoting) is not a tap. Otherwise the confession opens on its own page.
       if (target?.closest("a, button, input, textarea, label")) return;
       if (window.getSelection()?.toString()) return;
       if (!href) return;
-      if (onDesk) openDeskThread(decodeURIComponent(href.slice("/c/".length)));
-      else navigateProductRoute(href);
+      deskOpenThreadId = "";
+      navigateProductRoute(href);
     });
   });
 }
