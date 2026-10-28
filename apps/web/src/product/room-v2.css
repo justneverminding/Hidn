@@ -1957,3 +1957,7 @@ html:has(.hidn-report-sheet), body:has(.hidn-report-sheet) { overflow: hidden !i
 .public-page.public-page--theme-signal .public-page__window-chrome:has(.room-notifications--open) { overflow: visible !important; }
 .public-page.public-page--theme-signal .public-page__window-chrome:has(.room-notifications--open)::before,
 .public-page.public-page--theme-signal .public-page__window-chrome:has(.room-notifications--open)::after { display: none; }
+
+/* The old feed faded its outer 2% into the background; the text now sits at
+   the edge, so that fade ate the first letter of every line. */
+.public-page.room-v2.room-v2.room-v2 .explore-feed { -webkit-mask-image: none !important; mask-image: none !important; }
