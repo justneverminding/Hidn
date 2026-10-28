@@ -120,9 +120,9 @@ In short: **HIDN can check that you're a member, but never which member.**
 9. **Notifications are end-to-end encrypted too.** Your browser makes a key
    pair for each of your one-off notification keys and registers only the
    public half. When someone likes or replies, the server seals what happened
-   and which post it was to that key, so its database holds a fixed-size
-   ciphertext, not who reacted to what. Only your browser can open the bell.
-   (The server still sees the event at the moment it seals it.)
+   and which post it was to that key, so stored notifications are fixed-size
+   ciphertext that only your browser can open. Likes and replies themselves
+   are public on the post, and neither records who sent them.
 
 ### Where to look in the code
 
@@ -149,7 +149,6 @@ WebAssembly that HIDN uses to make proofs in your browser).
 | Now | Next |
 | --- | --- |
 | Membership proofs use a public Powers of Tau setup plus one HIDN contribution ([details](docs/HIDN-ANONYMOUS-ZK-MILESTONE.md)). | **PLONK**, which needs no HIDN-run ceremony, then **Halo 2**, Zcash's own proof system, which needs no trusted setup at all. |
-| Private-link messages and notifications are **end-to-end encrypted**: only the recipient can read them. | Sealing notifications in the sender's browser, so the server never sees the event even for the moment it's created. |
 | Tor Browser hides your network address. | A built-in relay option for people who don't use Tor. |
 
 The words you post are, by design, visible to readers. What stays hidden is
