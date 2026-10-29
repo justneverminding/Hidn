@@ -2,6 +2,7 @@
  * ride along, with a live preview of the real image. Lives outside the page
  * render so route re-renders don't close it. */
 
+import type { PostMood } from "./room-api";
 import { SHARE_CARD_MAX_REPLIES, type ShareCardSize } from "./share-card";
 
 export interface ShareSheetOptions {
@@ -9,11 +10,20 @@ export interface ShareSheetOptions {
   replies: string[];
   /** Reply indexes ticked when the sheet opens. */
   preselect: number[];
-  render: (size: ShareCardSize, replies: string[]) => Promise<Blob>;
+  /** The mood the image starts in: the post's own, else HIDN's look. Any mood can be picked. */
+  mood?: PostMood;
+  render: (size: ShareCardSize, replies: string[], mood: PostMood) => Promise<Blob>;
   confirm: (blob: Blob, size: ShareCardSize, action: "save" | "share") => Promise<void> | void;
 }
 
 const SIZE_KEY = "hidn.share.size";
+const MOODS: Array<{ key: PostMood; label: string }> = [
+  { key: "plain", label: "HIDN" },
+  { key: "haunted", label: "Haunted" },
+  { key: "cctv", label: "CCTV" },
+  { key: "classified", label: "Classified" },
+  { key: "note", label: "Note" },
+];
 const SIZES: Array<{ key: ShareCardSize; label: string; ratio: string }> = [
   { key: "post", label: "Post", ratio: "4:5" },
   { key: "story", label: "Story", ratio: "9:16" },
@@ -50,6 +60,7 @@ export function openShareSheet(options: ShareSheetOptions): void {
   closeShareSheet();
   const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   let size = rememberedSize();
+  let mood: PostMood = options.mood ?? "plain";
   let picked = options.preselect.filter((index) => index >= 0 && index < options.replies.length);
   let blob: Blob | null = null;
   let previewUrl = "";
@@ -67,6 +78,9 @@ export function openShareSheet(options: ShareSheetOptions): void {
       </header>
       <div class="hidn-share-sheet__sizes" role="group" aria-label="Card size">
         ${SIZES.map((item) => `<button type="button" data-share-size="${item.key}"><b>${item.label}</b><span>${item.ratio}</span></button>`).join("")}
+      </div>
+      <div class="hidn-share-sheet__moods" role="group" aria-label="Mood">
+        ${MOODS.map((item) => `<button type="button" data-share-mood="${item.key}"><i class="hidn-share-sheet__swatch hidn-share-sheet__swatch--${item.key}" aria-hidden="true"></i>${item.label}</button>`).join("")}
       </div>
       <div class="hidn-share-sheet__preview"><img alt="Preview of the image" data-share-preview></div>
       ${options.replies.length ? `<div class="hidn-share-sheet__replies">
@@ -96,6 +110,9 @@ export function openShareSheet(options: ShareSheetOptions): void {
     sheet.querySelectorAll<HTMLButtonElement>("[data-share-size]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.shareSize === size));
     });
+    sheet.querySelectorAll<HTMLButtonElement>("[data-share-mood]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.shareMood === mood));
+    });
     sheet.querySelectorAll<HTMLButtonElement>("[data-share-reply]").forEach((button) => {
       const index = Number(button.dataset.shareReply);
       const on = picked.includes(index);
@@ -122,7 +139,7 @@ export function openShareSheet(options: ShareSheetOptions): void {
     goButtons.forEach((button) => { button.disabled = true; });
     const texts = [...picked].sort((a, b) => a - b).map((index) => options.replies[index]);
     try {
-      const next = await options.render(size, texts);
+      const next = await options.render(size, texts, mood);
       if (token !== renderToken || openSheet !== sheet) return;
       blob = next;
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -154,6 +171,12 @@ export function openShareSheet(options: ShareSheetOptions): void {
       size = sizeButton.dataset.shareSize as ShareCardSize;
       rememberSize(size);
       void refresh();
+      return;
+    }
+    const moodButton = target.closest<HTMLButtonElement>("[data-share-mood]");
+    if (moodButton) {
+      const picked = MOODS.find((item) => item.key === moodButton.dataset.shareMood);
+      if (picked) { mood = picked.key; void refresh(); }
       return;
     }
     const replyButton = target.closest<HTMLButtonElement>("[data-share-reply]");

@@ -1893,12 +1893,12 @@ async function createThreadImage(
   cardType: ShareCardType = "THREAD",
   suppliedReplies?: AnonymousReply[],
   size: ShareCardSize = "post",
+  mood?: PostMood,
 ): Promise<Blob> {
   const replies = focusReply
     ? [focusReply.reply.text]
     : cardType === "BATCH" ? (suppliedReplies ?? []).map((reply) => reply.text) : [];
   const channel = roomChannelOptions.find((room) => room.key === confession.channel);
-  const livePost = roomPosts.find((post) => post.id === confession.id) ?? mixedFeedPosts.find((post) => post.id === confession.id);
   return renderShareCard({
     text: confession.text,
     replies,
@@ -1907,9 +1907,14 @@ async function createThreadImage(
     mark: String(confession.reference || `// ${confession.id.replace(/^THR-/, "").slice(0, 8)}`).toUpperCase(),
     theme: activeHidnTheme() === "signal" ? "signal" : "quiet",
     size,
-    mood: livePost?.mood,
+    mood: mood ?? roomPostById(confession.id)?.mood,
     time: confession.time,
   });
+}
+
+/** A loaded post by id, from whichever feed has it. */
+function roomPostById(id: string): RoomPost | undefined {
+  return roomPosts.find((post) => post.id === id) ?? mixedFeedPosts.find((post) => post.id === id);
 }
 
 function downloadThreadImage(blob: Blob, confession: MockConfession, filename = `hidn-thread-${confession.id}.png`): void {
@@ -2064,7 +2069,8 @@ async function shareThreadImage(
     mode,
     replies: visible.map(({ item }) => item.text),
     preselect,
-    render: (size, texts) => createThreadImage(confession, undefined, "BATCH", texts.map((text) => ({ text, time: "" })), size),
+    mood: roomPostById(confession.id)?.mood,
+    render: (size, texts, mood) => createThreadImage(confession, undefined, "BATCH", texts.map((text) => ({ text, time: "" })), size, mood),
     confirm: async (blob, size, action) => {
       const file = new File([blob], size === "post" ? filename : filename.replace(/\.png$/, `-${size}.png`), { type: "image/png" });
       if (action === "share" && typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {

@@ -718,7 +718,7 @@ function shareMessageImage(messageId: string, mode: "share" | "save"): void {
     mode,
     replies: [],
     preselect: [],
-    render: (size) => renderShareCard({
+    render: (size, _replies, mood) => renderShareCard({
       text: message.text,
       replies: [],
       room: "My inbox",
@@ -726,6 +726,8 @@ function shareMessageImage(messageId: string, mode: "share" | "save"): void {
       mark: "// sent to me",
       theme: "signal",
       size,
+      mood,
+      time: message.createdAt,
     }),
     confirm: async (blob, size, action) => {
       const file = new File([blob], `${filename}${size === "post" ? "" : `-${size}`}.png`, { type: "image/png" });
